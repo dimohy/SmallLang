@@ -196,3 +196,31 @@ Implementation is pending. The first implementation should parse the unary
 value-flow form and lower it to the same call AST shape used by the existing
 parenthesized call so LLVM output and executable size stay unchanged for the
 first `print` program.
+
+## D014 - Initial Integer Addition And Scalar Interpolation
+
+Status: accepted
+Date: 2026-07-07
+
+SLang supports decimal integer literals and left-associative integer `+` in the
+current compiler slice:
+
+```slang
+sum = 20 + 22
+```
+
+The first numeric model is intentionally narrow. Integer literals evaluate to
+signed 64-bit values in the semantic evaluator, and `+` performs checked integer
+addition. Mixed string/integer `+`, floating point values, arbitrary precision
+numbers, suffixes, and final overflow policy syntax are not decided yet.
+
+String interpolation can display integer bindings:
+
+```slang
+print("Hello, {name}. 20 + 22 = {sum}")
+```
+
+This keeps the LLVM backend unchanged for the current size-first prototype:
+numeric expressions are folded by the semantic stage, interpolation produces
+UTF-8 output bytes, and the Windows backend still emits one static output
+buffer and one `WriteFile` call.

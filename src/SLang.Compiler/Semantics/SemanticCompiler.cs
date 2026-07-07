@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using SLang.Compiler.Diagnostics;
 using SLang.Compiler.Syntax;
@@ -8,7 +9,7 @@ internal sealed class SemanticCompiler(SlangProgram program)
 {
     public byte[] CompileToStdoutBytes()
     {
-        var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
+        var bindings = new Dictionary<string, SemanticValue>(StringComparer.Ordinal);
         var output = new StringBuilder();
 
         foreach (var statement in program.Statements)
@@ -21,7 +22,7 @@ internal sealed class SemanticCompiler(SlangProgram program)
                         throw Error(binding.Line, binding.Column, $"binding '{binding.Name}' already exists in this scope");
                     }
 
-                    bindings.Add(binding.Name, EvaluateString(binding.Value, bindings));
+                    bindings.Add(binding.Name, EvaluateValue(binding.Value, bindings));
                     break;
                 case ExpressionStatement expressionStatement:
                     CompileExpressionStatement(expressionStatement.Expression, bindings, output);
@@ -36,7 +37,7 @@ internal sealed class SemanticCompiler(SlangProgram program)
 
     private static void CompileExpressionStatement(
         Expression expression,
-        IReadOnlyDictionary<string, string> bindings,
+        IReadOnlyDictionary<string, SemanticValue> bindings,
         StringBuilder output)
     {
         if (expression is not CallExpression call)
@@ -55,20 +56,63 @@ internal sealed class SemanticCompiler(SlangProgram program)
             throw Error(call.Line, call.Column, "print expects exactly one argument");
         }
 
-        output.Append(EvaluateString(call.Arguments[0], bindings));
+        output.Append(EvaluateValue(call.Arguments[0], bindings).ToDisplayString());
     }
 
-    private static string EvaluateString(Expression expression, IReadOnlyDictionary<string, string> bindings)
+    private static SemanticValue EvaluateValue(
+        Expression expression,
+        IReadOnlyDictionary<string, SemanticValue> bindings)
     {
         return expression switch
         {
-            StringExpression str => EvaluateStringLiteral(str, bindings),
+            StringExpression str => new TextValue(EvaluateStringLiteral(str, bindings)),
+            NumberExpression number => EvaluateNumber(number),
             NameExpression name => ResolveName(name.Name, bindings, name.Line, name.Column),
-            _ => throw Error(expression.Line, expression.Column, "expected a string expression")
+            AddExpression add => EvaluateAdd(add, bindings),
+            _ => throw Error(expression.Line, expression.Column, "expected an expression value")
         };
     }
 
-    private static string EvaluateStringLiteral(StringExpression expression, IReadOnlyDictionary<string, string> bindings)
+    private static IntegerValue EvaluateNumber(NumberExpression expression)
+    {
+        return long.TryParse(
+            expression.Text,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out var value)
+            ? new IntegerValue(value)
+            : throw Error(expression.Line, expression.Column, $"integer literal '{expression.Text}' is out of range");
+    }
+
+    private static IntegerValue EvaluateAdd(
+        AddExpression expression,
+        IReadOnlyDictionary<string, SemanticValue> bindings)
+    {
+        var left = EvaluateValue(expression.Left, bindings);
+        var right = EvaluateValue(expression.Right, bindings);
+        if (left is not IntegerValue leftInteger)
+        {
+            throw Error(expression.Left.Line, expression.Left.Column, "left operand of '+' must be an integer");
+        }
+
+        if (right is not IntegerValue rightInteger)
+        {
+            throw Error(expression.Right.Line, expression.Right.Column, "right operand of '+' must be an integer");
+        }
+
+        try
+        {
+            return new IntegerValue(checked(leftInteger.Value + rightInteger.Value));
+        }
+        catch (OverflowException)
+        {
+            throw Error(expression.Line, expression.Column, "integer addition overflow");
+        }
+    }
+
+    private static string EvaluateStringLiteral(
+        StringExpression expression,
+        IReadOnlyDictionary<string, SemanticValue> bindings)
     {
         var result = new StringBuilder();
         foreach (var segment in expression.Segments)
@@ -84,7 +128,11 @@ internal sealed class SemanticCompiler(SlangProgram program)
                         throw Error(expression.Line, expression.Column, "path interpolation is reserved until modules are specified");
                     }
 
-                    result.Append(ResolveName(interpolation.Path[0], bindings, expression.Line, expression.Column));
+                    result.Append(ResolveName(
+                        interpolation.Path[0],
+                        bindings,
+                        expression.Line,
+                        expression.Column).ToDisplayString());
                     break;
                 default:
                     throw new SlangException($"unsupported string segment {segment.GetType().Name}");
@@ -94,7 +142,11 @@ internal sealed class SemanticCompiler(SlangProgram program)
         return result.ToString();
     }
 
-    private static string ResolveName(string name, IReadOnlyDictionary<string, string> bindings, int line, int column)
+    private static SemanticValue ResolveName(
+        string name,
+        IReadOnlyDictionary<string, SemanticValue> bindings,
+        int line,
+        int column)
     {
         return bindings.TryGetValue(name, out var value)
             ? value

@@ -9,24 +9,26 @@ language slice, lowers it to LLVM IR, and links a minimal Windows x64 executable
 ```slang
 main {
     name = "dimohy"
-    print("Hello, {name}")
+    sum = 20 + 22
+    print("Hello, {name}. 20 + 22 = {sum}")
 }
 ```
 
 The verified output is:
 
 ```text
-Hello, dimohy
+Hello, dimohy. 20 + 22 = 42
 ```
 
-The current generated executable is **752 bytes**.
+The current generated executable is **768 bytes**.
 
 Accepted next syntax direction:
 
 ```slang
 main {
     name = "dimohy"
-    "Hello, {name}" -> print
+    sum = 20 + 22
+    "Hello, {name}. 20 + 22 = {sum}" -> print
 }
 ```
 
@@ -43,7 +45,10 @@ What works today:
 
 - `main { ... }`
 - local string bindings with `name = "value"`
+- integer bindings with `sum = 20 + 22`
+- left-associative integer `+`
 - string interpolation with `"Hello, {name}"`
+- interpolation of string and integer bindings
 - `print(...)`
 - source-generated lexing from `syntax/slang.lexer`
 - source-generated parsing from `syntax/slang.grammar`
@@ -81,8 +86,10 @@ Lexer rules are written in a compact DSL:
 ```text
 token Identifier = identifier
 token String = quoted_string
+token Number = number
 token LeftBrace = "{"
 token RightBrace = "}"
+token Plus = "+"
 token Equal = "="
 token NewLine = newline
 token End = end
@@ -100,7 +107,9 @@ Parser rules are also written in a compact DSL:
 rule SourceFile = NewLine* MainBlock NewLine* End
 rule MainBlock = Identifier("main") LeftBrace NewLine* Statement* RightBrace
 rule BindingStatement = Identifier Equal Expression StatementEnd
-rule Expression = CallExpression | StringExpression | NameExpression
+rule Expression = AdditiveExpression
+rule AdditiveExpression = PrimaryExpression (Plus PrimaryExpression)*
+rule PrimaryExpression = CallExpression | StringExpression | NumberExpression | NameExpression
 ```
 
 The generator reads `syntax/slang.grammar` and emits the current recursive
@@ -110,7 +119,7 @@ parser shape needed by the approved syntax.
 
 ## Repository Layout
 
-- `examples/hello.slang`: the first SLang program
+- `examples/hello.slang`: the current SLang sample
 - `scripts/slang.ps1`: local build/bootstrap script
 - `syntax/slang.lexer`: concise lexer rule source
 - `syntax/slang.grammar`: concise parser rule source

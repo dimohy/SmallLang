@@ -8,12 +8,14 @@ skip Whitespace = whitespace
 
 token Identifier = identifier
 token String = quoted_string
+token Number = number
 token LeftBrace = "{"
 token RightBrace = "}"
 token LeftParen = "("
 token RightParen = ")"
 token Dot = "."
 token Comma = ","
+token Plus = "+"
 token Equal = "="
 token NewLine = newline
 token End = end

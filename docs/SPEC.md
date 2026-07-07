@@ -14,6 +14,8 @@ The implementation boundary is intentionally narrow:
 
 - one `main` block
 - local string bindings with `name = value`
+- integer bindings with decimal integer literals
+- left-associative integer `+`
 - simple string interpolation with `{name}`
 - `print(...)`
 - Windows x64 native executable output through LLVM
@@ -82,6 +84,22 @@ Hello, dimohy
 `print` does not append a newline. A newline-producing convenience such as
 `println` is a future surface-language decision.
 
+The current extended example is:
+
+```slang
+main {
+    name = "dimohy"
+    sum = 20 + 22
+    print("Hello, {name}. 20 + 22 = {sum}")
+}
+```
+
+Expected stdout bytes:
+
+```text
+Hello, dimohy. 20 + 22 = 42
+```
+
 ## Initial Syntax Direction
 
 SLang starts with an explicit `main` block instead of a fully general function
@@ -90,7 +108,8 @@ declaration. Local bindings do not use `let`, `var`, or a declaration keyword:
 ```slang
 main {
     name = "dimohy"
-    print("Hello, {name}")
+    sum = 20 + 22
+    print("Hello, {name}. 20 + 22 = {sum}")
 }
 ```
 
@@ -99,6 +118,8 @@ Rationale:
 - `main { ... }` is shorter than `fn main() { ... }`.
 - `name = value` is the smallest readable binding form.
 - `"Hello, {name}"` keeps string interpolation direct and familiar.
+- `20 + 22` introduces the smallest numeric expression without deciding the
+  final numeric tower.
 - The executable entry point is still explicit.
 - The parser can recognize the first complete program with a tiny grammar.
 - The syntax leaves room for full functions, modules, and effects later.
@@ -116,11 +137,13 @@ statement    := binding_statement | expression_statement
 binding_statement := identifier "=" expression statement_end
 expression_statement := expression statement_end
 statement_end := newline+ | "}" lookahead
-expression   := call | primary
+expression   := additive_expression
+additive_expression := primary ("+" primary)*
 call         := path "(" argument_list? ")"
 argument_list := expression ("," expression)*
 path         := identifier ("." identifier)*
-primary      := string_literal | identifier | "(" expression ")"
+primary      := call | string_literal | number_literal | identifier
+number_literal := decimal_digit+
 string_literal := "\"" string_part* "\""
 string_part  := string_text | interpolation
 interpolation := "{" path "}"
@@ -132,6 +155,7 @@ Notes:
 - Semicolons are not part of the initial surface syntax.
 - Braces are the only block delimiters.
 - `identifier = expression` introduces a local binding in the current block.
+- `+` is initially defined only for integer addition.
 - Function declarations are intentionally not specified yet.
 
 ## Bindings
@@ -156,6 +180,28 @@ Initial binding rules:
 This keeps the smallest program easy to read while avoiding hidden mutation
 semantics before the memory and value model are decided.
 
+## Numeric Expressions
+
+The first numeric expression support is intentionally narrow:
+
+```slang
+sum = 20 + 22
+```
+
+Initial numeric rules:
+
+- Decimal integer literals are supported.
+- Integer values are represented as signed 64-bit values in the current
+  semantic evaluator.
+- `+` performs checked integer addition.
+- `+` is left-associative.
+- Mixing strings and integers with `+` is not part of the current language.
+- Integer bindings can be interpolated into strings using their invariant
+  decimal display form.
+
+This adds arithmetic without deciding floating point, arbitrary precision,
+numeric suffixes, overflow policy syntax, or implicit string concatenation.
+
 ## Lexical Design
 
 The lexer must be single-pass and allocation-conscious.
@@ -165,7 +211,8 @@ Initial token categories:
 - keywords: `main`
 - identifiers
 - string literals, including interpolation markers inside string mode
-- punctuation: `{`, `}`, `(`, `)`, `.`, `,`, `=`
+- decimal integer literals
+- punctuation: `{`, `}`, `(`, `)`, `.`, `,`, `+`, `=`
 - newlines
 - trivia: spaces, tabs, comments when comments are specified
 - end of file
@@ -191,6 +238,7 @@ a double-quoted UTF-8 literal with optional identifier/path interpolation:
 Interpolation rules:
 
 - `{name}` inserts the current value of the binding named `name`.
+- Interpolating an integer binding uses its invariant decimal display form.
 - `{module.name}` style paths are reserved by the grammar but module semantics
   are not finalized.
 - Arbitrary expressions inside interpolation are not part of the initial
@@ -204,7 +252,7 @@ Interpolation rules:
 function-like call:
 
 ```slang
-print("Hello, {name}")
+print("Hello, {name}. 20 + 22 = {sum}")
 ```
 
 Semantically, it resolves to:
@@ -221,7 +269,8 @@ input value should be visually explicit:
 ```slang
 main {
     name = "dimohy"
-    "Hello, {name}" -> print
+    sum = 20 + 22
+    "Hello, {name}. 20 + 22 = {sum}" -> print
 }
 ```
 
@@ -229,7 +278,7 @@ The expression on the left flows into the function or callable path on the
 right. The example above is semantically equivalent to:
 
 ```slang
-print("Hello, {name}")
+print("Hello, {name}. 20 + 22 = {sum}")
 ```
 
 This makes argument flow and return flow visible without discarding the familiar
@@ -270,8 +319,9 @@ syntax work.
 
 Initial constraints:
 
-- The first supported argument is a string expression.
-- Plain and interpolated string literals are valid string expressions.
+- The first supported argument is a displayable scalar expression.
+- Plain and interpolated string literals are valid displayable expressions.
+- Integer expressions are displayable through invariant decimal formatting.
 - The output target is standard output.
 - The emitted data is exactly the evaluated string content, with no implicit
   newline.
@@ -339,7 +389,8 @@ For the initial program:
 ```slang
 main {
     name = "dimohy"
-    print("Hello, {name}")
+    sum = 20 + 22
+    print("Hello, {name}. 20 + 22 = {sum}")
 }
 ```
 
@@ -347,10 +398,12 @@ The intended lowering shape is:
 
 ```text
 static global utf8 bytes: "dimohy"
-static global utf8 bytes: "Hello, "
+constant-folded integer: 42
+static global utf8 bytes: "Hello, dimohy. 20 + 22 = 42"
 native entry function
 -> bind name to static string slice
--> evaluate interpolated string expression
+-> evaluate integer addition
+-> evaluate interpolated string expression with integer display
 -> call selected core.io.print backend with output bytes
 -> return process exit code
 ```
@@ -361,8 +414,8 @@ Optimization requirements:
 - `(ptr, len)` should be passed without copying.
 - Interpolated strings should avoid heap allocation when all parts are known
   static strings.
-- `print("Hello, {name}")` may lower to a single static output buffer when the
-  interpolated value is compile-time known.
+- `print("Hello, {name}. 20 + 22 = {sum}")` may lower to a single static output
+  buffer when the interpolated value is compile-time known.
 - Otherwise, printing segmented string parts directly is preferred over building
   a temporary heap string.
 - Platform output calls should be direct and inlinable when practical.
@@ -375,7 +428,8 @@ The current compiler supports:
 ```slang
 main {
     name = "dimohy"
-    print("Hello, {name}")
+    sum = 20 + 22
+    print("Hello, {name}. 20 + 22 = {sum}")
 }
 ```
 
@@ -384,7 +438,8 @@ Accepted but not yet implemented:
 ```slang
 main {
     name = "dimohy"
-    "Hello, {name}" -> print
+    sum = 20 + 22
+    "Hello, {name}. 20 + 22 = {sum}" -> print
 }
 ```
 
@@ -396,12 +451,14 @@ Current backend:
   generator
 - parser: generated from `syntax/slang.grammar` by a Roslyn incremental source
   generator
+- semantics: string and integer bindings, checked integer `+`, and scalar
+  interpolation are folded to output bytes for the current slice
 - IR output: immutable UTF-8 global bytes
 - entry point: `slang_start`
 - imports: `GetStdHandle`, `WriteFile`
 - linker: `lld-link`
 - CRT: none
-- current verified executable size: 752 bytes
+- current verified executable size: 768 bytes
 
 The current size-first backend emits one direct `WriteFile` call for the
 constant-folded output buffer and returns `0` or `1` from the native entry point
@@ -440,6 +497,7 @@ stage.
 - Should string interpolation later allow full expressions?
 - How should literal `{` and `}` be written inside strings?
 - What is the mutability/reassignment model for `name = value`?
+- What numeric types beyond the initial signed 64-bit integer should exist?
 - What comment syntax should be adopted?
 - What is the first official target matrix?
 - Which LLVM integration strategy will the .NET compiler use?

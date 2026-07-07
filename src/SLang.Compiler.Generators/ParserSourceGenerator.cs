@@ -58,10 +58,13 @@ internal sealed record GrammarSpec(
         "ExpressionStatement",
         "StatementEnd",
         "Expression",
+        "AdditiveExpression",
+        "PrimaryExpression",
         "CallExpression",
         "ArgumentList",
         "Path",
         "StringExpression",
+        "NumberExpression",
         "NameExpression"
     ];
 
@@ -308,10 +311,34 @@ internal static class ParserEmitter
         builder.AppendLine();
         builder.AppendLine("    private Expression ParseExpression()");
         builder.AppendLine("    {");
-        builder.AppendLine("        // Expression = CallExpression | StringExpression | NameExpression");
+        builder.AppendLine("        // Expression = AdditiveExpression");
+        builder.AppendLine("        return ParseAdditiveExpression();");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private Expression ParseAdditiveExpression()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        // AdditiveExpression = PrimaryExpression (Plus PrimaryExpression)*");
+        builder.AppendLine("        var expression = ParsePrimaryExpression();");
+        builder.AppendLine("        while (Match(TokenKind.Plus, out var plus))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            var right = ParsePrimaryExpression();");
+        builder.AppendLine("            expression = new AddExpression(expression, right, plus.Line, plus.Column);");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        return expression;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private Expression ParsePrimaryExpression()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        // PrimaryExpression = CallExpression | StringExpression | NumberExpression | NameExpression");
         builder.AppendLine("        if (Match(TokenKind.String, out var stringToken))");
         builder.AppendLine("        {");
         builder.AppendLine("            return new StringExpression(StringLiteralParser.ParseStringSegments(stringToken), stringToken.Line, stringToken.Column);");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        if (Match(TokenKind.Number, out var numberToken))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            return new NumberExpression(numberToken.Text, numberToken.Line, numberToken.Column);");
         builder.AppendLine("        }");
         builder.AppendLine();
         builder.AppendLine("        if (Match(TokenKind.Identifier, out var identifier))");

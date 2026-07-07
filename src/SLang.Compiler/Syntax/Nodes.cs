@@ -13,7 +13,12 @@ internal abstract record Expression(int Line, int Column);
 internal sealed record StringExpression(IReadOnlyList<StringSegment> Segments, int Line, int Column)
     : Expression(Line, Column);
 
+internal sealed record NumberExpression(string Text, int Line, int Column) : Expression(Line, Column);
+
 internal sealed record NameExpression(string Name, int Line, int Column) : Expression(Line, Column);
+
+internal sealed record AddExpression(Expression Left, Expression Right, int Line, int Column)
+    : Expression(Line, Column);
 
 internal sealed record CallExpression(
     IReadOnlyList<string> Path,
