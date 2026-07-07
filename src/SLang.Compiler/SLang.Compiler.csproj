@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\..\syntax\slang.lexer" />
+    <AdditionalFiles Include="..\..\syntax\slang.grammar" />
     <ProjectReference Include="..\SLang.Compiler.Generators\SLang.Compiler.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />

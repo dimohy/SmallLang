@@ -328,6 +328,8 @@ Current backend:
 - LLVM toolchain: LLVM 22.1.8, downloaded under `.tools` by `scripts/slang.ps1`
 - lexer: generated from `syntax/slang.lexer` by a Roslyn incremental source
   generator
+- parser: generated from `syntax/slang.grammar` by a Roslyn incremental source
+  generator
 - IR output: immutable UTF-8 global bytes
 - entry point: `slang_start`
 - imports: `GetStdHandle`, `WriteFile`
@@ -345,7 +347,7 @@ The compiler implementation is organized by responsibility:
 
 - `Cli`: command line parsing and build orchestration
 - `Lexing`: token model and generated lexer
-- `Parsing`: parser from tokens to AST
+- `Parsing`: parser helpers; the token-to-AST parser is generated
 - `Syntax`: AST node definitions
 - `Semantics`: current binding/interpolation/print lowering
 - `CodeGen`: LLVM IR generation
@@ -354,6 +356,12 @@ The compiler implementation is organized by responsibility:
 Lexer rules are expressed in the compact `syntax/slang.lexer` file. The source
 generator reads that file as an MSBuild `AdditionalFiles` input and emits
 `TokenKind` plus the deterministic lexer during C# compilation.
+
+Parser rules are expressed in the compact `syntax/slang.grammar` file. The
+source generator validates the first approved grammar slice and emits the
+recursive descent parser during C# compilation. This keeps the grammar visible
+without introducing a separate external parser generation toolchain at this
+stage.
 
 ## Open Questions
 

@@ -1,0 +1,16 @@
+parser SLang.Compiler.Parsing.Parser
+
+start SourceFile
+
+rule SourceFile = NewLine* MainBlock NewLine* End
+rule MainBlock = Identifier("main") LeftBrace NewLine* Statement* RightBrace
+rule Statement = BindingStatement | ExpressionStatement
+rule BindingStatement = Identifier Equal Expression StatementEnd
+rule ExpressionStatement = Expression StatementEnd
+rule StatementEnd = NewLine+ | lookahead(RightBrace) | lookahead(End)
+rule Expression = CallExpression | StringExpression | NameExpression
+rule CallExpression = Path LeftParen ArgumentList? RightParen
+rule ArgumentList = Expression (Comma Expression)*
+rule Path = Identifier (Dot Identifier)*
+rule StringExpression = String
+rule NameExpression = Identifier

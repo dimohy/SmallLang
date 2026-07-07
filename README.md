@@ -33,6 +33,7 @@ What works today:
 - string interpolation with `"Hello, {name}"`
 - `print(...)`
 - source-generated lexing from `syntax/slang.lexer`
+- source-generated parsing from `syntax/slang.grammar`
 - LLVM IR generation
 - Windows x64 executable linking through `clang` and `lld-link`
 
@@ -52,7 +53,7 @@ The compiler itself targets .NET 11 Preview and uses C# Preview.
 ```mermaid
 flowchart LR
     Source[SLang source] --> Lexer[Generated lexer]
-    Lexer --> Parser[Parser]
+    Lexer --> Parser[Generated parser]
     Parser --> AST[AST]
     AST --> Semantics[Semantic lowering]
     Semantics --> LLVM[LLVM IR]
@@ -78,15 +79,32 @@ token End = end
 `AdditionalFiles` input and generates `TokenKind` and `Lexer` during the C#
 build.
 
+## Grammar Rules
+
+Parser rules are also written in a compact DSL:
+
+```text
+rule SourceFile = NewLine* MainBlock NewLine* End
+rule MainBlock = Identifier("main") LeftBrace NewLine* Statement* RightBrace
+rule BindingStatement = Identifier Equal Expression StatementEnd
+rule Expression = CallExpression | StringExpression | NameExpression
+```
+
+The generator reads `syntax/slang.grammar` and emits the current recursive
+descent parser at compile time. The grammar generator is intentionally narrow
+for the first language slice; it validates the declared rules and produces the
+parser shape needed by the approved syntax.
+
 ## Repository Layout
 
 - `examples/hello.slang`: the first SLang program
 - `scripts/slang.ps1`: local build/bootstrap script
 - `syntax/slang.lexer`: concise lexer rule source
+- `syntax/slang.grammar`: concise parser rule source
 - `src/SLang.Compiler.Generators`: Roslyn incremental source generator
 - `src/SLang.Compiler/Cli`: command line orchestration
 - `src/SLang.Compiler/Lexing`: token model; Lexer and TokenKind are generated
-- `src/SLang.Compiler/Parsing`: parser
+- `src/SLang.Compiler/Parsing`: parser helpers; Parser is generated
 - `src/SLang.Compiler/Syntax`: AST nodes
 - `src/SLang.Compiler/Semantics`: current semantic lowering
 - `src/SLang.Compiler/CodeGen`: LLVM IR generation

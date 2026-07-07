@@ -136,3 +136,24 @@ SLang lexer rules are expressed in `syntax/slang.lexer`. A Roslyn incremental
 source generator in `src/SLang.Compiler.Generators` reads that rules file and
 generates `TokenKind` and `Lexer` during compiler build. This keeps the language
 surface concise and regular while producing deterministic C# tokenization code.
+
+## D012 - Parser Source Generation From SLang Grammar
+
+Status: accepted
+Date: 2026-07-07
+
+SLang parser rules are expressed in `syntax/slang.grammar`. A Roslyn incremental
+source generator reads that grammar file as an MSBuild `AdditionalFiles` input
+and emits the current token-to-AST parser during compiler build.
+
+ANTLR, parser combinators, and C# embedded parser generators remain valid future
+options, but they are not the best fit for the first SLang slice. ANTLR adds a
+separate grammar toolchain and C# runtime dependency. Parser combinators and
+attribute-based C# parser generators keep grammar inside C# code instead of a
+small language-owned syntax file. The current source-generator approach keeps
+the repo small, dependency-light, modular, and aligned with the existing lexer
+generation model.
+
+The first parser generator intentionally supports only the approved initial
+grammar shape. Broader grammar features should be added when the language
+surface actually needs them.
