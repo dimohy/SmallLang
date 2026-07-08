@@ -10,6 +10,6 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-[*.{md,smalllang,lexer,ps1,json,props,csproj,slnx}]
+[*.{md,sl,lexer,ps1,json,props,csproj,slnx}]
 indent_style = space
 indent_size = 2

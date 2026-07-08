@@ -1,5 +1,5 @@
 param(
-    [string]$Source = "examples/hello.smalllang",
+    [string]$Source = "examples/hello.sl",
     [string]$Output = "artifacts/hello.exe",
     [switch]$KeepTemps
 )

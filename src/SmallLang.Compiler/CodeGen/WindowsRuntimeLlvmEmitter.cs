@@ -13,6 +13,9 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
     private readonly Dictionary<string, RuntimeValue> _locals = new(StringComparer.Ordinal);
     private int _stringId;
     private int _tempId;
+    private int _labelId;
+    private string _mainOk = "true";
+    private string _currentBlockLabel = "entry";
 
     public string Emit()
     {
@@ -20,10 +23,12 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
         header.AppendLine("target triple = \"x86_64-pc-windows-msvc\"");
         header.AppendLine();
         header.AppendLine("%smalllang.text = type { ptr, i64 }");
+        header.AppendLine("%smalllang.read_int_result = type { i64, i32 }");
         header.AppendLine();
 
         _functions.AppendLine("declare dllimport ptr @GetStdHandle(i32)");
         _functions.AppendLine("declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)");
+        _functions.AppendLine("declare dllimport i32 @ReadFile(ptr, ptr, i32, ptr, ptr)");
         _functions.AppendLine();
 
         EmitUserFunctions();
@@ -138,41 +143,231 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
               ret i32 %ok
             }
 
+            define internal %smalllang.read_int_result @smalllang_read_i64(ptr %stdin, ptr %read) #0 {
+            entry:
+              %buf = alloca [64 x i8], align 1
+              %ok = call i32 @ReadFile(ptr %stdin, ptr %buf, i32 64, ptr %read, ptr null)
+              %read_ok = icmp ne i32 %ok, 0
+              br i1 %read_ok, label %prepare, label %fail
+
+            prepare:
+              %read32 = load i32, ptr %read, align 4
+              %len = zext i32 %read32 to i64
+              br label %skip
+
+            skip:
+              %skip_idx = phi i64 [ 0, %prepare ], [ %skip_next, %skip_ws ]
+              %skip_has = icmp ult i64 %skip_idx, %len
+              br i1 %skip_has, label %skip_char, label %fail
+
+            skip_char:
+              %skip_ptr = getelementptr inbounds [64 x i8], ptr %buf, i64 0, i64 %skip_idx
+              %skip_ch = load i8, ptr %skip_ptr, align 1
+              %skip_sp = icmp eq i8 %skip_ch, 32
+              %skip_tab = icmp eq i8 %skip_ch, 9
+              %skip_cr = icmp eq i8 %skip_ch, 13
+              %skip_lf = icmp eq i8 %skip_ch, 10
+              %skip_sp_tab = or i1 %skip_sp, %skip_tab
+              %skip_cr_lf = or i1 %skip_cr, %skip_lf
+              %skip_is_ws = or i1 %skip_sp_tab, %skip_cr_lf
+              br i1 %skip_is_ws, label %skip_ws, label %digit_entry
+
+            skip_ws:
+              %skip_next = add i64 %skip_idx, 1
+              br label %skip
+
+            digit_entry:
+              %first_ge = icmp uge i8 %skip_ch, 48
+              %first_le = icmp ule i8 %skip_ch, 57
+              %first_digit = and i1 %first_ge, %first_le
+              br i1 %first_digit, label %digits, label %fail
+
+            digits:
+              %digit_idx = phi i64 [ %skip_idx, %digit_entry ], [ %digit_next, %digit_continue ]
+              %value = phi i64 [ 0, %digit_entry ], [ %value_next, %digit_continue ]
+              %digit_has = icmp ult i64 %digit_idx, %len
+              br i1 %digit_has, label %digit_char, label %success
+
+            digit_char:
+              %digit_ptr = getelementptr inbounds [64 x i8], ptr %buf, i64 0, i64 %digit_idx
+              %digit_ch = load i8, ptr %digit_ptr, align 1
+              %digit_ge = icmp uge i8 %digit_ch, 48
+              %digit_le = icmp ule i8 %digit_ch, 57
+              %is_digit = and i1 %digit_ge, %digit_le
+              br i1 %is_digit, label %digit_continue, label %trail_entry
+
+            digit_continue:
+              %digit64 = zext i8 %digit_ch to i64
+              %digit_value = sub i64 %digit64, 48
+              %value_x10 = mul i64 %value, 10
+              %value_next = add i64 %value_x10, %digit_value
+              %digit_next = add i64 %digit_idx, 1
+              br label %digits
+
+            trail_entry:
+              br label %trail
+
+            trail:
+              %trail_idx = phi i64 [ %digit_idx, %trail_entry ], [ %trail_next, %trail_ws ]
+              %trail_has = icmp ult i64 %trail_idx, %len
+              br i1 %trail_has, label %trail_char, label %success
+
+            trail_char:
+              %trail_ptr = getelementptr inbounds [64 x i8], ptr %buf, i64 0, i64 %trail_idx
+              %trail_ch = load i8, ptr %trail_ptr, align 1
+              %trail_sp = icmp eq i8 %trail_ch, 32
+              %trail_tab = icmp eq i8 %trail_ch, 9
+              %trail_cr = icmp eq i8 %trail_ch, 13
+              %trail_lf = icmp eq i8 %trail_ch, 10
+              %trail_sp_tab = or i1 %trail_sp, %trail_tab
+              %trail_cr_lf = or i1 %trail_cr, %trail_lf
+              %trail_is_ws = or i1 %trail_sp_tab, %trail_cr_lf
+              br i1 %trail_is_ws, label %trail_ws, label %fail
+
+            trail_ws:
+              %trail_next = add i64 %trail_idx, 1
+              br label %trail
+
+            success:
+              %success_value = phi i64 [ %value, %digits ], [ %value, %trail ]
+              %success0 = insertvalue %smalllang.read_int_result poison, i64 %success_value, 0
+              %success1 = insertvalue %smalllang.read_int_result %success0, i32 1, 1
+              ret %smalllang.read_int_result %success1
+
+            fail:
+              %fail0 = insertvalue %smalllang.read_int_result poison, i64 0, 0
+              %fail1 = insertvalue %smalllang.read_int_result %fail0, i32 0, 1
+              ret %smalllang.read_int_result %fail1
+            }
+
             """);
     }
 
     private void EmitMain()
     {
         _locals.Clear();
+        _mainOk = "true";
+        _currentBlockLabel = "entry";
         _functions.AppendLine("define dso_local i32 @smalllang_start() local_unnamed_addr {");
         _functions.AppendLine("entry:");
         _functions.AppendLine("  %written = alloca i32, align 4");
+        _functions.AppendLine("  %read = alloca i32, align 4");
+        _functions.AppendLine("  %ok_state = alloca i1, align 1");
+        _functions.AppendLine("  store i1 true, ptr %ok_state, align 1");
+        _functions.AppendLine("  %stdin = call ptr @GetStdHandle(i32 -10)");
         _functions.AppendLine("  %stdout = call ptr @GetStdHandle(i32 -11)");
 
-        var ok = "true";
-        foreach (var statement in program.MainStatements)
-        {
-            switch (statement)
-            {
-                case BindingStatement binding:
-                    _locals.Add(binding.Name, EmitExpression(binding.Value));
-                    break;
-                case ExpressionStatement expressionStatement:
-                    ok = EmitExpressionStatement(expressionStatement.Expression, ok);
-                    break;
-                default:
-                    throw new SmallLangException($"unsupported runtime statement {statement.GetType().Name}");
-            }
-        }
+        EmitStatements(program.MainStatements);
 
+        var finalOk = NextTemp("final_ok");
+        _functions.Append("  ")
+            .Append(finalOk)
+            .AppendLine(" = load i1, ptr %ok_state, align 1");
         _functions.Append("  ")
             .Append(NextTemp("exit"))
             .Append(" = select i1 ")
-            .Append(ok)
+            .Append(finalOk)
             .AppendLine(", i32 0, i32 1");
         _functions.Append("  ret i32 ").AppendLine(CurrentTemp("exit"));
         _functions.AppendLine("}");
         _functions.AppendLine();
+    }
+
+    private void EmitStatements(IReadOnlyList<Statement> statements)
+    {
+        foreach (var statement in statements)
+        {
+            EmitStatement(statement);
+        }
+    }
+
+    private void EmitStatement(Statement statement)
+    {
+        switch (statement)
+        {
+            case BindingStatement binding:
+                _locals.Add(binding.Name, EmitExpression(binding.Value));
+                break;
+            case EachStatement each:
+                EmitEachStatement(each);
+                break;
+            case ExpressionStatement expressionStatement:
+                _mainOk = EmitExpressionStatement(expressionStatement.Expression, _mainOk);
+                break;
+            default:
+                throw new SmallLangException($"unsupported runtime statement {statement.GetType().Name}");
+        }
+    }
+
+    private void EmitEachStatement(EachStatement statement)
+    {
+        var start = EmitIntExpression(statement.Start);
+        var end = EmitIntExpression(statement.End);
+        var bodyLabel = NextLabel("each_body");
+        var continueLabel = NextLabel("each_continue");
+        var endLabel = NextLabel("each_end");
+        var entryLabel = _currentBlockLabel;
+        var next = NextTemp("each_next");
+        var initialDone = NextTemp("each_done");
+
+        _functions.Append("  ")
+            .Append(initialDone)
+            .Append(" = icmp sgt i64 ")
+            .Append(start.ValueName)
+            .Append(", ")
+            .AppendLine(end.ValueName);
+        _functions.Append("  br i1 ")
+            .Append(initialDone)
+            .Append(", label %")
+            .Append(endLabel)
+            .Append(", label %")
+            .Append(bodyLabel)
+            .AppendLine();
+
+        _functions.Append(bodyLabel).AppendLine(":");
+        _currentBlockLabel = bodyLabel;
+        var item = NextTemp(statement.ItemName);
+        _functions.Append("  ")
+            .Append(item)
+            .Append(" = phi i64 [ ")
+            .Append(start.ValueName)
+            .Append(", %")
+            .Append(entryLabel)
+            .Append(" ], [ ")
+            .Append(next)
+            .Append(", %")
+            .Append(continueLabel)
+            .AppendLine(" ]");
+
+        var outerLocals = CaptureLocals();
+        _locals[statement.ItemName] = new RuntimeInt(item);
+        EmitStatements(statement.Body);
+        RestoreLocals(outerLocals);
+
+        _functions.Append("  br label %").AppendLine(continueLabel);
+        _functions.Append(continueLabel).AppendLine(":");
+        _currentBlockLabel = continueLabel;
+        _functions.Append("  ")
+            .Append(next)
+            .Append(" = add i64 ")
+            .Append(item)
+            .AppendLine(", 1");
+        var done = NextTemp("each_done");
+        _functions.Append("  ")
+            .Append(done)
+            .Append(" = icmp sgt i64 ")
+            .Append(next)
+            .Append(", ")
+            .AppendLine(end.ValueName);
+        _functions.Append("  br i1 ")
+            .Append(done)
+            .Append(", label %")
+            .Append(endLabel)
+            .Append(", label %")
+            .Append(bodyLabel)
+            .AppendLine();
+        _functions.Append(endLabel).AppendLine(":");
+        _currentBlockLabel = endLabel;
     }
 
     private string EmitExpressionStatement(Expression expression, string ok)
@@ -205,12 +400,15 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
     private string EmitPrintCall(CallExpression call, string ok)
     {
         var path = string.Join('.', call.Path);
-        if (path != "print" || call.Arguments.Count != 1)
+        if (path is not ("print" or "println") || call.Arguments.Count != 1)
         {
             throw new SmallLangException($"unsupported runtime call '{path}'");
         }
 
-        return EmitPrintArgument(call.Arguments[0], ok);
+        ok = EmitPrintArgument(call.Arguments[0], ok);
+        return path == "println"
+            ? EmitWriteText("\n", ok)
+            : ok;
     }
 
     private string EmitPrintArgument(Expression expression, string ok)
@@ -303,18 +501,21 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
             .Append(writeResult)
             .AppendLine(", 0");
 
-        if (ok == "true")
-        {
-            return isOk;
-        }
-
+        _ = ok;
+        var previous = NextTemp("previous_ok");
+        _functions.Append("  ")
+            .Append(previous)
+            .AppendLine(" = load i1, ptr %ok_state, align 1");
         var combined = NextTemp("ok");
         _functions.Append("  ")
             .Append(combined)
             .Append(" = and i1 ")
-            .Append(ok)
+            .Append(previous)
             .Append(", ")
             .AppendLine(isOk);
+        _functions.Append("  store i1 ")
+            .Append(combined)
+            .AppendLine(", ptr %ok_state, align 1");
         return combined;
     }
 
@@ -384,12 +585,19 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
 
     private RuntimeFlowResult EmitFlowExpression(FlowExpression expression, string ok, bool allowBindingTarget)
     {
-        if (expression.Targets.Count == 1 && IsPath(expression.Targets[0], "print"))
+        if (expression.Targets.Count == 1
+            && (IsPath(expression.Targets[0], "print") || IsPath(expression.Targets[0], "println")))
         {
+            ok = EmitPrintArgument(expression.Source, ok);
+            if (IsPath(expression.Targets[0], "println"))
+            {
+                ok = EmitWriteText("\n", ok);
+            }
+
             return new RuntimeFlowResult(
                 Value: null,
                 Binding: null,
-                Ok: EmitPrintArgument(expression.Source, ok));
+                Ok: ok);
         }
 
         var current = EmitFlowSource(expression.Source);
@@ -399,17 +607,31 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
             var isLast = i == expression.Targets.Count - 1;
             var path = string.Join('.', target);
 
-            if (path == "print")
+            if (path is "print" or "println")
             {
                 if (!isLast)
                 {
-                    throw new SmallLangException("print must be the final value-flow target");
+                    throw new SmallLangException($"{path} must be the final value-flow target");
+                }
+
+                ok = EmitWriteValue(current, ok);
+                if (path == "println")
+                {
+                    ok = EmitWriteText("\n", ok);
                 }
 
                 return new RuntimeFlowResult(
                     Value: null,
                     Binding: null,
-                    Ok: EmitWriteValue(current, ok));
+                    Ok: ok);
+            }
+
+            if (path == "readInt")
+            {
+                EnsureRuntimeType(current, BoundType.Text, path);
+                current = EmitReadIntPrompt(current);
+                ok = _mainOk;
+                continue;
             }
 
             if (program.Functions.TryGetValue(path, out var function))
@@ -448,9 +670,74 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
         return EmitExpression(source);
     }
 
+    private RuntimeInt EmitReadIntPrompt(RuntimeValue prompt)
+    {
+        EnsureRuntimeType(prompt, BoundType.Text, "readInt");
+        _mainOk = EmitWriteValue(prompt, _mainOk);
+
+        var result = NextTemp("read_int");
+        _functions.Append("  ")
+            .Append(result)
+            .AppendLine(" = call %smalllang.read_int_result @smalllang_read_i64(ptr %stdin, ptr %read)");
+
+        var value = NextTemp("read_value");
+        _functions.Append("  ")
+            .Append(value)
+            .Append(" = extractvalue %smalllang.read_int_result ")
+            .Append(result)
+            .AppendLine(", 0");
+
+        var ok = NextTemp("read_ok");
+        _functions.Append("  ")
+            .Append(ok)
+            .Append(" = extractvalue %smalllang.read_int_result ")
+            .Append(result)
+            .AppendLine(", 1");
+
+        _mainOk = CombineWriteOk(ok, _mainOk);
+        EmitReturnIfReadFailed(ok);
+        return new RuntimeInt(value);
+    }
+
+    private void EmitReturnIfReadFailed(string readOk)
+    {
+        var isOk = NextTemp("read_is_ok");
+        var failLabel = NextLabel("read_fail");
+        var continueLabel = NextLabel("read_continue");
+
+        _functions.Append("  ")
+            .Append(isOk)
+            .Append(" = icmp ne i32 ")
+            .Append(readOk)
+            .AppendLine(", 0");
+        _functions.Append("  br i1 ")
+            .Append(isOk)
+            .Append(", label %")
+            .Append(continueLabel)
+            .Append(", label %")
+            .Append(failLabel)
+            .AppendLine();
+        _functions.Append(failLabel).AppendLine(":");
+        _functions.AppendLine("  ret i32 1");
+        _functions.Append(continueLabel).AppendLine(":");
+        _currentBlockLabel = continueLabel;
+    }
+
     private RuntimeValue EmitFunctionCall(CallExpression expression)
     {
         var path = string.Join('.', expression.Path);
+        if (path == "readInt")
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SmallLangException("readInt expects exactly one Text prompt");
+            }
+
+            var prompt = EmitExpression(expression.Arguments[0]);
+            EnsureRuntimeType(prompt, BoundType.Text, path);
+            return EmitReadIntPrompt(prompt);
+        }
+
         if (!program.Functions.TryGetValue(path, out var function))
         {
             throw new SmallLangException($"unknown runtime function '{path}'");
@@ -578,6 +865,20 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
             : throw new SmallLangException($"unknown runtime binding '{name}'");
     }
 
+    private Dictionary<string, RuntimeValue> CaptureLocals()
+    {
+        return new Dictionary<string, RuntimeValue>(_locals, StringComparer.Ordinal);
+    }
+
+    private void RestoreLocals(Dictionary<string, RuntimeValue> locals)
+    {
+        _locals.Clear();
+        foreach (var (name, value) in locals)
+        {
+            _locals.Add(name, value);
+        }
+    }
+
     private GlobalString AddGlobalString(string text)
     {
         var bytes = Encoding.UTF8.GetBytes(text);
@@ -640,6 +941,13 @@ internal sealed class WindowsRuntimeLlvmEmitter(BoundProgram program)
     {
         var name = "%" + prefix + _tempId.ToString(CultureInfo.InvariantCulture);
         _tempId++;
+        return name;
+    }
+
+    private string NextLabel(string prefix)
+    {
+        var name = prefix + _labelId.ToString(CultureInfo.InvariantCulture);
+        _labelId++;
         return name;
     }
 

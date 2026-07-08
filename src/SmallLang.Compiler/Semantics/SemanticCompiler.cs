@@ -22,7 +22,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                 throw Error(function.Line, function.Column, $"function '{function.Name}' already exists");
             }
 
-            if (function.Name is "main" or "print" or "it")
+            if (IsReservedName(function.Name))
             {
                 throw Error(function.Line, function.Column, $"function name '{function.Name}' is reserved");
             }
@@ -54,6 +54,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                 functions,
                 bodyBindings,
                 allowPrintCall: false,
+                allowReadIntCall: false,
                 allowFlowBindingTarget: false);
             if (bodyType != function.ReturnType)
             {
@@ -78,7 +79,16 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
     private IReadOnlyDictionary<string, BoundType> BindMain(IReadOnlyDictionary<string, BoundFunction> functions)
     {
         var bindings = new Dictionary<string, BoundType>(StringComparer.Ordinal);
-        foreach (var statement in program.Statements)
+        BindStatements(program.Statements, functions, bindings);
+        return bindings;
+    }
+
+    private static void BindStatements(
+        IReadOnlyList<Statement> statements,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        Dictionary<string, BoundType> bindings)
+    {
+        foreach (var statement in statements)
         {
             switch (statement)
             {
@@ -94,6 +104,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                         functions,
                         bindings,
                         allowPrintCall: false,
+                        allowReadIntCall: true,
                         allowFlowBindingTarget: false);
                     if (valueType == BoundType.Unit)
                     {
@@ -101,6 +112,43 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                     }
 
                     bindings.Add(binding.Name, valueType);
+                    break;
+                case EachStatement each:
+                    ValidateBindingName(each.ItemName, each.Line, each.Column);
+                    if (bindings.ContainsKey(each.ItemName))
+                    {
+                        throw Error(each.Line, each.Column, $"binding '{each.ItemName}' already exists in this scope");
+                    }
+
+                    var startType = InferExpression(
+                        each.Start,
+                        functions,
+                        bindings,
+                        allowPrintCall: false,
+                        allowReadIntCall: true,
+                        allowFlowBindingTarget: false);
+                    if (startType != BoundType.Int)
+                    {
+                        throw Error(each.Start.Line, each.Start.Column, "range start must be an integer");
+                    }
+
+                    var endType = InferExpression(
+                        each.End,
+                        functions,
+                        bindings,
+                        allowPrintCall: false,
+                        allowReadIntCall: true,
+                        allowFlowBindingTarget: false);
+                    if (endType != BoundType.Int)
+                    {
+                        throw Error(each.End.Line, each.End.Column, "range end must be an integer");
+                    }
+
+                    var bodyBindings = new Dictionary<string, BoundType>(bindings, StringComparer.Ordinal)
+                    {
+                        [each.ItemName] = BoundType.Int
+                    };
+                    BindStatements(each.Body, functions, bodyBindings);
                     break;
                 case ExpressionStatement expressionStatement:
                     var effect = InferExpressionStatement(expressionStatement.Expression, functions, bindings);
@@ -126,8 +174,6 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                     throw new SmallLangException($"unsupported statement {statement.GetType().Name}");
             }
         }
-
-        return bindings;
     }
 
     private static FlowEffect InferExpressionStatement(
@@ -137,7 +183,12 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
     {
         if (expression is FlowExpression flow)
         {
-            var result = InferFlowExpression(flow, functions, bindings, allowFlowBindingTarget: true);
+            var result = InferFlowExpression(
+                flow,
+                functions,
+                bindings,
+                allowReadIntCall: true,
+                allowFlowBindingTarget: true);
             if (result.Type != BoundType.Unit && result.Effect is NoFlowEffect)
             {
                 throw Error(
@@ -154,6 +205,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
             functions,
             bindings,
             allowPrintCall: true,
+            allowReadIntCall: true,
             allowFlowBindingTarget: false);
         if (expressionType != BoundType.Unit)
         {
@@ -171,6 +223,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
         IReadOnlyDictionary<string, BoundFunction> functions,
         IReadOnlyDictionary<string, BoundType> bindings,
         bool allowPrintCall,
+        bool allowReadIntCall,
         bool allowFlowBindingTarget)
     {
         return expression switch
@@ -178,10 +231,15 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
             StringExpression str => InferStringExpression(str, bindings),
             NumberExpression => BoundType.Int,
             NameExpression name => ResolveBindingType(name.Name, bindings, name.Line, name.Column),
-            AddExpression add => InferAddExpression(add, functions, bindings),
-            MultiplyExpression multiply => InferMultiplyExpression(multiply, functions, bindings),
-            CallExpression call => InferCallExpression(call, functions, bindings, allowPrintCall),
-            FlowExpression flow => InferFlowExpression(flow, functions, bindings, allowFlowBindingTarget).Type,
+            AddExpression add => InferAddExpression(add, functions, bindings, allowReadIntCall),
+            MultiplyExpression multiply => InferMultiplyExpression(multiply, functions, bindings, allowReadIntCall),
+            CallExpression call => InferCallExpression(call, functions, bindings, allowPrintCall, allowReadIntCall),
+            FlowExpression flow => InferFlowExpression(
+                flow,
+                functions,
+                bindings,
+                allowReadIntCall,
+                allowFlowBindingTarget).Type,
             _ => throw Error(expression.Line, expression.Column, "expected an expression value")
         };
     }
@@ -211,17 +269,19 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
     private static BoundType InferAddExpression(
         AddExpression expression,
         IReadOnlyDictionary<string, BoundFunction> functions,
-        IReadOnlyDictionary<string, BoundType> bindings)
+        IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall)
     {
-        return InferIntegerBinaryExpression(expression.Left, expression.Right, functions, bindings, "+");
+        return InferIntegerBinaryExpression(expression.Left, expression.Right, functions, bindings, allowReadIntCall, "+");
     }
 
     private static BoundType InferMultiplyExpression(
         MultiplyExpression expression,
         IReadOnlyDictionary<string, BoundFunction> functions,
-        IReadOnlyDictionary<string, BoundType> bindings)
+        IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall)
     {
-        return InferIntegerBinaryExpression(expression.Left, expression.Right, functions, bindings, "*");
+        return InferIntegerBinaryExpression(expression.Left, expression.Right, functions, bindings, allowReadIntCall, "*");
     }
 
     private static BoundType InferIntegerBinaryExpression(
@@ -229,10 +289,23 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
         Expression rightExpression,
         IReadOnlyDictionary<string, BoundFunction> functions,
         IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall,
         string operatorText)
     {
-        var left = InferExpression(leftExpression, functions, bindings, allowPrintCall: false, allowFlowBindingTarget: false);
-        var right = InferExpression(rightExpression, functions, bindings, allowPrintCall: false, allowFlowBindingTarget: false);
+        var left = InferExpression(
+            leftExpression,
+            functions,
+            bindings,
+            allowPrintCall: false,
+            allowReadIntCall,
+            allowFlowBindingTarget: false);
+        var right = InferExpression(
+            rightExpression,
+            functions,
+            bindings,
+            allowPrintCall: false,
+            allowReadIntCall,
+            allowFlowBindingTarget: false);
         if (left != BoundType.Int)
         {
             throw Error(leftExpression.Line, leftExpression.Column, $"left operand of '{operatorText}' must be an integer");
@@ -250,23 +323,43 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
         FlowExpression expression,
         IReadOnlyDictionary<string, BoundFunction> functions,
         IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall,
         bool allowFlowBindingTarget)
     {
-        var currentType = InferFlowSource(expression.Source, functions, bindings);
+        var currentType = InferFlowSource(expression.Source, functions, bindings, allowReadIntCall);
         for (var i = 0; i < expression.Targets.Count; i++)
         {
             var target = expression.Targets[i];
             var isLast = i == expression.Targets.Count - 1;
             var path = string.Join('.', target);
 
-            if (path == "print")
+            if (path is "print" or "println")
             {
                 if (!isLast)
                 {
-                    throw Error(expression.Line, expression.Column, "print must be the final value-flow target");
+                    throw Error(expression.Line, expression.Column, $"{path} must be the final value-flow target");
                 }
 
                 return new FlowResult(BoundType.Unit, FlowEffect.None);
+            }
+
+            if (path == "readInt")
+            {
+                if (!allowReadIntCall)
+                {
+                    throw Error(expression.Line, expression.Column, "readInt is only valid in main for the current runtime slice");
+                }
+
+                if (currentType != BoundType.Text)
+                {
+                    throw Error(
+                        expression.Line,
+                        expression.Column,
+                        $"readInt expects Text but received {FormatType(currentType)}");
+                }
+
+                currentType = BoundType.Int;
+                continue;
             }
 
             if (functions.TryGetValue(path, out var function))
@@ -302,7 +395,8 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
     private static BoundType InferFlowSource(
         Expression source,
         IReadOnlyDictionary<string, BoundFunction> functions,
-        IReadOnlyDictionary<string, BoundType> bindings)
+        IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall)
     {
         if (source is NameExpression name && !bindings.ContainsKey(name.Name))
         {
@@ -312,26 +406,33 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
             }
         }
 
-        return InferExpression(source, functions, bindings, allowPrintCall: false, allowFlowBindingTarget: false);
+        return InferExpression(
+            source,
+            functions,
+            bindings,
+            allowPrintCall: false,
+            allowReadIntCall,
+            allowFlowBindingTarget: false);
     }
 
     private static BoundType InferCallExpression(
         CallExpression expression,
         IReadOnlyDictionary<string, BoundFunction> functions,
         IReadOnlyDictionary<string, BoundType> bindings,
-        bool allowPrintCall)
+        bool allowPrintCall,
+        bool allowReadIntCall)
     {
         var path = string.Join('.', expression.Path);
-        if (path == "print")
+        if (path is "print" or "println")
         {
             if (!allowPrintCall)
             {
-                throw Error(expression.Line, expression.Column, "print is only valid as an expression statement");
+                throw Error(expression.Line, expression.Column, $"{path} is only valid as an expression statement");
             }
 
             if (expression.Arguments.Count != 1)
             {
-                throw Error(expression.Line, expression.Column, "print expects exactly one argument");
+                throw Error(expression.Line, expression.Column, $"{path} expects exactly one argument");
             }
 
             _ = InferExpression(
@@ -339,8 +440,39 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
                 functions,
                 bindings,
                 allowPrintCall: false,
+                allowReadIntCall,
                 allowFlowBindingTarget: false);
             return BoundType.Unit;
+        }
+
+        if (path == "readInt")
+        {
+            if (!allowReadIntCall)
+            {
+                throw Error(expression.Line, expression.Column, "readInt is only valid in main for the current runtime slice");
+            }
+
+            if (expression.Arguments.Count != 1)
+            {
+                throw Error(expression.Line, expression.Column, "readInt expects exactly one Text prompt");
+            }
+
+            var promptType = InferExpression(
+                expression.Arguments[0],
+                functions,
+                bindings,
+                allowPrintCall: false,
+                allowReadIntCall,
+                allowFlowBindingTarget: false);
+            if (promptType != BoundType.Text)
+            {
+                throw Error(
+                    expression.Arguments[0].Line,
+                    expression.Arguments[0].Column,
+                    $"readInt expects Text but received {FormatType(promptType)}");
+            }
+
+            return BoundType.Int;
         }
 
         if (!functions.TryGetValue(path, out var function))
@@ -368,6 +500,7 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
             functions,
             bindings,
             allowPrintCall: false,
+            allowReadIntCall,
             allowFlowBindingTarget: false);
         if (argumentType != function.InputType)
         {
@@ -393,10 +526,15 @@ internal sealed class SemanticCompiler(SmallLangProgram program)
 
     private static void ValidateBindingName(string name, int line, int column)
     {
-        if (name is "main" or "print" or "it")
+        if (IsReservedName(name))
         {
             throw Error(line, column, $"binding name '{name}' is reserved");
         }
+    }
+
+    private static bool IsReservedName(string name)
+    {
+        return name is "main" or "print" or "println" or "readInt" or "each" or "in" or "it";
     }
 
     private static BoundType ParseType(string typeName, int line, int column)

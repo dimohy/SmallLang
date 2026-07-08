@@ -52,6 +52,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             LIBRARY kernel32.dll
             EXPORTS
             GetStdHandle
+            ReadFile
             WriteFile
             """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 

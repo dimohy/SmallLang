@@ -12,7 +12,7 @@ internal sealed record CliOptions(
     {
         if (args is not ["build", ..])
         {
-            throw new SmallLangException("usage: smalllang build <source.smalllang> -o <output.exe> [--llvm <dir>] [--keep-temps]");
+            throw new SmallLangException("usage: smalllang build <source.sl> -o <output.exe> [--llvm <dir>] [--keep-temps]");
         }
 
         string? source = null;

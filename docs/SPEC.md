@@ -20,6 +20,9 @@ The implementation boundary is intentionally narrow:
 - simple string interpolation with `{name}`
 - value-flow calls and result bindings with `value -> function -> name`
 - parenthesized calls with `function(value)`
+- integer input with `readInt`
+- line output with `println`
+- closed integer range loops with `each item in start..end { ... }`
 - Windows x64 native executable output through LLVM
 
 Anything beyond that remains specification work until explicitly approved.
@@ -81,8 +84,8 @@ Expected stdout bytes:
 Hello, dimohy
 ```
 
-`print` does not append a newline. A newline-producing convenience such as
-`println` is a future surface-language decision.
+`print` does not append a newline. `println` is the current newline-producing
+convenience.
 
 The current extended example is:
 
@@ -106,6 +109,33 @@ Expected stdout bytes:
 
 ```text
 Hello, dimohy. square = 49
+```
+
+The current cumulative input and loop example is:
+
+```smalllang
+main {
+    "n = ? " -> readInt -> n
+
+    each i in 1..9 {
+        value = n * i
+        "{n} x {i} = {value}" -> println
+    }
+}
+```
+
+With stdin `9`, the expected stdout bytes are:
+
+```text
+n = ? 9 x 1 = 9
+9 x 2 = 18
+9 x 3 = 27
+9 x 4 = 36
+9 x 5 = 45
+9 x 6 = 54
+9 x 7 = 63
+9 x 8 = 72
+9 x 9 = 81
 ```
 
 ## Initial Syntax Direction
@@ -156,10 +186,12 @@ function_declaration := identifier ":" function_signature "{" expression "}"
 function_signature := "->" type_name | type_name "->" type_name
 main_block   := "main" block
 block        := "{" statement* "}"
-statement    := binding_statement | expression_statement
+statement    := each_statement | binding_statement | expression_statement
+each_statement := "each" identifier "in" range_expression block
 binding_statement := identifier "=" expression statement_end
 expression_statement := expression statement_end
 statement_end := newline+ | "}" lookahead
+range_expression := expression ".." expression
 expression   := flow_expression
 flow_expression := additive_expression ("->" path)*
 additive_expression := multiplicative_expression ("+" multiplicative_expression)*
@@ -186,6 +218,8 @@ Notes:
 - `value -> function` is parsed as a flow expression with `value` as the source.
 - A final unknown single identifier in a statement-level flow binds the result:
   `7 -> square -> num`.
+- `each i in 1..9 { ... }` iterates an inclusive integer range and introduces
+  `i` only inside the loop body.
 - Function declarations are currently expression bodies with either no input or
   one implicit input binding named `it`.
 
@@ -240,11 +274,12 @@ The lexer must be single-pass and allocation-conscious.
 
 Initial token categories:
 
-- keywords: `main`
+- keywords represented by identifier text in the current lexer: `main`, `each`,
+  `in`
 - identifiers
 - string literals, including interpolation markers inside string mode
 - decimal integer literals
-- punctuation: `{`, `}`, `(`, `)`, `.`, `,`, `+`, `*`, `->`, `:`, `=`
+- punctuation: `{`, `}`, `(`, `)`, `..`, `.`, `,`, `+`, `*`, `->`, `:`, `=`
 - newlines
 - trivia: spaces, tabs, comments when comments are specified
 - end of file
@@ -278,26 +313,73 @@ Interpolation rules:
 - An unmatched `{` or `}` inside a string is a compile-time lexical error unless
   a later escape rule defines a literal brace form.
 
-## `print` Surface Semantics
+## Output Surface Semantics
 
-`print` is available in the initial prelude. The preferred source form is a
-value-flow call:
+`print` and `println` are available in the initial prelude. The preferred source
+form is a value-flow call:
 
 ```smalllang
 "Hello, {name}. square = {num}" -> print
+"Hello, {name}. square = {num}" -> println
 ```
 
-The parenthesized form remains valid and equivalent:
+The parenthesized forms remain valid and equivalent:
 
 ```smalllang
 print("Hello, {name}. square = {num}")
+println("Hello, {name}. square = {num}")
 ```
 
 Semantically, it resolves to:
 
 ```text
 core.io.print(utf8_output_expression)
+core.io.println(utf8_output_expression)
 ```
+
+`print` emits exactly the requested bytes. `println` emits the requested bytes
+followed by a single line-feed byte in the current runtime slice.
+
+## Input Surface Semantics
+
+`readInt` is available as the first input primitive. The preferred form mirrors
+output value flow:
+
+```smalllang
+"n = ? " -> readInt -> n
+```
+
+The parenthesized form is also valid:
+
+```smalllang
+n = readInt("n = ? ")
+```
+
+Semantically, it resolves to:
+
+```text
+core.io.readInt(prompt_text) -> Int
+```
+
+The current runtime accepts a decimal integer line from standard input. Input
+failure or a non-integer input must affect the process exit code; it must not
+silently fall back to an arbitrary value.
+
+## Range Loops
+
+The first loop form is an inclusive integer range loop:
+
+```smalllang
+each i in 1..9 {
+    value = n * i
+    "{n} x {i} = {value}" -> println
+}
+```
+
+The loop variable is immutable for the iteration and scoped to the loop body.
+Bindings introduced inside the loop body are also scoped to that body. The
+current range direction is ascending only; if the start is greater than the end,
+the loop executes zero times.
 
 ## Value-Flow Calls
 
@@ -499,6 +581,8 @@ main {
 }
 ```
 
+and the cumulative input and loop sample shown above.
+
 Current backend:
 
 - target: Windows x64
@@ -512,18 +596,24 @@ Current backend:
   statement-level value-flow binding are type-checked for the current slice
 - value-flow calls: `value -> function` is parsed as a flow AST and lowered by
   semantic/codegen stages according to target position
+- input: `readInt` lowers to a selected stdin backend primitive and returns an
+  integer value
+- loops: `each i in start..end { ... }` lowers to LLVM basic blocks with an SSA
+  phi value for the loop variable
 - IR output: immutable UTF-8 literal segments, runtime function calls, runtime
   i64 addition/multiplication, and runtime integer decimal output
 - entry point: `smalllang_start`
-- imports: `GetStdHandle`, `WriteFile`
+- imports: `GetStdHandle`, `ReadFile`, `WriteFile`
 - linker: `lld-link`
 - CRT: none
-- current verified executable size: 1,088 bytes
+- current verified executable sizes: 1,104 bytes for `hello.sl`, 1,584
+  bytes for `gugudan.sl`
 
 The current runtime backend emits direct `WriteFile` calls for text segments,
-calls generated SmallLang functions, converts integer output to decimal bytes at
-runtime, and returns `0` or `1` from the native entry point based on API
-success.
+uses `ReadFile` for integer input on the selected Windows backend, calls
+generated SmallLang functions, converts integer output to decimal bytes at
+runtime, and returns `0` or `1` from the native entry point based on API success
+and input parse success.
 
 ## Current Module Layout
 
@@ -533,7 +623,7 @@ The compiler implementation is organized by responsibility:
 - `Lexing`: token model and generated lexer
 - `Parsing`: parser helpers; the token-to-AST parser is generated
 - `Syntax`: AST node definitions
-- `Semantics`: current binding/interpolation/print lowering
+- `Semantics`: current binding/interpolation/I/O/loop lowering
 - `CodeGen`: LLVM IR generation
 - `Tooling`: LLVM and Windows linker integration
 
@@ -549,7 +639,7 @@ stage.
 
 ## Open Questions
 
-- Should the language include both `print` and `println`?
+- Should the language include additional output conveniences beyond `println`?
 - What is the exact error model for I/O failure?
 - Does `main` return an explicit exit code later?
 - What is the final string type: owned string, slice, UTF-8 view, or multiple

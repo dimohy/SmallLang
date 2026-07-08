@@ -16,6 +16,15 @@ internal abstract record Statement;
 
 internal sealed record BindingStatement(string Name, Expression Value, int Line, int Column) : Statement;
 
+internal sealed record EachStatement(
+    string ItemName,
+    Expression Start,
+    Expression End,
+    IReadOnlyList<Statement> Body,
+    int Line,
+    int Column)
+    : Statement;
+
 internal sealed record ExpressionStatement(Expression Expression) : Statement;
 
 internal abstract record Expression(int Line, int Column);

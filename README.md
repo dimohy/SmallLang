@@ -32,7 +32,8 @@ The `value -> function` form is the preferred SmallLang call style for making da
 flow explicit. Parenthesized calls such as `print(...)` remain valid as a
 compatibility form.
 
-The current generated executable is **1,088 bytes**.
+The current `hello.sl` executable is **1,104 bytes**. The cumulative
+input and loop sample executable is **1,584 bytes**.
 
 ## Status
 
@@ -51,6 +52,9 @@ What works today:
 - interpolation of string and integer bindings
 - value-flow calls with `value -> function`
 - parenthesized calls with `function(value)`
+- integer input with `"n = ? " -> readInt -> n`
+- line output with `value -> println`
+- closed integer range loops with `each i in 1..9 { ... }`
 - source-generated lexing from `syntax/smalllang.lexer`
 - source-generated parsing from `syntax/smalllang.grammar`
 - LLVM IR generation
@@ -59,7 +63,13 @@ What works today:
 ## Build
 
 ```powershell
-.\scripts\smalllang.ps1 -Source examples\hello.smalllang -Output artifacts\hello.exe -KeepTemps
+.\scripts\smalllang.ps1 -Source examples\hello.sl -Output artifacts\hello.exe -KeepTemps
+```
+
+The input and loop sample is cumulative; it does not replace `hello.sl`:
+
+```powershell
+.\scripts\smalllang.ps1 -Source examples\gugudan.sl -Output artifacts\gugudan.exe -KeepTemps
 ```
 
 On first use, the script downloads LLVM 22.1.8 into `.tools`. LLVM binaries,
@@ -92,6 +102,7 @@ token LeftBrace = "{"
 token RightBrace = "}"
 token LeftParen = "("
 token RightParen = ")"
+token Range = ".."
 token Dot = "."
 token Comma = ","
 token Plus = "+"
@@ -116,7 +127,10 @@ rule SourceFile = NewLine* FunctionDeclaration* MainBlock NewLine* End
 rule FunctionDeclaration = Identifier Colon FunctionSignature LeftBrace NewLine* Expression NewLine* RightBrace
 rule FunctionSignature = Arrow TypeName | TypeName Arrow TypeName
 rule MainBlock = Identifier("main") LeftBrace NewLine* Statement* RightBrace
+rule Statement = EachStatement | BindingStatement | ExpressionStatement
+rule EachStatement = Identifier("each") Identifier Identifier("in") RangeExpression LeftBrace NewLine* Statement* RightBrace
 rule BindingStatement = Identifier Equal Expression StatementEnd
+rule RangeExpression = Expression Range Expression
 rule Expression = FlowExpression
 rule FlowExpression = AdditiveExpression (Arrow Path)*
 rule AdditiveExpression = MultiplicativeExpression (Plus MultiplicativeExpression)*
@@ -132,7 +146,8 @@ parser shape needed by the approved syntax.
 
 ## Repository Layout
 
-- `examples/hello.smalllang`: the current SmallLang sample
+- `examples/hello.sl`: first runtime function and value-flow sample
+- `examples/gugudan.sl`: cumulative input plus range loop sample
 - `scripts/smalllang.ps1`: local build/bootstrap script
 - `syntax/smalllang.lexer`: concise lexer rule source
 - `syntax/smalllang.grammar`: concise parser rule source

@@ -56,9 +56,11 @@ internal sealed record GrammarSpec(
         "FunctionSignature",
         "MainBlock",
         "Statement",
+        "EachStatement",
         "BindingStatement",
         "ExpressionStatement",
         "StatementEnd",
+        "RangeExpression",
         "Expression",
         "FlowExpression",
         "AdditiveExpression",
@@ -321,13 +323,41 @@ internal static class ParserEmitter
         builder.AppendLine();
         builder.AppendLine("    private Statement ParseStatement()");
         builder.AppendLine("    {");
-        builder.AppendLine("        // Statement = BindingStatement | ExpressionStatement");
+        builder.AppendLine("        // Statement = EachStatement | BindingStatement | ExpressionStatement");
+        builder.AppendLine("        if (CheckIdentifier(\"each\"))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            return ParseEachStatement();");
+        builder.AppendLine("        }");
+        builder.AppendLine();
         builder.AppendLine("        if (Check(TokenKind.Identifier) && CheckNext(TokenKind.Equal))");
         builder.AppendLine("        {");
         builder.AppendLine("            return ParseBindingStatement();");
         builder.AppendLine("        }");
         builder.AppendLine();
         builder.AppendLine("        return ParseExpressionStatement();");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private Statement ParseEachStatement()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        // EachStatement = Identifier(\"each\") Identifier Identifier(\"in\") RangeExpression LeftBrace NewLine* Statement* RightBrace");
+        builder.AppendLine("        var each = ExpectIdentifier(\"each\");");
+        builder.AppendLine("        var item = ExpectIdentifier();");
+        builder.AppendLine("        ExpectIdentifier(\"in\");");
+        builder.AppendLine("        var start = ParseExpression();");
+        builder.AppendLine("        Expect(TokenKind.Range);");
+        builder.AppendLine("        var end = ParseExpression();");
+        builder.AppendLine("        Expect(TokenKind.LeftBrace);");
+        builder.AppendLine("        var body = new List<Statement>();");
+        builder.AppendLine("        SkipNewLines();");
+        builder.AppendLine();
+        builder.AppendLine("        while (!Check(TokenKind.RightBrace) && !Check(TokenKind.End))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            body.Add(ParseStatement());");
+        builder.AppendLine("            SkipNewLines();");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        Expect(TokenKind.RightBrace);");
+        builder.AppendLine("        return new EachStatement(item.Text, start, end, body, each.Line, each.Column);");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    private Statement ParseBindingStatement()");
@@ -526,6 +556,11 @@ internal static class ParserEmitter
         builder.AppendLine("    private bool Check(TokenKind kind)");
         builder.AppendLine("    {");
         builder.AppendLine("        return Peek().Kind == kind;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private bool CheckIdentifier(string text)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        return Check(TokenKind.Identifier) && Peek().Text == text;");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    private bool CheckNext(TokenKind kind)");

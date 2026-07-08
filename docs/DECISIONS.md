@@ -292,5 +292,56 @@ statements must either end in `print` or bind their result.
 The current implementation adds the `*` token/operator, parses
 `square: Int -> Int { it * it }`, emits `@smalllang_fn_square(i64 %it)`, lowers the
 body to `mul nsw i64 %it, %it`, and calls it as `@smalllang_fn_square(i64 7)`.
-The verified output is `Hello, dimohy. square = 49`; the Windows x64 executable
-size remains 1,088 bytes.
+The verified output at D016 time was `Hello, dimohy. square = 49`; the Windows
+x64 executable size at D016 time remained 1,088 bytes.
+
+## D017 - Input Primitive And Inclusive Range Loop
+
+Status: implemented
+Date: 2026-07-08
+
+SmallLang samples are cumulative. New samples should be added alongside earlier
+samples instead of replacing `examples/hello.sl`.
+
+The next implemented sample reads an integer and prints that multiplication
+table:
+
+```smalllang
+main {
+    "n = ? " -> readInt -> n
+
+    each i in 1..9 {
+        value = n * i
+        "{n} x {i} = {value}" -> println
+    }
+}
+```
+
+`readInt` mirrors output value-flow style: a `Text` prompt flows into the input
+primitive and the resulting `Int` can flow into a binding target. The
+parenthesized form `readInt("n = ? ")` remains valid. Internally, `readInt`
+resolves to a selected backend primitive, currently the Windows stdin path using
+`ReadFile`; this keeps the source syntax independent from the platform backend
+and leaves room for POSIX/WASI input lowering later.
+
+`println` is accepted as the first newline-output convenience. It shares the
+same output backend as `print`, then emits one line-feed byte in the current
+runtime slice.
+
+The first loop syntax is:
+
+```smalllang
+each i in 1..9 {
+    ...
+}
+```
+
+This is an inclusive integer range loop. The loop variable is scoped to the loop
+body, and bindings created inside the body do not escape the body. The current
+implementation lowers the loop to LLVM basic blocks with an SSA phi value for
+the loop variable. Descending ranges are not specified yet; a range whose start
+is greater than its end executes zero times.
+
+After adding the input and loop runtime, the verified executable sizes are 1,104
+bytes for `examples/hello.sl` and 1,584 bytes for
+`examples/gugudan.sl`.

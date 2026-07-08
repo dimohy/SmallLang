@@ -47,7 +47,7 @@ internal static class CompilerApp
         var workDir = Path.Combine(
             Path.GetDirectoryName(Path.GetFullPath(options.OutputPath))
                 ?? Directory.GetCurrentDirectory(),
-            Path.GetFileNameWithoutExtension(options.OutputPath) + ".smalllang-tmp");
+            Path.GetFileNameWithoutExtension(options.OutputPath) + ".sl-tmp");
 
         if (Directory.Exists(workDir))
         {
