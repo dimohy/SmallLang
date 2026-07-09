@@ -21,3 +21,5 @@ openIntReader path: Text -> Unit = intrinsic
 closestInt target: Int -> Int = intrinsic
 
 closeIntReader: -> Unit = intrinsic
+
+nowMillis: -> Int = intrinsic

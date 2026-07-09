@@ -21,6 +21,58 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare i32 @open(ptr, i32, i32)");
         functions.AppendLine("declare i32 @close(i32)");
         functions.AppendLine("declare i64 @lseek(i32, i64, i32)");
+        functions.AppendLine("declare i32 @clock_gettime(i32, ptr)");
+    }
+
+    public override void EmitMemoryDeclarations(StringBuilder functions)
+    {
+        functions.AppendLine("declare ptr @malloc(i64)");
+        functions.AppendLine("declare void @free(ptr)");
+    }
+
+    public override void EmitTimePrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i64 @smalllang_now_millis() #0 {
+            entry:
+              %ts = alloca [2 x i64], align 8
+              %ignored = call i32 @clock_gettime(i32 1, ptr %ts)
+              %sec_ptr = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 0
+              %nsec_ptr = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 1
+              %sec = load i64, ptr %sec_ptr, align 8
+              %nsec = load i64, ptr %nsec_ptr, align 8
+              %sec_ms = mul i64 %sec, 1000
+              %nsec_ms = udiv i64 %nsec, 1000000
+              %millis = add i64 %sec_ms, %nsec_ms
+              ret i64 %millis
+            }
+
+            """);
+    }
+
+    public override void EmitMemoryPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal ptr @smalllang_alloc(i64 %bytes) #0 {
+            entry:
+              %ptr = call ptr @malloc(i64 %bytes)
+              ret ptr %ptr
+            }
+
+            define internal void @smalllang_free(ptr %ptr) #0 {
+            entry:
+              %is_null = icmp eq ptr %ptr, null
+              br i1 %is_null, label %done, label %free
+
+            free:
+              call void @free(ptr %ptr)
+              br label %done
+
+            done:
+              ret void
+            }
+
+            """);
     }
 
     public override void EmitIoPrimitives(StringBuilder functions)

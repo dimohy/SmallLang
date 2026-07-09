@@ -1,0 +1,2 @@
+literal braces { score: 7, next: 8 }
+old braces stay literal: {score}

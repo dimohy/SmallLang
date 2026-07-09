@@ -1,0 +1,8 @@
+first = 1
+count = 3
+sum = 6
+third = 30
+dynamicCount = 3
+dynamicCapacity = 4
+score = 300
+scoreCount = 3

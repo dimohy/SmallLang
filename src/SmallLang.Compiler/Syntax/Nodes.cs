@@ -21,7 +21,7 @@ internal sealed record FunctionDeclaration(
 
 internal abstract record Statement;
 
-internal sealed record BindingStatement(string Name, Expression Value, int Line, int Column) : Statement;
+internal sealed record BindingStatement(string Name, Expression Value, int Line, int Column, bool IsMutable) : Statement;
 
 internal sealed record BlockFunctionCallStatement(
     Expression Source,
@@ -85,7 +85,7 @@ internal sealed record RangeExpression(Expression Start, Expression End, int Lin
     : Expression(Line, Column);
 
 internal sealed record FoldExpression(
-    RangeExpression Source,
+    Expression Source,
     Expression Initial,
     string AccumulatorName,
     string ItemName,
@@ -119,6 +119,7 @@ internal sealed record FlowExpression(
 
 internal sealed record FlowTarget(
     IReadOnlyList<string> Path,
+    IReadOnlyList<Expression> Arguments,
     bool UsesCallSyntax,
     int Line,
     int Column);
@@ -128,6 +129,27 @@ internal sealed record CallExpression(
     IReadOnlyList<Expression> Arguments,
     int Line,
     int Column)
+    : Expression(Line, Column);
+
+internal sealed record ArrayLiteralExpression(
+    IReadOnlyList<Expression> Elements,
+    bool IsDynamic,
+    int Line,
+    int Column)
+    : Expression(Line, Column);
+
+internal sealed record ArrayRepeatExpression(Expression Value, int Count, int Line, int Column)
+    : Expression(Line, Column);
+
+internal sealed record DictionaryLiteralExpression(
+    IReadOnlyList<DictionaryEntryExpression> Entries,
+    int Line,
+    int Column)
+    : Expression(Line, Column);
+
+internal sealed record DictionaryEntryExpression(Expression Key, Expression Value);
+
+internal sealed record IndexExpression(Expression Source, Expression Index, int Line, int Column)
     : Expression(Line, Column);
 
 internal sealed record BlockBody(IReadOnlyList<Statement> Statements, Expression? Value, int Line, int Column);
@@ -162,4 +184,4 @@ internal abstract record StringSegment;
 
 internal sealed record TextSegment(string Text) : StringSegment;
 
-internal sealed record InterpolationSegment(IReadOnlyList<string> Path) : StringSegment;
+internal sealed record InterpolationSegment(Expression Expression) : StringSegment;

@@ -8,9 +8,44 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
 
     public override string EntryPointName => "smalllang_start";
 
+    public override bool SupportsHeapAllocation => false;
+
     public override void EmitExternalDeclarations(StringBuilder functions)
     {
         functions.AppendLine("declare i32 @smalllang_browser_write(ptr, i32)");
+        functions.AppendLine("declare i64 @smalllang_browser_now_millis()");
+    }
+
+    public override void EmitMemoryDeclarations(StringBuilder functions)
+    {
+    }
+
+    public override void EmitMemoryPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal ptr @smalllang_alloc(i64 %bytes) #0 {
+            entry:
+              unreachable
+            }
+
+            define internal void @smalllang_free(ptr %ptr) #0 {
+            entry:
+              ret void
+            }
+
+            """);
+    }
+
+    public override void EmitTimePrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i64 @smalllang_now_millis() #0 {
+            entry:
+              %millis = call i64 @smalllang_browser_now_millis()
+              ret i64 %millis
+            }
+
+            """);
     }
 
     public override void EmitIoPrimitives(StringBuilder functions)

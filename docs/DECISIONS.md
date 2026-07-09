@@ -41,7 +41,7 @@ The first complete SmallLang program is:
 ```smalllang
 main {
     name = "dimohy"
-    print("Hello, {name}")
+    print("Hello, $name")
 }
 ```
 
@@ -84,18 +84,21 @@ remain open design questions.
 
 ## D007 - Minimal String Interpolation
 
-Status: working decision
+Status: superseded by D046
 Date: 2026-07-07
 
-Double-quoted strings support simple binding/path interpolation:
+Double-quoted strings originally supported simple binding/path interpolation:
 
 ```smalllang
-"Hello, {name}"
+"Hello, $name"
 ```
 
 The initial interpolation form accepts names and reserved path syntax only, not
 arbitrary expressions. This keeps tokenization, parsing, semantic analysis, and
 LLVM lowering simple while still making the first useful program expressive.
+
+D046 keeps the `$name` shorthand but adds `$(expr)` and removes brace-based
+interpolation.
 
 ## D008 - Local LLVM Bootstrap
 
@@ -167,7 +170,7 @@ SmallLang adopts `value -> function()` as the preferred call style when a primar
 input value flows into a function:
 
 ```smalllang
-"Hello, {name}" -> print()
+"Hello, $name" -> print()
 ```
 
 This form makes data flow visually explicit. The expression on the left is the
@@ -175,7 +178,7 @@ first input to the callable path on the right. For the initial unary case, it is
 semantically equivalent to:
 
 ```smalllang
-print("Hello, {name}")
+print("Hello, $name")
 ```
 
 Parenthesized calls remain valid as a conventional compatibility syntax and for
@@ -216,7 +219,7 @@ numbers, suffixes, and final overflow policy syntax are not decided yet.
 String interpolation can display integer bindings:
 
 ```smalllang
-"Number: {sum}" -> print()
+"Number: $sum" -> print()
 ```
 
 This first numeric step initially allowed the compiler to fold the whole sample
@@ -244,7 +247,7 @@ getNum: -> Int {
 main {
     name = getName()
     num = getNum()
-    "Hello, {name}. getNum() = {num}" -> print()
+    "Hello, $name. getNum() = $num" -> print()
 }
 ```
 
@@ -275,7 +278,7 @@ square: Int -> Int {
 main {
     getName() -> name
     7 -> square() -> num
-    "Hello, {name}. square = {num}" -> print()
+    "Hello, $name. square = $num" -> print()
 }
 ```
 
@@ -312,7 +315,7 @@ main {
 
     each i in 1..9 {
         n * i -> value
-        "{n} x {i} = {value}" -> println()
+        "$n x $i = $value" -> println()
     }
 }
 ```
@@ -383,7 +386,7 @@ SmallLang's preferred range loop syntax is now flow-oriented:
 ```smalllang
 1..9 -> each i {
     n * i -> value
-    "{n} x {i} = {value}" -> println()
+    "$n x $i = $value" -> println()
 }
 ```
 
@@ -394,7 +397,7 @@ names the current item. When the identifier is omitted, the loop item is bound a
 ```smalllang
 1..9 -> each {
     n * it -> value
-    "{n} x {it} = {value}" -> println()
+    "$n x $it = $value" -> println()
 }
 ```
 
@@ -458,7 +461,7 @@ only a hard-coded loop statement:
 ```smalllang
 1..9 -> each i {
     n * i -> value
-    "{n} x {i} = {value}" -> println()
+    "$n x $i = $value" -> println()
 }
 ```
 
@@ -469,7 +472,7 @@ The default item form follows the same rule:
 ```smalllang
 1..9 -> each {
     n * it -> value
-    "{n} x {it} = {value}" -> println()
+    "$n x $it = $value" -> println()
 }
 ```
 
@@ -665,7 +668,7 @@ the semantics are identical. The compiler now routes target-specific LLVM
 runtime details through `LlvmRuntimePlatform` implementations instead of keeping
 Windows/Linux branches inside the main emitter.
 
-`ConsoleLlvmEmitter` owns the common lowering:
+`LlvmEmitter` owns the common lowering:
 
 - function calls and value-flow bindings
 - string interpolation
@@ -986,7 +989,7 @@ SmallLang accepted empty call syntax on value-flow function targets:
 
 ```smalllang
 7 -> square() -> num
-"Hello, {name}. square = {num}" -> print()
+"Hello, $name. square = $num" -> print()
 ```
 
 This was only valid immediately after `->`. The parentheses do not carry
@@ -1019,7 +1022,7 @@ now requires functions to be visibly called:
 ```smalllang
 getName() -> name
 7 -> square() -> num
-"Hello, {name}. square = {num}" -> print()
+"Hello, $name. square = $num" -> print()
 ```
 
 The old flow-call spelling is now rejected:
@@ -1056,7 +1059,7 @@ by a brace block, the block itself marks the target as a function-like call:
 }
 
 1..9 -> each i {
-    "{i}" -> println()
+    "$i" -> println()
 }
 ```
 
@@ -1076,7 +1079,7 @@ supports a second built-in block function:
 
 ```smalllang
 3 -> repeat turn {
-    "repeat turn {turn}" -> println()
+    "repeat turn $turn" -> println()
 }
 ```
 
@@ -1125,7 +1128,7 @@ runTimes count: Int -> Unit block turn: Int {
 
 main {
     3 -> runTimes step {
-        "custom block step {step}" -> println()
+        "custom block step $step" -> println()
     }
 }
 ```
@@ -1196,5 +1199,427 @@ Hello from SmallLang WebAssembly
 8 squared = 64
 1..5 sum = 15
 ```
+
+## D043 - Arrays Without A Garbage Collector
+
+Status: working decision
+Date: 2026-07-09
+
+SmallLang's static and dynamic array design should follow Rust's ownership
+model rather than a garbage-collected reference model. The core split is:
+
+```text
+[T; N]      owned fixed-size array
+[T; ..]     owned growable heap array
+&[T]        shared borrowed slice view
+&mut [T]    exclusive mutable borrowed slice view
+```
+
+Static arrays own a fixed number of initialized elements, with the length known
+at compile time. They use Rust-like type syntax such as `[Int; 3]`, literals
+such as `[1, 2, 3]`, and repeat literals such as `[0; 8]`. Safe indexing is
+bounds-checked, and array elements are dropped deterministically when the array
+owner is dropped. `[T; N]` means fixed-size inline storage inside the owner, not
+"always stack". A local fixed array is a stack allocation candidate, while a
+fixed array inside a heap-owned value lives inline inside that heap allocation.
+Large fixed arrays can later use an explicit owned heap placement flow such as
+`[0; 1000000] -> heap() -> buffer`.
+
+Dynamic arrays use a Rust `Vec<T>`-like internal model, but the SmallLang source
+surface is `[T; ..]`. The value owns a heap buffer, length, and capacity. Moving
+a dynamic array moves ownership of the buffer. Dropping a dynamic array drops
+initialized elements and then deallocates the buffer. A dynamic array is not
+implicitly copied, reference-counted, or garbage-collected. A local dynamic
+array binding stores only the owner handle on the stack; the element buffer is
+heap-allocated whenever capacity is nonzero.
+
+Dynamic array literals use an open tail marker:
+
+```smalllang
+[1, 2, 3, ..] -> mut values
+```
+
+SmallLang should not use `{ ... }` for dynamic arrays. Braces already delimit
+blocks and remain the better future fit for dictionaries or maps. Dynamic arrays
+stay in the `[]` syntax family and use `..` to mean open/growable.
+
+Memory leak prevention is a compile-time guarantee for safe SmallLang, not a
+best-effort runtime convention. If the compiler cannot prove ownership,
+lifetime, and drop coverage for an allocation, the program does not compile.
+Leak prevention is based on deterministic ownership, not GC:
+
+- every owned array has one owner at a time;
+- leaving a drop scope recursively drops initialized elements and frees owned
+  heap storage;
+- moving an owned value transfers the drop obligation and makes the source
+  binding unusable;
+- slices never deallocate and cannot outlive the owner they borrow from;
+- a dynamic array cannot reallocate while an element or slice borrow into its
+  buffer is active;
+- safe code does not expose raw `alloc/free` ownership pairs;
+- arrays do not use implicit shared ownership, so cyclic ownership leaks are not
+  part of the first safe model;
+- safe code cannot allocate without immediately capturing the allocation in an
+  owned value;
+- safe code cannot expose raw `alloc/free`, raw owning pointers, `forget`, or
+  `leak`;
+- features that cannot preserve compile-time leak freedom remain outside the
+  safe language surface until a static model exists.
+
+Borrowed slices are the common parameter type for read-only array APIs. A
+function that only reads elements should prefer `&[T]` so it can accept a static
+array, dynamic array, or sub-slice without taking ownership. Mutating APIs that
+can change dynamic array length or capacity require `&mut [T; ..]`.
+
+SmallLang should introduce explicit mutable bindings with the existing
+flow-first binding direction:
+
+```smalllang
+[Int; ..].new() -> mut values
+values -> push(10)
+99 -> values[1]
+```
+
+Array support should also extend value-flow target calls to allow additional
+arguments. The value on the left remains the primary first argument, and
+parentheses on the target may contain extra arguments:
+
+```smalllang
+values -> push(10)
+values -> reserve(1024)
+```
+
+The callee signature decides whether the flowed value is moved, shared-borrowed,
+or mutably borrowed. For example, `len` can accept `&[T]`, while `push` accepts
+`&mut [T; ..], T`.
+
+The first implementation slice should stay narrow: `Int` static arrays,
+read-only indexing, array `each`/`fold`, and `value -> mut name`. `[Int; ..]`,
+mutable indexing, slice borrowing, and dynamic array growth can follow once the
+compiler has the basic ownership and borrow checks in place. `pop`, `get`, and
+fallible allocation APIs should wait until `Option` and `Result` exist.
+
+The detailed draft is in `docs/ARRAYS.md`.
+
+## D044 - Web-Reviewed Array And Flow Call Syntax Direction
+
+Status: working decision
+Date: 2026-07-09
+
+Follow-up web research confirms that the D043 array shape is the right base:
+Rust's `[T; N]`, borrowed slices, and `Vec<T>` ownership model are the strongest
+mainstream reference points for a no-GC static/dynamic array design. However,
+SmallLang's safe surface must be stricter than Rust because Rust explicitly
+allows leak-safe constructs such as `mem::forget` and can leak through
+reference-count cycles. SmallLang should therefore keep safe `forget`, safe
+`leak`, raw owning allocation, implicit shared ownership, and unproven cyclic
+ownership out of the safe language surface.
+
+Zig is a useful allocator reference because it makes allocation explicit and
+keeps memory-management responsibility visible, but that is not enough for
+SmallLang's goal: safe SmallLang must statically prove owner/drop coverage
+rather than leaving leak prevention to programmer discipline or test-time leak
+detection. Austral's linear-resource checking is a better reference for the
+strict part of the design: values that own resources must be consumed exactly
+once, and a function cannot return while owned linear resources remain
+unconsumed.
+
+The same research argues against using `func!` as the ordinary function-call
+marker. Rust already uses `name!(...)` for macros, Elixir uses trailing bang for
+raising function variants, and Julia uses trailing bang for mutating functions.
+SmallLang should avoid assigning ordinary function-call meaning to `!`.
+
+The preferred next syntax direction is to remove empty parentheses from
+value-flow calls when the left value is the only explicit input:
+
+```smalllang
+getName() => name
+7 -> square => num
+values -> len => count
+```
+
+Parentheses remain useful when additional arguments are present:
+
+```smalllang
+values -> push(10)
+values -> reserve(1024)
+```
+
+This supersedes the design direction of D036 for future work. The important
+correction is that `->` must not also mean binding. Result binding is separated
+to `=>`, so `->` can remain a fluent pipeline/call operator and `=>` can mean
+binding, definition, or pattern-result resolution.
+
+## D045 - Fluent Flow Calls And Fat-Arrow Binding
+
+Status: implemented
+Date: 2026-07-09
+
+SmallLang now gives the two arrows separate jobs:
+
+```text
+->   flow/apply/transform
+=>   bind/define/resolve
+```
+
+The parser accepts receiver-only value-flow calls without empty parentheses:
+
+```smalllang
+7 -> square => num
+"Hello, $num" -> println
+```
+
+The previous empty-parentheses form remains accepted as compatibility syntax,
+but it is no longer the preferred style:
+
+```smalllang
+7 -> square() => num
+```
+
+Statement-level bindings now use `=>`:
+
+```smalllang
+getName() => name
+n * i => value
+1..100 -> fold 0 sum, i {
+    sum + i
+} => total
+```
+
+The old implicit final flow binding form is no longer part of the preferred
+semantic model. A bare target after `->` is resolved as a flow target, not as a
+new binding. This keeps `->` visually close to fluent APIs and functional
+pipelines, while avoiding the ambiguity where `value -> name` might be read as
+either a call or a binding.
+
+Single-expression function bodies and compact `when` arms now prefer `=>`:
+
+```smalllang
+square: Int -> Int => it * it
+
+grade: Int -> Text => when {
+    90..100 => "A"
+    else => "F"
+}
+```
+
+The implementation changed the lexer, generated parser logic, semantic flow
+checking, LLVM emission, standard library source, and examples. The parser still
+accepts old `-> expression` function bodies and `value -> function()` flow
+targets as compatibility syntax in this slice.
+
+## D046 - Dollar String Interpolation And Literal Braces
+
+Status: implemented
+Date: 2026-07-09
+
+String interpolation now uses `$name` for the common identifier case and
+`$(expr)` for general expressions:
+
+```smalllang
+"Hello, $name"
+"next = $(score + 1)"
+"object = { name: $name, score: $score }"
+```
+
+Literal `{` and `}` characters in string literals are ordinary text and do not
+need an escape form. This intentionally removes brace-based interpolation from
+the preferred language surface because braces are common in JSON-like text,
+CSS-like text, block syntax, and future dictionary/set syntax.
+
+The parser represents interpolation as expression segments. `$name` is parsed
+as a `NameExpression`, while `$(expr)` is parsed by the same expression parser
+used by normal SmallLang source. Semantic analysis checks that interpolated
+expressions are displayable (`Text` or `Int` in the current slice), and LLVM
+emission writes each interpolated value with the normal runtime value output
+path.
+
+## D047 - First Int Containers With Deterministic Native Drop
+
+Status: implemented
+Date: 2026-07-09
+
+SmallLang now has the first `Int` container slice:
+
+```smalllang
+[1, 2, 3] => numbers
+[10, 20, ..] => mut values
+{ 1: 100, 2: 200 } => mut scores
+```
+
+The implemented surface includes fixed `Int` arrays, growable `Int` arrays,
+`{Int: Int}` dictionaries, checked indexing, `len`, `capacity`, dynamic-array
+`push(value)`, dictionary `put(key, value)`, array `each`, array `fold`, and
+`value => mut name` mutable bindings.
+
+Heap-owning containers must be created directly at a binding site in this
+slice. This is intentionally strict: the compiler must know the owner so it can
+emit exactly one deterministic drop at scope exit. Windows and Linux native
+targets lower dynamic arrays and dictionaries through explicit allocation/free
+runtime primitives. Browser WebAssembly rejects heap-owning containers until a
+linear-memory allocator exists for that target.
+
+The current implementation is not the final container model. Generic element
+types, typed empty dictionaries, slices, mutable indexing assignment, ownership
+moves, container parameters/returns, and full nested drop scopes remain future
+work.
+
+## D048 - Move-Consuming Container Transforms Return New Owners
+
+Status: implemented
+Date: 2026-07-09
+
+`mut` means an owning binding may be changed in place. It does not mean
+SmallLang objects are mutable by default. Immutable bindings remain the default:
+
+```smalllang
+[1, 2, ..] => values
+values -> append(3) => values
+values -> updated(0, 9) => values
+```
+
+The implemented immutable operations are:
+
+- `array -> append(value) => nextArray`
+- `array -> updated(index, value) => nextArray`
+- `dictionary -> updated(key, value) => nextDictionary`
+
+These operations consume a named source owner and bind the moved owner as the
+result. After the transform, the source binding is no longer live. The target
+may reuse the same name, as in `values -> append(3) => values`, because the old
+owner is consumed before the new owner is bound.
+
+The native lowering reuses storage when it can:
+
+- dynamic-array `append` reuses spare capacity or grows/free-replaces the
+  buffer when full
+- dynamic-array `updated` performs a bounds check and writes into the moved
+  buffer
+- dictionary `updated` reuses the existing `put` path, updating in place or
+  appending/growing as needed
+
+These are not structure-sharing persistent collections yet, because implicit
+shared ownership would complicate compile-time leak freedom.
+
+The result of `append` or `updated` must be bound directly with `=>`. It cannot
+be used as an anonymous intermediate flow target, because a heap-owning
+temporary without a stable binding would not yet have a proven drop point in
+the current compiler slice.
+
+## D049 - Functional First Container Transforms Must Carry Optimization Notes
+
+Status: implemented
+Date: 2026-07-09
+
+The first `append` and `updated` implementation copied initialized container
+storage into a new owner. That was intentionally a functional-first
+implementation, not the final speed or memory model. It has now been replaced
+with move-consuming lowering for unique owned containers.
+
+The old tradeoff was explicit:
+
+- Copying on every immutable `append` is correct but can be O(n) per append.
+- Repeated append through this path can become O(n^2).
+- Dictionary `updated` used to copy all entries before changing one entry.
+- This was accepted only to establish source-level immutable owner semantics,
+  checked access, and deterministic drop behavior before move/borrow checking
+  and shared structural nodes exist.
+
+Implemented optimization direction:
+
+- `values -> append(3) => nextValues` consumes `values`; after that move,
+  `values` is unusable unless the same name is immediately rebound.
+- If the buffer has capacity, lowering appends in place and transfers ownership
+  to `nextValues`; if capacity is full, it grows and frees the old allocation.
+- Dynamic-array `updated` and dictionary `updated` mutate the moved owner in
+  place where possible.
+
+Remaining future direction:
+
+- Preserve `push` and `put` as the explicit `=> mut` in-place mutation surface.
+- Add builder/transient containers for efficient bulk construction while still
+  producing immutable final owners.
+- If multiple immutable versions must remain alive and share storage, introduce
+  a separate persistent container design rather than silently turning ordinary
+  growable arrays into shared structures. HAMT/RRB-vector-style designs are
+  candidates, but they require an explicit static ownership/drop story in
+  SmallLang because there is no garbage collector.
+- Add benchmarks before replacing the lowering: repeated append, random update,
+  iteration/fold throughput, and dictionary update/lookup.
+
+General coding rule: a feature may be implemented functionally first, but if
+speed or memory work is intentionally deferred, the implementation must leave a
+durable optimization note in the repo that names the tradeoff and the intended
+follow-up direction.
+
+## D050 - Dictionaries Use Scalar Swiss-Style Hash Tables
+
+Status: implemented
+Date: 2026-07-09
+
+SmallLang's `{Int: Int}` dictionary lowering no longer uses a contiguous
+key-value buffer with linear search. The runtime representation is now one heap
+allocation owned by the dictionary handle:
+
+```text
+base pointer
+len
+capacity
+
+allocation layout:
+  control bytes: capacity bytes
+  padding: align entries to 8 bytes
+  entries: capacity slots, each slot = key i64 + value i64
+```
+
+Control byte `0` means empty. A full slot stores a nonzero 7-bit `h2`
+fingerprint derived from the key hash. Lookup hashes the key, chooses the start
+slot from `h1`, probes linearly, filters candidates by `h2`, and compares the
+actual key only for matching fingerprints. This follows the SwissTable family
+shape used by Rust/hashbrown, Abseil, and Go's newer map design, but the first
+SmallLang implementation scans scalar control bytes instead of SIMD groups.
+
+`put` and dictionary `updated` share the same path:
+
+- existing keys update in place
+- missing keys insert into the first empty probed slot
+- insertion grows when `(len + 1) / capacity` would exceed 75%
+- growth doubles capacity, allocates a new single buffer, rehashes live entries,
+  and frees the old buffer
+
+This preserves the no-GC ownership story: moving the dictionary moves one base
+pointer and one drop obligation, and scope exit frees exactly that allocation.
+The next performance step is target-specific grouped/SIMD control-byte probing,
+not another semantic change.
+
+## D051 - LLVM Emitter Name And Partial Boundaries
+
+Status: implemented
+Date: 2026-07-09
+
+The main LLVM emitter was renamed from `ConsoleLlvmEmitter` to `LlvmEmitter`.
+The old name was no longer accurate after the same emitter became responsible
+for Windows, Linux, browser WebAssembly, heap-owning containers, file/runtime
+intrinsics, and target-independent source-language lowering.
+
+The class is intentionally split into partial files by responsibility:
+
+- `LlvmEmitter.cs` keeps shared state, construction, and the top-level `Emit`
+  orchestration.
+- `LlvmEmitter.FunctionDeclarations.cs` emits user function definitions.
+- `LlvmEmitter.FunctionCalls.cs` handles function-call lowering and inlining.
+- `LlvmEmitter.Statements.cs` emits main statements and block-function calls.
+- `LlvmEmitter.Expressions.*.cs` emits scalar expressions, conditionals,
+  folds, and phi construction.
+- `LlvmEmitter.Flow.cs` owns value-flow lowering.
+- `LlvmEmitter.Containers*.cs` owns array/dictionary layout, indexing,
+  ownership-moving transforms, and hash-table operations.
+- `LlvmEmitter.Runtime*.cs` owns runtime helper IR and runtime intrinsic calls.
+- `LlvmEmitter.Utilities.cs` keeps local runtime value records and small shared
+  helpers.
+
+This is a structural refactor only. It does not change emitted IR semantics.
+Future emitter work should add code to the closest partial by behavior instead
+of growing one monolithic file again.
 
 

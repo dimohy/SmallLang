@@ -1,11 +1,11 @@
 runTimes count: Int -> Unit block turn: Int {
     1..count -> each turn {
-        turn -> yield()
+        turn -> yield
     }
 }
 
 main {
     3 -> runTimes step {
-        "custom block step {step}" -> println()
+        "custom block step $step" -> println
     }
 }

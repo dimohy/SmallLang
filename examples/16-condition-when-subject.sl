@@ -16,6 +16,6 @@ grade score: Int -> Text {
 }
 
 main {
-    85 -> grade() -> result
-    "grade = {result}" -> println()
+    85 -> grade => result
+    "grade = $result" -> println
 }

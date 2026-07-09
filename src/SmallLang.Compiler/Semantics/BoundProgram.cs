@@ -37,7 +37,8 @@ internal enum BoundFunctionKind
     RuntimeCloseIntWriter,
     RuntimeOpenIntReader,
     RuntimeClosestInt,
-    RuntimeCloseIntReader
+    RuntimeCloseIntReader,
+    RuntimeNowMillis
 }
 
 internal enum BoundType
@@ -45,5 +46,8 @@ internal enum BoundType
     Unit,
     Text,
     Int,
-    Bool
+    Bool,
+    StaticIntArray,
+    DynamicIntArray,
+    IntDictionary
 }

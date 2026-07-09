@@ -12,11 +12,11 @@ to the accepted language specification and decision log.
 - zero-argument functions with `getName: -> Text { ... }`
 - one-input functions with default `it` or an explicit input name:
   `square: Int -> Int { ... }` and `square n: Int -> Int { ... }`
-- single-expression function bodies with `name: Input -> Output -> expression`
+- single-expression function bodies with `name: Input -> Output => expression`
 - local functions declared inside a function body, scoped to that containing
   function
-- value-flow bindings with `"value" -> name`, `getName() -> name`, and
-  `7 -> square() -> num`
+- expression-first bindings with `"value" => name`, `getName() => name`, and
+  `7 -> square => num`
 - integer `+`, `-`, `*`, `/`, `%`, unary `-`, and parenthesized expressions
 - line comments with `#`
 - `Bool` values from `true`/`false`, integer comparisons, and `and`/`or`/`not`
@@ -24,26 +24,36 @@ to the accepted language specification and decision log.
 - multi-branch `when { condition { ... } else { ... } }` expressions
 - subject-value `when` with `value -> when { >= limit { ... } else { ... } }`
 - subject-value `when` range arms with `value -> when { start..end { ... } }`
-- compact `when` arms with `condition -> value`, including implicit `it`
+- compact `when` arms with `condition => value`, including implicit `it`
   subject inside one-input functions
-- string interpolation with `"Hello, {name}"`
+- string interpolation with `"Hello, $name"`
 - interpolation of string and integer bindings
 - value-flow calls with `value -> function`
+- value-flow calls with extra receiver arguments, such as
+  `values -> push(30)`
 - value-flow target-call syntax with `value -> function()`
 - parenthesized calls with `function(value)`
 - SmallLang standard library functions `sys.io.print`, `sys.io.println`, and
   `sys.io.readInt` with global `print`, `println`, and `readInt` aliases
 - `namespace` declarations and `import ... as ...` aliases for standard library
   module code
-- integer input with `"n = ? " -> readInt() -> n` or
-  `"n = ? " -> sys.io.readInt() -> n`
-- line output with `value -> println()` or `value -> sys.io.println()`
+- integer input with `"n = ? " -> readInt => n` or
+  `"n = ? " -> sys.io.readInt => n`
+- line output with `value -> println` or `value -> sys.io.println`
 - block-function calls with `range -> each item { ... }` and
   `count -> repeat item { ... }`, where the brace block is the call argument and
   `each()`/`repeat()` are intentionally omitted
 - closed integer range loops with `1..9 -> each i { ... }`
 - default loop item binding with `1..9 -> each { ... }`, exposed as `it`
 - integer folds with `range -> fold initial acc, item { nextAcc }`
+- fixed `Int` arrays with `[1, 2, 3]` and `[0; 8]`
+- growable `Int` arrays with `[1, 2, ..]` and `[..]`
+- `{Int: Int}` dictionaries with `{ 1: 100, 2: 200 }`
+- checked indexing with `array[index]` and `dictionary[key]`
+- mutable container bindings with `value => mut name`
+- move-consuming container transforms with `append(value)` and
+  `updated(keyOrIndex, value)`
+- deterministic native cleanup for heap-owning dynamic arrays and dictionaries
 - purpose-oriented pseudo-random integer generation with `seedRandom` and
   `randomBelow`
 - binary sorted `Int` file writing and nearest-value lookup with
@@ -59,7 +69,7 @@ to the accepted language specification and decision log.
 With the current Windows linker settings, representative executable sizes are
 **1,536 bytes** for `01-function-basic-hello.sl` and `05-function-local.sl`,
 **2,048 bytes** for `08-block-each-default-it.sl`, and **2,560 bytes** for the
-sorted-int-file workflow samples.
+container and sorted-int-file workflow samples.
 
 ## Build And Run
 
@@ -137,6 +147,31 @@ python -m http.server 5080
 ```
 
 Open `http://localhost:5080/examples/browser/`.
+
+The first container sample shows static arrays, dynamic arrays, checked
+indexing, `fold`, `push`, dictionary `put`, `len`, `capacity`, and deterministic
+native cleanup:
+
+```powershell
+.\scripts\smalllang.ps1 -Source examples\25-arrays-dictionaries.sl -Output artifacts\25-arrays-dictionaries.exe -KeepTemps
+.\artifacts\25-arrays-dictionaries.exe
+```
+
+Move-consuming container transforms return a new owner while consuming the
+source owner. The sample shows the short same-name form:
+
+```powershell
+.\scripts\smalllang.ps1 -Source examples\26-immutable-containers.sl -Output artifacts\26-immutable-containers.exe -KeepTemps
+.\artifacts\26-immutable-containers.exe
+```
+
+The dictionary hash-table sample exercises update, growth, rehashing, lookup,
+and capacity reporting:
+
+```powershell
+.\scripts\smalllang.ps1 -Source examples\27-dictionary-hash-table.sl -Output artifacts\27-dictionary-hash-table.exe -KeepTemps
+.\artifacts\27-dictionary-hash-table.exe
+```
 
 On first use, the script downloads LLVM 22.1.8 into `.tools`. LLVM binaries,
 build outputs, and generated executables are intentionally ignored by Git.
@@ -258,19 +293,18 @@ rule TypeName = Identifier
 ```
 
 The generator reads `syntax/smalllang.grammar` and emits the current recursive
-descent parser at compile time. A final single identifier in a value-flow
-statement binds the flowing value, so `n * i -> value` is the preferred binding
-style for new samples. Function targets must use the empty target-call marker,
-such as `7 -> square() -> num`; it marks the target as a function call while
-still taking the argument from the value on the left. Block-function targets are
-the special exception: `1..9 -> each i { ... }` omits `()` because the following
-brace block is the function's code block argument.
+descent parser at compile time. Bindings use `=>`, so `n * i => value` is the
+preferred binding style for new samples. Function targets in value-flow calls
+omit empty parentheses, such as `7 -> square => num`; target parentheses are
+reserved for additional receiver arguments, such as `values -> push(30)`.
+Block-function targets use the following brace block as the function's code
+block argument: `1..9 -> each i { ... }`.
 
 Range loops prefer `start..end -> each item { ... }`; when the item name is
 omitted as `start..end -> each { ... }`, the loop item is available as `it`.
 One-input functions follow the same naming shape: `square: Int -> Int` exposes
 the input as `it`, while `square n: Int -> Int` exposes it as `n`. A function
-whose body is a single expression may use `name: Input -> Output -> expression`
+whose body is a single expression may use `name: Input -> Output => expression`
 instead of an outer body block.
 
 Function declarations may appear at the start of another function body. These
@@ -289,10 +323,10 @@ Conditions follow the same flow style as block functions:
 `condition -> if { ... } else { ... }` receives a `Bool` value on the left, and
 `when { ... }` handles multi-branch value selection. When the same value is
 tested in every arm, prefer `value -> when { >= limit { ... } else { ... } }` or
-range arms such as `value -> when { 90..100 -> ... else -> ... }`; the subject
+range arms such as `value -> when { 90..100 => ... else => ... }`; the subject
 value is evaluated once and reused by the arm checks. Inside a one-input
 function that uses the default `it` binding, subject-style `when` arms may omit
-`it ->` entirely. Single-value arms may use `condition -> value`; block arms
+`it ->` entirely. Single-value arms may use `condition => value`; block arms
 remain available for multi-statement bodies. Condition expressions lower to LLVM
 branches and phi nodes, not runtime dispatch. The parser treats `true` and
 `false` as `Bool` literals.
@@ -356,6 +390,12 @@ approved syntax.
 - `examples/22-stdlib-file-100m-query.sl`: nearest-value query over the full
   generated integer file
 - `examples/23-webassembly-browser.sl`: browser WebAssembly stdout sample
+- `examples/24-string-interpolation-dollar.sl`: `$name` and `$(expr)` string
+  interpolation sample
+- `examples/25-arrays-dictionaries.sl`: static array, dynamic array,
+  dictionary, and deterministic cleanup sample
+- `examples/26-immutable-containers.sl`: immutable dynamic-array and dictionary
+  transforms that return new owners
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
 - `examples/expected`: expected stdout/stdin fixtures for executable samples
 - `stdlib/sys/runtime.sl`: standard library intrinsic boundary declarations

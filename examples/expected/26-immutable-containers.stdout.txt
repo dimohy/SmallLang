@@ -1,0 +1,6 @@
+count = 3
+appended = 3
+changedFirst = 9
+changedScore = 250
+addedCount = 3
+addedScore = 300

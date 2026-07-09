@@ -15,7 +15,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
         [
             "-target",
             "x86_64-pc-windows-msvc",
-            "-Oz",
+            "-O3",
             "-fno-addrsig",
             "-mno-stack-arg-probe",
             "-c",
@@ -57,6 +57,10 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             CloseHandle
             SetFilePointerEx
             GetFileSizeEx
+            GetTickCount64
+            GetProcessHeap
+            HeapAlloc
+            HeapFree
             """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         Run(toolchain.LlvmLib,

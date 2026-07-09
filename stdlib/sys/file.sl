@@ -3,11 +3,11 @@ namespace sys.file
 import sys.runtime as rt
 
 openIntWriter path: Text -> Unit {
-    path -> rt.openIntWriter()
+    path -> rt.openIntWriter
 }
 
 writeInt value: Int -> Unit {
-    value -> rt.writeInt()
+    value -> rt.writeInt
 }
 
 closeIntWriter: -> Unit {
@@ -15,11 +15,11 @@ closeIntWriter: -> Unit {
 }
 
 openIntReader path: Text -> Unit {
-    path -> rt.openIntReader()
+    path -> rt.openIntReader
 }
 
 closestInt target: Int -> Int {
-    target -> rt.closestInt()
+    target -> rt.closestInt
 }
 
 closeIntReader: -> Unit {

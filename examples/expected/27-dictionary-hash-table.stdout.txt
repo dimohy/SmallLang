@@ -1,0 +1,6 @@
+score1 = 10
+score2 = 222
+score3 = 30
+score4 = 40
+count = 4
+capacity = 8

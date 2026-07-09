@@ -14,12 +14,34 @@ internal static class StringLiteralParser
 
         for (var i = 0; i < text.Length; i++)
         {
-            if (text[i] == '}')
+            if (text[i] != '$' || i + 1 >= text.Length)
             {
-                throw ErrorAt(token, "unexpected '}' in string literal");
+                continue;
             }
 
-            if (text[i] != '{')
+            var next = text[i + 1];
+            if (IsIdentifierStart(next))
+            {
+                if (i > start)
+                {
+                    segments.Add(new TextSegment(text[start..i]));
+                }
+
+                var nameStart = i + 1;
+                var nameEnd = nameStart + 1;
+                while (nameEnd < text.Length && IsIdentifierPart(text[nameEnd]))
+                {
+                    nameEnd++;
+                }
+
+                var name = text[nameStart..nameEnd];
+                segments.Add(new InterpolationSegment(new NameExpression(name, token.Line, token.Column + nameStart)));
+                i = nameEnd - 1;
+                start = nameEnd;
+                continue;
+            }
+
+            if (next != '(')
             {
                 continue;
             }
@@ -29,15 +51,14 @@ internal static class StringLiteralParser
                 segments.Add(new TextSegment(text[start..i]));
             }
 
-            var close = text.IndexOf('}', i + 1);
-            if (close < 0)
+            var close = FindExpressionInterpolationClose(text, i + 2, token);
+            var expressionText = text[(i + 2)..close];
+            if (string.IsNullOrWhiteSpace(expressionText))
             {
-                throw ErrorAt(token, "unterminated interpolation in string literal");
+                throw ErrorAt(token, "empty interpolation expression is not allowed");
             }
 
-            var pathText = text[(i + 1)..close];
-            var path = ParseInterpolationPath(pathText, token);
-            segments.Add(new InterpolationSegment(path));
+            segments.Add(new InterpolationSegment(ParseInterpolationExpression(expressionText, token)));
             i = close;
             start = i + 1;
         }
@@ -50,41 +71,72 @@ internal static class StringLiteralParser
         return segments;
     }
 
-    private static IReadOnlyList<string> ParseInterpolationPath(string text, Token token)
+    private static int FindExpressionInterpolationClose(string text, int start, Token token)
     {
-        if (text.Length == 0)
+        var depth = 1;
+        for (var i = start; i < text.Length; i++)
         {
-            throw ErrorAt(token, "empty interpolation is not allowed");
-        }
-
-        var parts = text.Split('.');
-        foreach (var part in parts)
-        {
-            if (!IsIdentifier(part))
+            var c = text[i];
+            if (c == '"')
             {
-                throw ErrorAt(token, $"invalid interpolation path '{{{text}}}'");
+                i = FindStringClose(text, i + 1, token);
+                continue;
+            }
+
+            if (c == '(')
+            {
+                depth++;
+                continue;
+            }
+
+            if (c != ')')
+            {
+                continue;
+            }
+
+            depth--;
+            if (depth == 0)
+            {
+                return i;
             }
         }
 
-        return parts;
+        throw ErrorAt(token, "unterminated interpolation expression in string literal");
     }
 
-    private static bool IsIdentifier(string value)
+    private static int FindStringClose(string text, int start, Token token)
     {
-        if (value.Length == 0 || !(value[0] == '_' || char.IsLetter(value[0])))
+        for (var i = start; i < text.Length; i++)
         {
-            return false;
-        }
-
-        for (var i = 1; i < value.Length; i++)
-        {
-            if (!(value[i] == '_' || char.IsLetterOrDigit(value[i])))
+            if (text[i] == '"')
             {
-                return false;
+                return i;
             }
         }
 
-        return true;
+        throw ErrorAt(token, "unterminated string literal inside interpolation expression");
+    }
+
+    private static Expression ParseInterpolationExpression(string text, Token token)
+    {
+        try
+        {
+            return new Parser(new Lexer(text).Lex()).ParseExpressionFragment();
+        }
+        catch (SmallLangException ex)
+        {
+            throw ErrorAt(token, $"invalid interpolation expression '$({text})': {ex.Message}");
+        }
+    }
+
+    private static bool IsIdentifierStart(char c)
+    {
+        return c == '_' || char.IsLetter(c);
+    }
+
+    private static bool IsIdentifierPart(char c)
+    {
+        return c == '_' || char.IsLetterOrDigit(c);
     }
 
     private static SmallLangException ErrorAt(Token token, string message)

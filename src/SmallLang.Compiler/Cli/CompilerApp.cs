@@ -36,7 +36,7 @@ internal static class CompilerApp
     {
         var program = LoadProgram(options.SourcePath);
         var boundProgram = new SemanticCompiler(program).Compile();
-        var llvmIr = LlvmIrGenerator.GenerateConsoleProgram(boundProgram, options.Target);
+        var llvmIr = LlvmIrGenerator.GenerateProgram(boundProgram, options.Target);
         var toolchain = LlvmToolchain.From(options.LlvmHome);
 
         Directory.CreateDirectory(Path.GetDirectoryName(options.OutputPath)
@@ -115,6 +115,7 @@ internal static class CompilerApp
             Path.Combine(root, "stdlib", "sys", "runtime.sl"),
             Path.Combine(root, "stdlib", "sys", "io.sl"),
             Path.Combine(root, "stdlib", "sys", "random.sl"),
+            Path.Combine(root, "stdlib", "sys", "time.sl"),
             Path.Combine(root, "stdlib", "sys", "file.sl")
         };
 

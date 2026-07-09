@@ -7,10 +7,10 @@ scale n: Int -> Int {
         value + n
     }
 
-    n -> double() -> addBase()
+    n -> double -> addBase
 }
 
 main {
-    7 -> scale() -> num
-    "local function result = {num}" -> println()
+    7 -> scale => num
+    "local function result = $num" -> println
 }

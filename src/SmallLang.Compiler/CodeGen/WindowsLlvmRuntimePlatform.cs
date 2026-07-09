@@ -23,6 +23,53 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport i32 @CloseHandle(ptr)");
         functions.AppendLine("declare dllimport i32 @SetFilePointerEx(ptr, i64, ptr, i32)");
         functions.AppendLine("declare dllimport i32 @GetFileSizeEx(ptr, ptr)");
+        functions.AppendLine("declare dllimport ptr @GetProcessHeap()");
+        functions.AppendLine("declare dllimport ptr @HeapAlloc(ptr, i32, i64)");
+        functions.AppendLine("declare dllimport i32 @HeapFree(ptr, i32, ptr)");
+        functions.AppendLine("declare dllimport i64 @GetTickCount64()");
+    }
+
+    public override void EmitMemoryDeclarations(StringBuilder functions)
+    {
+    }
+
+    public override void EmitTimePrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i64 @smalllang_now_millis() #0 {
+            entry:
+              %millis = call i64 @GetTickCount64()
+              ret i64 %millis
+            }
+
+            """);
+    }
+
+    public override void EmitMemoryPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal ptr @smalllang_alloc(i64 %bytes) #0 {
+            entry:
+              %heap = call ptr @GetProcessHeap()
+              %ptr = call ptr @HeapAlloc(ptr %heap, i32 0, i64 %bytes)
+              ret ptr %ptr
+            }
+
+            define internal void @smalllang_free(ptr %ptr) #0 {
+            entry:
+              %is_null = icmp eq ptr %ptr, null
+              br i1 %is_null, label %done, label %free
+
+            free:
+              %heap = call ptr @GetProcessHeap()
+              %ignored = call i32 @HeapFree(ptr %heap, i32 0, ptr %ptr)
+              br label %done
+
+            done:
+              ret void
+            }
+
+            """);
     }
 
     public override void EmitIoPrimitives(StringBuilder functions)

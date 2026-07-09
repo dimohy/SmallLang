@@ -24,6 +24,9 @@ async function runSmallLang() {
         output += decoder.decode(bytes);
         outputEl.textContent = output;
         return 1;
+      },
+      smalllang_browser_now_millis() {
+        return BigInt(Math.trunc(performance.now()));
       }
     }
   };
