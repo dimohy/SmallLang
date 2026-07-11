@@ -273,7 +273,8 @@ internal sealed class SemanticCompiler
             function.TraitName,
             function.GenericParameterName,
             function.GenericTraitBound,
-            IsValueGeneric: function.IsValueGeneric);
+            IsValueGeneric: function.IsValueGeneric,
+            HasValueGenericFixedArrayInput: function.HasValueGenericFixedArrayInput);
     }
 
     private BoundFunctionInputOwnership BindFunctionInputOwnership(
@@ -2919,7 +2920,12 @@ internal sealed class SemanticCompiler
             throw new SmallLangException(
                 $"value-generic function '{template.Name}' requires an explicit compile-time Int argument");
         }
-        if (template.InputType != actualType)
+        if (template.HasValueGenericFixedArrayInput && actualType != BoundType.StaticIntArray)
+        {
+            throw new SmallLangException(
+                $"value-generic function '{template.Name}' requires a fixed Int array input");
+        }
+        if (!template.HasValueGenericFixedArrayInput && template.InputType != actualType)
         {
             throw new SmallLangException(
                 $"function '{template.Name}' expects {FormatType(template.InputType!.Value)} but received {FormatType(actualType)}");
@@ -3636,9 +3642,16 @@ internal sealed class SemanticCompiler
         int line,
         int column)
     {
-        return genericParameterName is not null && typeName == genericParameterName
-            ? BoundType.GenericParameter
-            : ParseType(typeName, line, column);
+        if (genericParameterName is not null && typeName == genericParameterName)
+        {
+            return BoundType.GenericParameter;
+        }
+        if (genericParameterName is not null && typeName == $"[Int; {genericParameterName}]")
+        {
+            return BoundType.IntSlice;
+        }
+
+        return ParseType(typeName, line, column);
     }
 
     private string FormatType(BoundType type)

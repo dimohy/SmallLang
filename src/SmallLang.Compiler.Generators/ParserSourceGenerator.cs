@@ -552,6 +552,8 @@ internal static class ParserEmitter
         builder.AppendLine("            : ParseOptionalSelfSignature(methodOwner, out inputName);");
         builder.AppendLine("        var inputType = inputSignature.TypeName;");
         builder.AppendLine("        var inputOwnership = inputSignature.Ownership;");
+        builder.AppendLine("        var hasValueGenericFixedArrayInput = isValueGeneric");
+        builder.AppendLine("            && inputType == $\"[Int; {genericParameterName}]\";");
         builder.AppendLine("        if (inputName is not null && inputType is null)");
         builder.AppendLine("        {");
         builder.AppendLine("            throw Error(inputName.Value, \"function input name requires an input type\");");
@@ -611,7 +613,7 @@ internal static class ParserEmitter
         builder.AppendLine("            Expect(TokenKind.RightBrace);");
         builder.AppendLine("        }");
         builder.AppendLine();
-        builder.AppendLine("        return new FunctionDeclaration(functionName, inputName?.Text, inputType, inputOwnership, returnType, blockInputName?.Text, blockInputType?.Text, localFunctions, body, blockBody, name.Line, name.Column, isIntrinsic, isStandardLibrary, traitName, genericParameterName, genericTraitBound, isValueGeneric);");
+        builder.AppendLine("        return new FunctionDeclaration(functionName, inputName?.Text, inputType, inputOwnership, returnType, blockInputName?.Text, blockInputType?.Text, localFunctions, body, blockBody, name.Line, name.Column, isIntrinsic, isStandardLibrary, traitName, genericParameterName, genericTraitBound, isValueGeneric, hasValueGenericFixedArrayInput);");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    private FunctionInputSignature ParseOptionalSelfSignature(string ownerType, out Token? inputName)");
@@ -678,6 +680,11 @@ internal static class ParserEmitter
         builder.AppendLine("            }");
         builder.AppendLine();
         builder.AppendLine("            Expect(TokenKind.Semicolon);");
+        builder.AppendLine("            if (Match(TokenKind.Identifier, out var fixedLength))");
+        builder.AppendLine("            {");
+        builder.AppendLine("                Expect(TokenKind.RightBracket);");
+        builder.AppendLine("                return $\"[{elementType.Text}; {fixedLength.Text}]\";");
+        builder.AppendLine("            }");
         builder.AppendLine("            Expect(TokenKind.Tilde);");
         builder.AppendLine("            Expect(TokenKind.RightBracket);");
         builder.AppendLine("            return $\"[{elementType.Text}; ~]\";");

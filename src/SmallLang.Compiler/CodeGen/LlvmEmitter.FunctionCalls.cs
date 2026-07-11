@@ -541,6 +541,22 @@ internal sealed partial class LlvmEmitter
             throw new SmallLangException($"function '{function.Name}' expects exactly one argument");
         }
 
+        if (function.HasValueGenericFixedArrayInput)
+        {
+            if (argument is not RuntimeStaticIntArray fixedArray)
+            {
+                throw new SmallLangException(
+                    $"value-generic function '{function.Name}' requires a fixed Int array input");
+            }
+            if (function.SpecializedValue is not { } expectedLength
+                || !int.TryParse(fixedArray.LengthName, out var actualLength)
+                || actualLength != expectedLength)
+            {
+                throw new SmallLangException(
+                    $"function '{function.Name}' expects [Int; {function.SpecializedValue}] but received [Int; {fixedArray.LengthName}]");
+            }
+        }
+
         return argument switch
         {
             RuntimeInt integer when function.InputType == BoundType.Int => $"i64 {integer.ValueName}",

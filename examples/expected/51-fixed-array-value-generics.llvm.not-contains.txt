@@ -1,0 +1,1 @@
+@smalllang_fn_fixedLength(%smalllang.int_slice %it)

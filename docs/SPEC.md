@@ -820,9 +820,10 @@ Container rules in the current slice:
 - Browser WebAssembly rejects heap-placed containers until the target has a
   linear-memory allocator. Stack-promoted readonly dynamic arrays and
   dictionaries require no allocator and are accepted.
-- General generic `[T; N]`, `[T; ~]`, and `{K: V}` containers remain future
-  work. Compile-time `Int` value parameters may already specialize fixed repeat
-  counts inside functions, for example `[value; N]` in `fill[N: Int]`.
+- General element-type generic `[T; N]`, `[T; ~]`, and `{K: V}` containers
+  remain future work. Compile-time `Int` value parameters specialize fixed
+  repeat counts and fixed `Int` array input contracts. `[Int; N]` accepts only a
+  fixed array whose compile-time length equals the explicit call specialization.
 
 ## Lexical Design
 

@@ -68,6 +68,8 @@ to the accepted language specification and decision log.
   budget
 - compile-time `Int` value generics with explicit fluent specialization, such
   as `value -> fill[4]`, including symbolic fixed-array repeat counts
+- fixed-array value-generic parameters such as `[Int; N]`, with compile-time
+  size checking at calls like `values -> fixedLength[3]`
 - purpose-oriented pseudo-random integer generation with `seedRandom` and
   `randomBelow`
 - binary sorted `Int` file writing and nearest-value lookup with

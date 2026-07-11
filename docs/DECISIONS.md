@@ -2311,4 +2311,21 @@ become LLVM constants in that specialization. Omitting the value argument is a
 compile error. Example 50 verifies distinct `3` and `5` specializations and
 their fixed LLVM array shapes.
 
+Value parameters also participate in fixed-array input types:
+
+```smalllang
+fixedLength[N: Int] values: [Int; N] -> Int {
+    values -> len
+}
+
+[10, 20, 30] -> fixedLength[3]
+```
+
+`[Int; 3]` and `[Int; 5]` are distinct compile-time size contracts at this
+boundary even though the readonly native ABI remains the compact `{ pointer,
+length }` slice pair. The compiler proves that the fixed source length equals
+the explicit specialization value before emitting a call. A dynamic array or a
+fixed array with another length is rejected. Example 51 verifies the two valid
+specializations and a `3` versus `4` size-mismatch diagnostic.
+
 

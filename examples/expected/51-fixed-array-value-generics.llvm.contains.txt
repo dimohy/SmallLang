@@ -1,0 +1,4 @@
+define internal i64 @smalllang_fn_fixedLength_v3(%smalllang.int_slice %it)
+define internal i64 @smalllang_fn_fixedLength_v5(%smalllang.int_slice %it)
+call i64 @smalllang_fn_fixedLength_v3
+call i64 @smalllang_fn_fixedLength_v5

@@ -22,6 +22,7 @@ value flow with `value -> target` syntax and expression-first bindings with
 - flow-oriented `if` and `when` conditionals
 - fixed and growable `Int` arrays, such as `[1, 2, 3]`, `[1, 2, ~]`,
   `[Int; ~]`, and `[Int; 1024~]`
+- compile-time `Int` value generics and size-checked `[Int; N]` parameters
 - `{Int: Int}` dictionaries, such as `{ 1: 100, 2: 200 }`, `{Int: Int}`,
   and `{Int: Int; 1024~}`
 - readonly `[Int]` function parameters for non-owning array views

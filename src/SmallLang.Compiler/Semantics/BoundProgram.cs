@@ -33,7 +33,8 @@ internal sealed record BoundFunction(
     string? GenericTraitBound = null,
     TypeId? SpecializedType = null,
     bool IsValueGeneric = false,
-    int? SpecializedValue = null);
+    int? SpecializedValue = null,
+    bool HasValueGenericFixedArrayInput = false);
 
 internal sealed record BoundTraitMethod(
     string Name,

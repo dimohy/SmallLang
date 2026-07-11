@@ -54,7 +54,8 @@ internal sealed record FunctionDeclaration(
     string? TraitName = null,
     string? GenericParameterName = null,
     string? GenericTraitBound = null,
-    bool IsValueGeneric = false);
+    bool IsValueGeneric = false,
+    bool HasValueGenericFixedArrayInput = false);
 
 internal enum FunctionInputOwnership
 {
