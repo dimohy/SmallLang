@@ -1,0 +1,3 @@
+call ptr @smalllang_alloc(i64 48)
+getelementptr %smalllang.text
+call void @smalllang_free

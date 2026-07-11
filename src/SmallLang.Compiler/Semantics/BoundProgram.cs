@@ -95,6 +95,7 @@ internal enum TypeId
     Bool,
     IntSlice,
     StaticIntArray,
+    StaticTextArray,
     DynamicIntArray,
     IntDictionaryView,
     IntDictionary,

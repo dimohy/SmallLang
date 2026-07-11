@@ -172,6 +172,7 @@ internal sealed partial class LlvmEmitter
                 {
                     RuntimeIntSlice slice => new RuntimeFlowResult(new RuntimeInt(slice.LengthName), null, _mainOk),
                     RuntimeStaticIntArray staticArray => new RuntimeFlowResult(new RuntimeInt(staticArray.LengthName), null, _mainOk),
+                    RuntimeStaticTextArray staticArray => new RuntimeFlowResult(new RuntimeInt(staticArray.LengthName), null, _mainOk),
                     RuntimeDynamicIntArray dynamicArray => new RuntimeFlowResult(new RuntimeInt(dynamicArray.LengthName), null, _mainOk),
                     RuntimeIntDictionaryView dictionaryView => new RuntimeFlowResult(new RuntimeInt(dictionaryView.LengthName), null, _mainOk),
                     RuntimeIntDictionary intDictionary => new RuntimeFlowResult(new RuntimeInt(intDictionary.LengthName), null, _mainOk),

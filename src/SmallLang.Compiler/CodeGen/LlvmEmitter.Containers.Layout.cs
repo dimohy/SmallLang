@@ -48,6 +48,25 @@ internal sealed partial class LlvmEmitter
         return LoadInt(slot, "array_item");
     }
 
+    private void StoreStaticTextArrayElement(string pointer, int index, RuntimeText value)
+    {
+        var slot = NextTemp("text_array_slot");
+        EmitAssign(slot, $"getelementptr %smalllang.text, ptr {pointer}, i64 {index.ToString(CultureInfo.InvariantCulture)}");
+        EmitStore("%smalllang.text", BuildTextAggregate(value), slot, 8);
+    }
+
+    private RuntimeText EmitStaticTextArrayLoad(RuntimeStaticTextArray array, string index)
+    {
+        var inBounds = NextTemp("text_array_in_bounds");
+        EmitCompare(inBounds, "ult", "i64", index, array.LengthName);
+        EmitTrapUnless(inBounds, "text_array_bounds");
+        var slot = NextTemp("text_array_slot");
+        EmitAssign(slot, $"getelementptr %smalllang.text, ptr {array.PointerName}, i64 {index}");
+        var aggregate = NextTemp("text_array_item");
+        EmitAssign(aggregate, $"load %smalllang.text, ptr {slot}, align 8");
+        return ExtractTextAggregate(aggregate);
+    }
+
     private void EmitStaticArrayAssign(RuntimeStaticIntArray array, string index, string value)
     {
         var inBounds = NextTemp("array_assign_in_bounds");

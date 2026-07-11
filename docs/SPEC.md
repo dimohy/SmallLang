@@ -1324,6 +1324,9 @@ Current backend:
   flow targets, explicit `box T` owners, recursively sized user types through
   boxed fields or enum payloads, readonly owned-value borrows, static recursive
   drop glue, and expression-first bindings are type-checked for the current slice
+- fixed array literals preserve homogeneous element type for `Int` and `Text`;
+  `Text` arrays use 16-byte `%smalllang.text` elements, checked indexing returns
+  `Text`, and their backing storage is deterministically released
 - value-flow calls: `value -> function` and compatibility spelling
   `value -> function()` are parsed as a flow AST and lowered by
   semantic/codegen stages according to target position; bare flow targets cannot

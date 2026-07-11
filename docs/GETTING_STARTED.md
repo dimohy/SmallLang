@@ -474,6 +474,8 @@ approved syntax.
   a generic equality constraint specialized to `Item = Int`
 - `examples/55-multi-parameter-generics.sl`: two inferred type parameters with
   separate `Int` and `Text` LLVM monomorphizations
+- `examples/56-generic-fixed-text-array.sl`: homogeneous fixed `Text` arrays
+  with typed indexing and deterministic backing-storage cleanup
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
 - `examples/expected`: expected stdout/stdin fixtures for executable samples
 - `stdlib/sys/runtime.sl`: standard library intrinsic boundary declarations

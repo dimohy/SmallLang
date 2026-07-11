@@ -2417,4 +2417,18 @@ that cannot be inferred is a compile error rather than an arbitrary default.
 Example 55 verifies `(NumberSource, Int)` and `(TextSource, Text)` specializations
 with different LLVM return ABIs, plus a no-vtable assertion.
 
+## D075 - Typed Fixed-Array Layout Foundation
+
+Status: implemented for `Int` and `Text`; broader `[T; N]` remains active
+Date: 2026-07-11
+
+Fixed array literals now infer one homogeneous element type instead of forcing
+every element to `Int`. `Text` arrays allocate `N * 16` bytes, store LLVM
+`%smalllang.text` values, return `Text` from checked indexing, expose `len`, and
+release the backing buffer exactly once at owner-scope exit. Mixed element types
+are rejected. This establishes the element-layout seam that future inline user
+types and recursively owned values will extend; it does not yet claim complete
+general `[T; N]` support. Example 56 verifies the `Text` layout, indexed value,
+length, and allocation/free pair.
+
 

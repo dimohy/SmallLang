@@ -1383,6 +1383,7 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         bool allowReadIntCall)
     {
+        BoundType? inferredElementType = null;
         foreach (var element in expression.Elements)
         {
             var elementType = InferExpression(
@@ -1392,13 +1393,32 @@ internal sealed class SemanticCompiler
                 allowPrintCall: false,
                 allowReadIntCall,
                 allowFlowBindingTarget: false);
-            if (elementType != BoundType.Int)
+            if (elementType is not (BoundType.Int or BoundType.Text))
             {
-                throw Error(element.Line, element.Column, "array elements must be Int in the current slice");
+                throw Error(element.Line, element.Column, "array elements must currently be Int or Text");
             }
+            if (inferredElementType is not null && inferredElementType != elementType)
+            {
+                throw Error(
+                    element.Line,
+                    element.Column,
+                    $"array elements must have one type; expected {FormatType(inferredElementType.Value)}, got {FormatType(elementType)}");
+            }
+            inferredElementType = elementType;
         }
 
-        return expression.IsDynamic ? BoundType.DynamicIntArray : BoundType.StaticIntArray;
+        if (expression.IsDynamic)
+        {
+            if (inferredElementType is not (null or BoundType.Int))
+            {
+                throw Error(expression.Line, expression.Column, "growable arrays currently require Int elements");
+            }
+            return BoundType.DynamicIntArray;
+        }
+
+        return inferredElementType == BoundType.Text
+            ? BoundType.StaticTextArray
+            : BoundType.StaticIntArray;
     }
 
     private BoundType InferArrayRepeatExpression(
@@ -1508,6 +1528,7 @@ internal sealed class SemanticCompiler
             allowFlowBindingTarget: false);
         if (sourceType is not (BoundType.IntSlice
             or BoundType.StaticIntArray
+            or BoundType.StaticTextArray
             or BoundType.DynamicIntArray
             or BoundType.IntDictionaryView
             or BoundType.IntDictionary))
@@ -1527,7 +1548,7 @@ internal sealed class SemanticCompiler
             throw Error(expression.Index.Line, expression.Index.Column, "index must be Int");
         }
 
-        return BoundType.Int;
+        return sourceType == BoundType.StaticTextArray ? BoundType.Text : BoundType.Int;
     }
 
     private BoundType InferStructLiteralExpression(
@@ -2566,6 +2587,7 @@ internal sealed class SemanticCompiler
 
                 if (currentType is not (BoundType.IntSlice
                     or BoundType.StaticIntArray
+                    or BoundType.StaticTextArray
                     or BoundType.DynamicIntArray
                     or BoundType.IntDictionaryView
                     or BoundType.IntDictionary))
@@ -3842,6 +3864,7 @@ internal sealed class SemanticCompiler
             BoundType.Bool => "Bool",
             BoundType.IntSlice => "[Int]",
             BoundType.StaticIntArray => "[Int; N]",
+            BoundType.StaticTextArray => "[Text; N]",
             BoundType.DynamicIntArray => "[Int; ~]",
             BoundType.IntDictionaryView => "{Int: Int}",
             BoundType.IntDictionary => "{Int: Int}",
@@ -3853,7 +3876,7 @@ internal sealed class SemanticCompiler
 
     private bool IsContainerType(BoundType type)
     {
-        return type is BoundType.StaticIntArray or BoundType.DynamicIntArray or BoundType.IntDictionary
+        return type is BoundType.StaticIntArray or BoundType.StaticTextArray or BoundType.DynamicIntArray or BoundType.IntDictionary
             || _types.ContainsOwnedStorage(type);
     }
 

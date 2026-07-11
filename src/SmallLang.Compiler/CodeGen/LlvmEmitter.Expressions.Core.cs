@@ -187,10 +187,27 @@ internal sealed partial class LlvmEmitter
     {
         return expression.IsDynamic
             ? EmitDynamicIntArrayLiteral(expression)
-            : EmitStaticIntArrayLiteral(expression);
+            : EmitStaticArrayLiteral(expression);
     }
 
-    private RuntimeStaticIntArray EmitStaticIntArrayLiteral(ArrayLiteralExpression expression)
+    private RuntimeValue EmitStaticArrayLiteral(ArrayLiteralExpression expression)
+    {
+        var elements = expression.Elements.Select(EmitExpression).ToArray();
+        if (elements.Length == 0 || elements.All(static value => value is RuntimeInt))
+        {
+            return EmitStaticIntArrayLiteral(expression, elements.Cast<RuntimeInt>().ToArray());
+        }
+        if (elements.All(static value => value is RuntimeText))
+        {
+            return EmitStaticTextArrayLiteral(expression, elements.Cast<RuntimeText>().ToArray());
+        }
+
+        throw new SmallLangException("fixed array elements must have one supported runtime type");
+    }
+
+    private RuntimeStaticIntArray EmitStaticIntArrayLiteral(
+        ArrayLiteralExpression expression,
+        IReadOnlyList<RuntimeInt> elements)
     {
         var length = expression.Elements.Count;
         var allocatedLength = Math.Max(length, 1);
@@ -207,9 +224,9 @@ internal sealed partial class LlvmEmitter
             storage = RuntimeContainerStorage.Heap;
         }
 
-        for (var i = 0; i < expression.Elements.Count; i++)
+        for (var i = 0; i < elements.Count; i++)
         {
-            var value = EmitIntExpression(expression.Elements[i]);
+            var value = elements[i];
             StoreStaticArrayElement(pointer, allocatedLength, i, value.ValueName);
         }
 
@@ -294,6 +311,25 @@ internal sealed partial class LlvmEmitter
             storage);
     }
 
+    private RuntimeStaticTextArray EmitStaticTextArrayLiteral(
+        ArrayLiteralExpression expression,
+        IReadOnlyList<RuntimeText> elements)
+    {
+        var length = elements.Count;
+        var allocatedLength = Math.Max(length, 1);
+        var pointer = EmitHeapAllocate(((long)allocatedLength * 16).ToString(CultureInfo.InvariantCulture));
+        for (var i = 0; i < elements.Count; i++)
+        {
+            StoreStaticTextArrayElement(pointer, i, elements[i]);
+        }
+
+        return new RuntimeStaticTextArray(
+            pointer,
+            length.ToString(CultureInfo.InvariantCulture),
+            allocatedLength,
+            RuntimeContainerStorage.Heap);
+    }
+
     private RuntimeValue EmitTypedEmptyArray(TypedEmptyArrayExpression expression)
     {
         if (expression.ElementType != "Int")
@@ -352,7 +388,7 @@ internal sealed partial class LlvmEmitter
             capacity.ToString(CultureInfo.InvariantCulture));
     }
 
-    private RuntimeInt EmitIndexExpression(IndexExpression expression)
+    private RuntimeValue EmitIndexExpression(IndexExpression expression)
     {
         var source = EmitExpression(expression.Source);
         var index = EmitIntExpression(expression.Index);
@@ -360,6 +396,7 @@ internal sealed partial class LlvmEmitter
         {
             RuntimeIntSlice slice => EmitIntSliceLoad(slice, index.ValueName),
             RuntimeStaticIntArray array => EmitStaticArrayLoad(array, index.ValueName),
+            RuntimeStaticTextArray array => EmitStaticTextArrayLoad(array, index.ValueName),
             RuntimeDynamicIntArray array => EmitDynamicArrayLoad(array, index.ValueName),
             RuntimeIntDictionaryView dictionary => EmitDictionaryLookup(
                 new RuntimeIntDictionary(dictionary.PointerName, dictionary.LengthName, dictionary.CapacityName),

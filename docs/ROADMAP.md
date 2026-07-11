@@ -41,6 +41,7 @@ ownership behavior is part of the feature.
 - [x] Static trait dispatch as the default
 - [x] Checked type generics with trait bounds
 - [x] Two-parameter generics with associated-type inference
+- [x] Fixed arrays with distinct `Int` and `Text` element layouts
 - [x] Compile-time `Int` value generics, `[Int; N]` parameters, and specialization
 - [x] Monomorphization with deterministic ownership/drop behavior for inline values
 - [x] Associated types and equality constraints for container and iterator contracts
