@@ -152,6 +152,7 @@ internal static class GrammarCompiler
             Emit(expression, program);
             program.Add(Return);
         }
+        VerifyProgram(program, offsets, tokens.Count, grammar.Rules.Count, strings.Count);
         var lexerLiterals = lexer.Rules.Where(rule => rule.Literal is not null)
             .Select(rule => rule.Literal!).Distinct(StringComparer.Ordinal).ToArray();
         var lexerLiteralIds = lexerLiterals.Select((value, index) => (value, index))
@@ -161,6 +162,56 @@ internal static class GrammarCompiler
             lexer.Rules.Select(x => x.Kind).ToArray(), lexer.Rules.Select(x => x.TokenId).ToArray(),
             lexer.Rules.Select(x => x.Literal is null ? -1 : lexerLiteralIds[x.Literal]).ToArray(),
             lexerLiterals);
+    }
+
+    private static void VerifyProgram(
+        IReadOnlyList<int> program,
+        IReadOnlyList<int> ruleOffsets,
+        int tokenCount,
+        int ruleCount,
+        int stringCount)
+    {
+        if (ruleOffsets.Count != ruleCount || ruleOffsets.Any(offset => offset < 0 || offset >= program.Count))
+        {
+            throw new SmallLangException("generated grammar has an invalid rule offset table");
+        }
+        for (var pc = 0; pc < program.Count;)
+        {
+            var op = program[pc++];
+            switch (op)
+            {
+                case Return:
+                    break;
+                case MatchToken:
+                case LookaheadToken:
+                    RequireOperand(program, ref pc, value => value >= 0 && value < tokenCount, "token id");
+                    break;
+                case MatchKeyword:
+                    RequireOperand(program, ref pc, value => value >= 0 && value < tokenCount, "keyword token id");
+                    RequireOperand(program, ref pc, value => value >= 0 && value < stringCount, "keyword string id");
+                    break;
+                case CallRule:
+                    RequireOperand(program, ref pc, value => value >= 0 && value < ruleCount, "rule id");
+                    break;
+                case Choice:
+                case Commit:
+                case Jump:
+                    RequireOperand(program, ref pc, value => value >= 0 && value < program.Count, "instruction target");
+                    break;
+                default:
+                    throw new SmallLangException($"generated grammar has unknown opcode {op}");
+            }
+        }
+    }
+
+    private static void RequireOperand(
+        IReadOnlyList<int> program, ref int pc, Func<int, bool> predicate, string subject)
+    {
+        if (pc >= program.Count || !predicate(program[pc]))
+        {
+            throw new SmallLangException($"generated grammar has an invalid {subject}");
+        }
+        pc++;
     }
 
     private static void Emit(Node node, List<int> program)

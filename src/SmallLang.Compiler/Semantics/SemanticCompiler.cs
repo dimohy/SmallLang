@@ -3235,7 +3235,8 @@ internal sealed class SemanticCompiler
                     throw Error(target.Line, target.Column, "len does not accept arguments");
                 }
 
-                if (currentType is not (BoundType.IntSlice
+                if (currentType is not (BoundType.Text
+                    or BoundType.IntSlice
                     or BoundType.StaticIntArray
                     or BoundType.StaticTextArray
                     or BoundType.DynamicIntArray
@@ -3252,10 +3253,46 @@ internal sealed class SemanticCompiler
                 }
 
                 result = new FlowResult(
-                    currentType is BoundType.MappedBytes or BoundType.MutableMappedBytes or BoundType.Arguments
+                    currentType is BoundType.Text or BoundType.MappedBytes or BoundType.MutableMappedBytes or BoundType.Arguments
                         ? BoundType.UIntSize
                         : BoundType.Int,
                     FlowEffect.None);
+                return true;
+            case "byte" when currentType == BoundType.Text:
+                if (target.Arguments.Count != 1)
+                {
+                    throw Error(target.Line, target.Column, "Text byte expects one UIntSize index");
+                }
+                var byteIndexType = target.Arguments[0] is NumberExpression
+                    ? BoundType.UIntSize
+                    : InferExpression(target.Arguments[0], functions, bindings,
+                        allowPrintCall: false, allowReadIntCall, allowFlowBindingTarget: false);
+                if (byteIndexType != BoundType.UIntSize)
+                {
+                    throw Error(target.Arguments[0].Line, target.Arguments[0].Column,
+                        "Text byte index must be UIntSize");
+                }
+                result = new FlowResult(BoundType.UInt8, FlowEffect.None);
+                return true;
+            case "slice" when currentType == BoundType.Text:
+                if (target.Arguments.Count != 2)
+                {
+                    throw Error(target.Line, target.Column,
+                        "Text slice expects UIntSize start and byte length");
+                }
+                foreach (var argument in target.Arguments)
+                {
+                    var argumentType = argument is NumberExpression
+                        ? BoundType.UIntSize
+                        : InferExpression(argument, functions, bindings,
+                            allowPrintCall: false, allowReadIntCall, allowFlowBindingTarget: false);
+                    if (argumentType != BoundType.UIntSize)
+                    {
+                        throw Error(argument.Line, argument.Column,
+                            "Text slice start and length must be UIntSize");
+                    }
+                }
+                result = new FlowResult(BoundType.Text, FlowEffect.None);
                 return true;
             case "capacity":
                 if (target.Arguments.Count != 0)
@@ -5099,9 +5136,16 @@ internal sealed class SemanticCompiler
 
     private bool IsZeroArgumentFunctionCreationExpression(Expression expression)
     {
-        return expression is NameExpression name
-            && _boundFunctions is not null
-            && _boundFunctions.TryGetValue(name.Name, out var function)
+        if (_boundFunctions is null) return false;
+        var functionName = expression switch
+        {
+            NameExpression name => name.Name,
+            FieldAccessExpression { Source: NameExpression owner } field
+                => owner.Name + "." + field.FieldName,
+            _ => null
+        };
+        return functionName is not null
+            && _boundFunctions.TryGetValue(functionName, out var function)
             && function.InputType is null
             && IsOwnedHeapType(function.ReturnType);
     }
