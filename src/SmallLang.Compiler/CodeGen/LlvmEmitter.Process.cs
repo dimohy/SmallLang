@@ -83,4 +83,84 @@ internal sealed partial class LlvmEmitter
         return EmitEnumPhi("environment_option", function.ReturnType,
             [(some, someExit), (none, noneExit)]);
     }
+
+    private RuntimeEnum EmitRuntimeRunProcessIntrinsic(BoundFunction function, RuntimeDynamicInlineArray argv)
+    {
+        if (!_platform.SupportsChildProcesses)
+        {
+            throw new SmallLangException("child processes are unavailable on the current target");
+        }
+        if (argv.ElementType != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} expects Text argv entries");
+        }
+
+        var raw = NextTemp("process_result");
+        EmitCall(raw, "%smalllang.process_result", "smalllang_run_process",
+            $"ptr {argv.PointerName}, i64 {argv.LengthName}");
+        var exitCode = NextTemp("process_exit_code");
+        EmitAssign(exitCode, $"extractvalue %smalllang.process_result {raw}, 0");
+        var errorCode = NextTemp("process_error_code");
+        EmitAssign(errorCode, $"extractvalue %smalllang.process_result {raw}, 1");
+
+        var definition = _program.Types.GetEnum(function.ReturnType);
+        var okVariant = definition.Variants.First(variant => variant.Name == "Ok");
+        var errVariant = definition.Variants.First(variant => variant.Name == "Err");
+        var okLabel = NextLabel("process_ok");
+        var errorLabel = NextLabel("process_error");
+        var spawnLabel = NextLabel("process_spawn_error");
+        var waitLabel = NextLabel("process_wait_error");
+        var signalLabel = NextLabel("process_signal_error");
+        var endLabel = NextLabel("process_end");
+        var isOk = NextTemp("process_is_ok");
+        EmitCompare(isOk, "eq", "i32", errorCode, "0");
+        EmitConditionalBranch(isOk, okLabel, errorLabel);
+        var incoming = new List<(RuntimeValue Value, string Label)>();
+
+        EmitLabel(okLabel);
+        _currentBlockLabel = okLabel;
+        incoming.Add((EmitEnumValue(function.ReturnType, okVariant,
+            new RuntimeInt(BoundType.Int, exitCode)), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(errorLabel);
+        _currentBlockLabel = errorLabel;
+        var isSpawn = NextTemp("process_is_spawn_error");
+        EmitCompare(isSpawn, "eq", "i32", errorCode, "1");
+        EmitConditionalBranch(isSpawn, spawnLabel, waitLabel);
+
+        EmitLabel(spawnLabel);
+        _currentBlockLabel = spawnLabel;
+        incoming.Add((EmitEnumValue(function.ReturnType, errVariant,
+            EmitProcessErrorText("spawn")), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(waitLabel);
+        _currentBlockLabel = waitLabel;
+        var isWait = NextTemp("process_is_wait_error");
+        EmitCompare(isWait, "eq", "i32", errorCode, "2");
+        EmitBranch(signalLabel);
+
+        EmitLabel(signalLabel);
+        _currentBlockLabel = signalLabel;
+        var errorText = EmitProcessErrorText("signal");
+        var waitText = EmitProcessErrorText("wait");
+        var selectedText = NextTemp("process_error_text");
+        EmitAssign(selectedText, $"select i1 {isWait}, ptr {waitText.PointerName}, ptr {errorText.PointerName}");
+        var selectedLength = NextTemp("process_error_length");
+        EmitAssign(selectedLength, $"select i1 {isWait}, i64 {waitText.LengthName}, i64 {errorText.LengthName}");
+        incoming.Add((EmitEnumValue(function.ReturnType, errVariant,
+            new RuntimeText(selectedText, selectedLength)), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(endLabel);
+        _currentBlockLabel = endLabel;
+        return EmitEnumPhi("process_run_result", function.ReturnType, incoming);
+    }
+
+    private RuntimeText EmitProcessErrorText(string text)
+    {
+        var global = AddGlobalString(text);
+        return new RuntimeText(global.Name, global.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

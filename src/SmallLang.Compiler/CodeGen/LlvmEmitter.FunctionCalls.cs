@@ -595,6 +595,15 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeEnvironmentIntrinsic(function, argument);
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeRunProcess)
+        {
+            if (argument is not RuntimeDynamicInlineArray argv)
+            {
+                throw new SmallLangException($"{function.Name} expects a dynamic Text argv array");
+            }
+            return EmitRuntimeRunProcessIntrinsic(function, argv);
+        }
+
         if (function.Kind == BoundFunctionKind.RuntimeWriteScalar)
         {
             if (argument is null)

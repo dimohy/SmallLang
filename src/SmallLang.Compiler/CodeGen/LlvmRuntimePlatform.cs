@@ -47,6 +47,8 @@ internal abstract class LlvmRuntimePlatform
 
     public virtual bool SupportsEnvironment => true;
 
+    public virtual bool SupportsChildProcesses => true;
+
     public virtual void EmitExitCleanup(StringBuilder functions)
     {
     }

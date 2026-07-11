@@ -41,6 +41,7 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)");
         functions.AppendLine("declare dllimport ptr @LocalFree(ptr)");
         functions.AppendLine("declare dllimport i32 @MultiByteToWideChar(i32, i32, ptr, i32, ptr, i32)");
+        functions.AppendLine("declare dllimport i64 @_wspawnvp(i32, ptr, ptr)");
         functions.AppendLine("declare dllimport i32 @GetEnvironmentVariableW(ptr, ptr, i32)");
         functions.AppendLine("declare dllimport i32 @GetLastError()");
         functions.AppendLine("declare dllimport void @SetLastError(i32)");
@@ -363,6 +364,247 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
               %record = getelementptr %smalllang.text, ptr %records, i64 %index
               %value = load %smalllang.text, ptr %record, align 8
               ret %smalllang.text %value
+            }
+
+            define internal ptr @smalllang_quote_windows_arg(ptr %src, i32 %chars) #0 {
+            entry:
+              %chars64 = zext i32 %chars to i64
+              %double = mul i64 %chars64, 2
+              %capacity = add i64 %double, 3
+              %bytes = mul i64 %capacity, 2
+              %out = call ptr @smalllang_alloc(i64 %bytes)
+              %out_ok = icmp ne ptr %out, null
+              br i1 %out_ok, label %init, label %fail
+
+            init:
+              store i16 34, ptr %out, align 2
+              %i_slot = alloca i32, align 4
+              %o_slot = alloca i64, align 8
+              %slashes_slot = alloca i64, align 8
+              store i32 0, ptr %i_slot, align 4
+              store i64 1, ptr %o_slot, align 8
+              store i64 0, ptr %slashes_slot, align 8
+              br label %loop
+
+            loop:
+              %i = load i32, ptr %i_slot, align 4
+              %done = icmp eq i32 %i, %chars
+              br i1 %done, label %finish_prepare, label %read
+
+            read:
+              %char_ptr = getelementptr i16, ptr %src, i32 %i
+              %char = load i16, ptr %char_ptr, align 2
+              %is_slash = icmp eq i16 %char, 92
+              br i1 %is_slash, label %remember_slash, label %flush_prepare
+
+            remember_slash:
+              %slashes = load i64, ptr %slashes_slot, align 8
+              %more_slashes = add i64 %slashes, 1
+              store i64 %more_slashes, ptr %slashes_slot, align 8
+              %slash_next_i = add i32 %i, 1
+              store i32 %slash_next_i, ptr %i_slot, align 4
+              br label %loop
+
+            flush_prepare:
+              %pending = load i64, ptr %slashes_slot, align 8
+              %is_quote = icmp eq i16 %char, 34
+              %doubled_pending = mul i64 %pending, 2
+              %quote_escape = add i64 %doubled_pending, 1
+              %flush_count = select i1 %is_quote, i64 %quote_escape, i64 %pending
+              br label %flush_loop
+
+            flush_loop:
+              %flush_i = phi i64 [ 0, %flush_prepare ], [ %flush_next, %flush_body ]
+              %flush_done = icmp eq i64 %flush_i, %flush_count
+              br i1 %flush_done, label %write_char, label %flush_body
+
+            flush_body:
+              %flush_o = load i64, ptr %o_slot, align 8
+              %flush_ptr = getelementptr i16, ptr %out, i64 %flush_o
+              store i16 92, ptr %flush_ptr, align 2
+              %flush_o_next = add i64 %flush_o, 1
+              store i64 %flush_o_next, ptr %o_slot, align 8
+              %flush_next = add i64 %flush_i, 1
+              br label %flush_loop
+
+            write_char:
+              %o = load i64, ptr %o_slot, align 8
+              %out_char = getelementptr i16, ptr %out, i64 %o
+              store i16 %char, ptr %out_char, align 2
+              %o_next = add i64 %o, 1
+              store i64 %o_next, ptr %o_slot, align 8
+              store i64 0, ptr %slashes_slot, align 8
+              %next_i = add i32 %i, 1
+              store i32 %next_i, ptr %i_slot, align 4
+              br label %loop
+
+            finish_prepare:
+              %trailing = load i64, ptr %slashes_slot, align 8
+              %finish_count = mul i64 %trailing, 2
+              br label %finish_loop
+
+            finish_loop:
+              %finish_i = phi i64 [ 0, %finish_prepare ], [ %finish_next, %finish_body ]
+              %finish_done = icmp eq i64 %finish_i, %finish_count
+              br i1 %finish_done, label %close_quote, label %finish_body
+
+            finish_body:
+              %finish_o = load i64, ptr %o_slot, align 8
+              %finish_ptr = getelementptr i16, ptr %out, i64 %finish_o
+              store i16 92, ptr %finish_ptr, align 2
+              %finish_o_next = add i64 %finish_o, 1
+              store i64 %finish_o_next, ptr %o_slot, align 8
+              %finish_next = add i64 %finish_i, 1
+              br label %finish_loop
+
+            close_quote:
+              %close_o = load i64, ptr %o_slot, align 8
+              %quote_ptr = getelementptr i16, ptr %out, i64 %close_o
+              store i16 34, ptr %quote_ptr, align 2
+              %null_i = add i64 %close_o, 1
+              %null_ptr = getelementptr i16, ptr %out, i64 %null_i
+              store i16 0, ptr %null_ptr, align 2
+              ret ptr %out
+
+            fail:
+              ret ptr null
+            }
+
+            define internal %smalllang.process_result @smalllang_run_process(ptr %records, i64 %count) #0 {
+            entry:
+              %has_program = icmp ugt i64 %count, 0
+              br i1 %has_program, label %allocate, label %spawn_error
+
+            allocate:
+              %program_slot = alloca ptr, align 8
+              store ptr null, ptr %program_slot, align 8
+              %slots = add i64 %count, 1
+              %argv_bytes = mul i64 %slots, 8
+              %wide_argv = call ptr @smalllang_alloc(i64 %argv_bytes)
+              %argv_ok = icmp ne ptr %wide_argv, null
+              br i1 %argv_ok, label %convert_loop, label %spawn_error
+
+            convert_loop:
+              %i = phi i64 [ 0, %allocate ], [ %next, %store_quoted ]
+              %convert_done = icmp eq i64 %i, %count
+              br i1 %convert_done, label %terminate, label %convert_size
+
+            convert_size:
+              %record = getelementptr %smalllang.text, ptr %records, i64 %i
+              %src_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 0
+              %src = load ptr, ptr %src_slot, align 8
+              %len_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 1
+              %len64 = load i64, ptr %len_slot, align 8
+              %len_fits = icmp ule i64 %len64, 2147483647
+              br i1 %len_fits, label %convert_measure, label %convert_fail
+
+            convert_measure:
+              %len = trunc i64 %len64 to i32
+              %chars = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %src, i32 %len, ptr null, i32 0)
+              %chars_valid = icmp sgt i32 %chars, 0
+              %empty = icmp eq i32 %len, 0
+              %valid_or_empty = or i1 %chars_valid, %empty
+              br i1 %valid_or_empty, label %convert_alloc, label %convert_fail
+
+            convert_alloc:
+              %with_null = add i32 %chars, 1
+              %with_null64 = zext i32 %with_null to i64
+              %bytes = mul i64 %with_null64, 2
+              %wide = call ptr @smalllang_alloc(i64 %bytes)
+              %wide_ok = icmp ne ptr %wide, null
+              br i1 %wide_ok, label %convert_value, label %convert_fail
+
+            convert_value:
+              %written = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %src, i32 %len, ptr %wide, i32 %chars)
+              %converted = icmp eq i32 %written, %chars
+              br i1 %converted, label %convert_store, label %free_current
+
+            free_current:
+              call void @smalllang_free(ptr %wide)
+              br label %convert_fail
+
+            convert_store:
+              %wide_end = getelementptr i16, ptr %wide, i32 %chars
+              store i16 0, ptr %wide_end, align 2
+              %quoted = call ptr @smalllang_quote_windows_arg(ptr %wide, i32 %chars)
+              %quoted_ok = icmp ne ptr %quoted, null
+              br i1 %quoted_ok, label %preserve_program, label %free_current
+
+            preserve_program:
+              %is_program = icmp eq i64 %i, 0
+              br i1 %is_program, label %store_program, label %free_unquoted
+
+            store_program:
+              store ptr %wide, ptr %program_slot, align 8
+              br label %store_quoted
+
+            free_unquoted:
+              call void @smalllang_free(ptr %wide)
+              br label %store_quoted
+
+            store_quoted:
+              %argv_slot = getelementptr ptr, ptr %wide_argv, i64 %i
+              store ptr %quoted, ptr %argv_slot, align 8
+              %next = add i64 %i, 1
+              br label %convert_loop
+
+            convert_fail:
+              br label %cleanup_failure
+
+            cleanup_failure:
+              %failure_j = phi i64 [ %i, %convert_fail ], [ %failure_prev, %cleanup_failure_item ]
+              %failure_done = icmp eq i64 %failure_j, 0
+              br i1 %failure_done, label %free_argv_error, label %cleanup_failure_item
+
+            cleanup_failure_item:
+              %failure_prev = sub i64 %failure_j, 1
+              %failure_slot = getelementptr ptr, ptr %wide_argv, i64 %failure_prev
+              %failure_arg = load ptr, ptr %failure_slot, align 8
+              call void @smalllang_free(ptr %failure_arg)
+              br label %cleanup_failure
+
+            free_argv_error:
+              %failed_program = load ptr, ptr %program_slot, align 8
+              call void @smalllang_free(ptr %failed_program)
+              call void @smalllang_free(ptr %wide_argv)
+              br label %spawn_error
+
+            terminate:
+              %null_slot = getelementptr ptr, ptr %wide_argv, i64 %count
+              store ptr null, ptr %null_slot, align 8
+              %program = load ptr, ptr %program_slot, align 8
+              %spawn_result = call i64 @_wspawnvp(i32 0, ptr %program, ptr %wide_argv)
+              br label %cleanup
+
+            cleanup:
+              %j = phi i64 [ %count, %terminate ], [ %prev, %cleanup_item ]
+              %cleanup_done = icmp eq i64 %j, 0
+              br i1 %cleanup_done, label %free_argv, label %cleanup_item
+
+            cleanup_item:
+              %prev = sub i64 %j, 1
+              %old_slot = getelementptr ptr, ptr %wide_argv, i64 %prev
+              %old_arg = load ptr, ptr %old_slot, align 8
+              call void @smalllang_free(ptr %old_arg)
+              br label %cleanup
+
+            free_argv:
+              %saved_program = load ptr, ptr %program_slot, align 8
+              call void @smalllang_free(ptr %saved_program)
+              call void @smalllang_free(ptr %wide_argv)
+              %spawn_ok = icmp ne i64 %spawn_result, -1
+              br i1 %spawn_ok, label %success, label %spawn_error
+
+            success:
+              %exit_code = trunc i64 %spawn_result to i32
+              %ok0 = insertvalue %smalllang.process_result poison, i32 %exit_code, 0
+              %ok1 = insertvalue %smalllang.process_result %ok0, i32 0, 1
+              ret %smalllang.process_result %ok1
+
+            spawn_error:
+              %error0 = insertvalue %smalllang.process_result poison, i32 0, 0
+              %error1 = insertvalue %smalllang.process_result %error0, i32 1, 1
+              ret %smalllang.process_result %error1
             }
 
             define internal void @smalllang_dispose_arguments() #0 {

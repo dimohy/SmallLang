@@ -1,0 +1,31 @@
+import sys.process as process
+
+exitText code: Int -> Text => code -> when {
+    <= 0 => "exit 0"
+    else => "exit nonzero"
+}
+
+describe result: Result<Int, Text> -> Text {
+    result -> when {
+        Result<Int, Text>.Ok(code) => code -> exitText
+        Result<Int, Text>.Err(error) => error
+    }
+}
+
+main {
+    process.arguments => args
+    args -> len => count
+    count > UIntSize(1) -> if {
+        args[2] => spaced
+        args[3] => unicode
+        "child $spaced" -> println
+        "child $unicode" -> println
+    } else {
+        [args[0], "--child", "space value", "한글", ~] => childArgv
+        childArgv -> process.run -> describe => status
+        status -> println
+        ["smalllang-definitely-missing-executable", ~] => missingArgv
+        missingArgv -> process.run -> describe => missing
+        missing -> println
+    }
+}

@@ -11,6 +11,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
         var objectPath = Path.Combine(workDir, Path.GetFileNameWithoutExtension(outputPath) + ".obj");
         var importLib = CreateKernel32ImportLibrary(workDir);
         var shellImportLib = CreateShell32ImportLibrary(workDir);
+        var ucrtImportLib = CreateUcrtBaseImportLibrary(workDir);
 
         Run(toolchain.Clang,
         [
@@ -41,6 +42,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             objectPath,
             importLib,
             shellImportLib,
+            ucrtImportLib,
             "/out:" + outputPath
         ]);
     }
@@ -96,6 +98,27 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             LIBRARY shell32.dll
             EXPORTS
             CommandLineToArgvW
+            """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        Run(toolchain.LlvmLib,
+        [
+            "/nologo",
+            "/machine:x64",
+            "/def:" + defPath,
+            "/out:" + libPath
+        ]);
+
+        return libPath;
+    }
+
+    private string CreateUcrtBaseImportLibrary(string workDir)
+    {
+        var defPath = Path.Combine(workDir, "ucrtbase.def");
+        var libPath = Path.Combine(workDir, "ucrtbase.lib");
+        File.WriteAllText(defPath, """
+            LIBRARY ucrtbase.dll
+            EXPORTS
+            _wspawnvp
             """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         Run(toolchain.LlvmLib,

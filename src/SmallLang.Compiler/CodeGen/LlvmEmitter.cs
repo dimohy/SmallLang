@@ -12,7 +12,8 @@ internal sealed partial class LlvmEmitter
     private readonly LlvmRuntimePlatform _platform;
     private readonly bool _usesProcessArguments;
     private readonly bool _usesProcessEnvironment;
-    private bool UsesProcessRuntime => _usesProcessArguments || _usesProcessEnvironment;
+    private readonly bool _usesChildProcesses;
+    private bool UsesProcessRuntime => _usesProcessArguments || _usesProcessEnvironment || _usesChildProcesses;
     private readonly List<string> _globals = [];
     private readonly List<string> _functions = [];
     private readonly Dictionary<string, RuntimeValue> _locals = new(StringComparer.Ordinal);
@@ -42,7 +43,71 @@ internal sealed partial class LlvmEmitter
             || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
                 (function.Body is not null && UsesProcessEnvironment(function.Body))
                 || function.BlockBody.Any(UsesProcessEnvironment));
+        _usesChildProcesses = program.MainStatements.Any(UsesChildProcess)
+            || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
+                (function.Body is not null && UsesChildProcess(function.Body))
+                || function.BlockBody.Any(UsesChildProcess));
     }
+
+    private bool UsesChildProcess(Statement statement) => statement switch
+    {
+        BindingStatement value => UsesChildProcess(value.Value),
+        ExpressionStatement value => UsesChildProcess(value.Expression),
+        IndexAssignmentStatement value => UsesChildProcess(value.Index) || UsesChildProcess(value.Value),
+        FieldAssignmentStatement value => UsesChildProcess(value.Value),
+        BlockFunctionCallStatement value => UsesChildProcess(value.Source) || value.Body.Any(UsesChildProcess),
+        _ => false
+    };
+
+    private bool UsesChildProcess(Expression expression)
+    {
+        if (expression is CallExpression call && string.Join('.', call.Path) == "sys.process.run") return true;
+        if (expression is FlowExpression flow
+            && flow.Targets.Any(target => string.Join('.', target.Path) == "sys.process.run")) return true;
+        return expression switch
+        {
+            StringExpression value => value.Segments.OfType<InterpolationSegment>().Any(x => UsesChildProcess(x.Expression)),
+            AddExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            SubtractExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            MultiplyExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            DivideExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            ModuloExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            NegateExpression value => UsesChildProcess(value.Value),
+            CompareExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            AndExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            OrExpression value => UsesChildProcess(value.Left) || UsesChildProcess(value.Right),
+            NotExpression value => UsesChildProcess(value.Value),
+            FlowExpression value => UsesChildProcess(value.Source)
+                || value.Targets.SelectMany(target => target.Arguments).Any(UsesChildProcess),
+            CallExpression value => value.Arguments.Any(UsesChildProcess),
+            RangeExpression value => UsesChildProcess(value.Start) || UsesChildProcess(value.End),
+            ArrayLiteralExpression value => value.Elements.Any(UsesChildProcess),
+            ArrayRepeatExpression value => UsesChildProcess(value.Value),
+            DictionaryLiteralExpression value => value.Entries.Any(x => UsesChildProcess(x.Key) || UsesChildProcess(x.Value)),
+            IndexExpression value => UsesChildProcess(value.Source) || UsesChildProcess(value.Index),
+            StructLiteralExpression value => value.Fields.Any(x => UsesChildProcess(x.Value)),
+            BoxExpression value => UsesChildProcess(value.Value),
+            TryExpression value => UsesChildProcess(value.Value),
+            FieldAccessExpression value => UsesChildProcess(value.Source),
+            MapExpression value => UsesChildProcess(value.Path)
+                || (value.Offset is not null && UsesChildProcess(value.Offset))
+                || (value.Length is not null && UsesChildProcess(value.Length))
+                || (value.FileSize is not null && UsesChildProcess(value.FileSize)),
+            IfExpression value => UsesChildProcess(value.Condition) || UsesChildProcess(value.Then)
+                || (value.Else is not null && UsesChildProcess(value.Else)),
+            WhenExpression value => (value.Subject is not null && UsesChildProcess(value.Subject))
+                || value.Arms.Any(x => UsesChildProcess(x.Condition) || UsesChildProcess(x.Body))
+                || UsesChildProcess(value.Else),
+            EnumMatchExpression value => UsesChildProcess(value.Subject)
+                || value.Arms.Any(x => UsesChildProcess(x.Body))
+                || (value.Else is not null && UsesChildProcess(value.Else)),
+            FoldExpression value => UsesChildProcess(value.Source) || UsesChildProcess(value.Initial) || UsesChildProcess(value.Body),
+            _ => false
+        };
+    }
+
+    private bool UsesChildProcess(BlockBody body) => body.Statements.Any(UsesChildProcess)
+        || (body.Value is not null && UsesChildProcess(body.Value));
 
     private bool UsesProcessArguments(Statement statement) => statement switch
     {
@@ -188,6 +253,10 @@ internal sealed partial class LlvmEmitter
 
     public string Emit()
     {
+        if (_usesChildProcesses && !_platform.SupportsChildProcesses)
+        {
+            throw new SmallLangException("child processes are unavailable on the current target");
+        }
         var header = $$"""
             target triple = "{{_platform.TargetTriple}}"
 
@@ -201,6 +270,7 @@ internal sealed partial class LlvmEmitter
             %smalllang.file_count_result = type { i64, i32 }
             %smalllang.mapped_bytes = type { ptr, i64, ptr, i64, i1 }
             %smalllang.environment_result = type { ptr, i64, i1, i1 }
+            %smalllang.process_result = type { i32, i32 }
 
             """;
         header += EmitStructTypeDefinitions();

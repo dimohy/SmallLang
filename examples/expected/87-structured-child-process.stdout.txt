@@ -1,0 +1,4 @@
+child space value
+child 한글
+exit 0
+spawn

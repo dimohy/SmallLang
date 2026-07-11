@@ -31,6 +31,9 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare i32 @msync(ptr, i64, i32)");
         functions.AppendLine("declare i32 @clock_gettime(i32, ptr)");
         functions.AppendLine("declare ptr @getenv(ptr)");
+        functions.AppendLine("declare i32 @posix_spawnp(ptr, ptr, ptr, ptr, ptr, ptr)");
+        functions.AppendLine("declare i32 @waitpid(i32, ptr, i32)");
+        functions.AppendLine("@environ = external global ptr");
     }
 
     public override void EmitMemoryDeclarations(StringBuilder functions)
@@ -115,6 +118,124 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               %r0 = insertvalue %smalllang.text poison, ptr %value, 0
               %r1 = insertvalue %smalllang.text %r0, i64 %i, 1
               ret %smalllang.text %r1
+            }
+
+            define internal %smalllang.process_result @smalllang_run_process(ptr %records, i64 %count) #0 {
+            entry:
+              %has_program = icmp ugt i64 %count, 0
+              br i1 %has_program, label %allocate, label %spawn_error
+
+            allocate:
+              %slots = add i64 %count, 1
+              %argv_bytes = mul i64 %slots, 8
+              %argv = call ptr @smalllang_alloc(i64 %argv_bytes)
+              %argv_ok = icmp ne ptr %argv, null
+              br i1 %argv_ok, label %copy_loop, label %spawn_error
+
+            copy_loop:
+              %i = phi i64 [ 0, %allocate ], [ %next, %copy_store ]
+              %copy_done = icmp eq i64 %i, %count
+              br i1 %copy_done, label %terminate, label %copy_alloc
+
+            copy_alloc:
+              %record = getelementptr %smalllang.text, ptr %records, i64 %i
+              %src_ptr_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 0
+              %src = load ptr, ptr %src_ptr_slot, align 8
+              %src_len_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 1
+              %len = load i64, ptr %src_len_slot, align 8
+              %bytes = add i64 %len, 1
+              %arg = call ptr @smalllang_alloc(i64 %bytes)
+              %arg_ok = icmp ne ptr %arg, null
+              br i1 %arg_ok, label %copy_store, label %copy_fail
+
+            copy_store:
+              call void @llvm.memcpy.p0.p0.i64(ptr %arg, ptr %src, i64 %len, i1 false)
+              %end = getelementptr i8, ptr %arg, i64 %len
+              store i8 0, ptr %end, align 1
+              %slot = getelementptr ptr, ptr %argv, i64 %i
+              store ptr %arg, ptr %slot, align 8
+              %next = add i64 %i, 1
+              br label %copy_loop
+
+            copy_fail:
+              br label %cleanup_failure
+
+            cleanup_failure:
+              %failure_j = phi i64 [ %i, %copy_fail ], [ %failure_prev, %cleanup_failure_item ]
+              %failure_done = icmp eq i64 %failure_j, 0
+              br i1 %failure_done, label %free_argv_error, label %cleanup_failure_item
+
+            cleanup_failure_item:
+              %failure_prev = sub i64 %failure_j, 1
+              %failure_slot = getelementptr ptr, ptr %argv, i64 %failure_prev
+              %failure_arg = load ptr, ptr %failure_slot, align 8
+              call void @smalllang_free(ptr %failure_arg)
+              br label %cleanup_failure
+
+            free_argv_error:
+              call void @smalllang_free(ptr %argv)
+              br label %spawn_error
+
+            terminate:
+              %null_slot = getelementptr ptr, ptr %argv, i64 %count
+              store ptr null, ptr %null_slot, align 8
+              %program = load ptr, ptr %argv, align 8
+              %pid_slot = alloca i32, align 4
+              %env = load ptr, ptr @environ, align 8
+              %spawn_code = call i32 @posix_spawnp(ptr %pid_slot, ptr %program, ptr null, ptr null, ptr %argv, ptr %env)
+              br label %cleanup
+
+            cleanup:
+              %j = phi i64 [ %count, %terminate ], [ %prev, %cleanup_item ]
+              %cleanup_done = icmp eq i64 %j, 0
+              br i1 %cleanup_done, label %free_argv, label %cleanup_item
+
+            cleanup_item:
+              %prev = sub i64 %j, 1
+              %old_slot = getelementptr ptr, ptr %argv, i64 %prev
+              %old_arg = load ptr, ptr %old_slot, align 8
+              call void @smalllang_free(ptr %old_arg)
+              br label %cleanup
+
+            free_argv:
+              call void @smalllang_free(ptr %argv)
+              %spawn_ok = icmp eq i32 %spawn_code, 0
+              br i1 %spawn_ok, label %wait, label %spawn_error
+
+            wait:
+              %pid = load i32, ptr %pid_slot, align 4
+              %status_slot = alloca i32, align 4
+              %waited = call i32 @waitpid(i32 %pid, ptr %status_slot, i32 0)
+              %wait_ok = icmp eq i32 %waited, %pid
+              br i1 %wait_ok, label %decode, label %wait_error
+
+            decode:
+              %status = load i32, ptr %status_slot, align 4
+              %term_bits = and i32 %status, 127
+              %exited = icmp eq i32 %term_bits, 0
+              br i1 %exited, label %success, label %signal_error
+
+            success:
+              %shifted = lshr i32 %status, 8
+              %exit_code = and i32 %shifted, 255
+              %ok0 = insertvalue %smalllang.process_result poison, i32 %exit_code, 0
+              %ok1 = insertvalue %smalllang.process_result %ok0, i32 0, 1
+              ret %smalllang.process_result %ok1
+
+            spawn_error:
+              %spawn0 = insertvalue %smalllang.process_result poison, i32 0, 0
+              %spawn1 = insertvalue %smalllang.process_result %spawn0, i32 1, 1
+              ret %smalllang.process_result %spawn1
+
+            wait_error:
+              %wait0 = insertvalue %smalllang.process_result poison, i32 0, 0
+              %wait1 = insertvalue %smalllang.process_result %wait0, i32 2, 1
+              ret %smalllang.process_result %wait1
+
+            signal_error:
+              %signal0 = insertvalue %smalllang.process_result poison, i32 0, 0
+              %signal1 = insertvalue %smalllang.process_result %signal0, i32 3, 1
+              ret %smalllang.process_result %signal1
             }
 
             """);

@@ -760,6 +760,10 @@ internal sealed class SemanticCompiler
                 function,
                 inputType,
                 returnType),
+            "sys.process.run" => RequireProcessRunIntrinsicSignature(
+                function,
+                inputType,
+                returnType),
             "sys.file.write" => RequireGenericScalarWriteSignature(
                 function,
                 inputType,
@@ -797,6 +801,24 @@ internal sealed class SemanticCompiler
                 $"intrinsic '{function.Name}' must have signature Text -> Option<Text>");
         }
         return BoundFunctionKind.RuntimeEnvironment;
+    }
+
+    private BoundFunctionKind RequireProcessRunIntrinsicSignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (inputType is not { } argvType
+            || !_types.IsDynamicArray(argvType)
+            || _types.GetDynamicArray(argvType).ElementType != BoundType.Text
+            || !_types.TryGetResultTypes(returnType, out var resultTypes)
+            || resultTypes.Ok != BoundType.Int
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw Error(function.Line, function.Column,
+                $"intrinsic '{function.Name}' must have signature [Text; ~] -> Result<Int, Text>");
+        }
+        return BoundFunctionKind.RuntimeRunProcess;
     }
 
     private BoundFunctionKind RequireGenericScalarWriteSignature(
@@ -3047,6 +3069,10 @@ internal sealed class SemanticCompiler
                         }
                         currentType = function.ReturnType;
                         continue;
+                    case BoundFunctionKind.RuntimeRunProcess:
+                        EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
+                        currentType = function.ReturnType;
+                        continue;
                     case BoundFunctionKind.User:
                         if (function.GenericParameterName is not null
                             && function.SpecializedType is null
@@ -3592,6 +3618,16 @@ internal sealed class SemanticCompiler
                     throw Error(expression.Arguments[0].Line, expression.Arguments[0].Column,
                         $"{path} expects Text but received {FormatType(environmentNameType)}");
                 }
+                return function.ReturnType;
+            case BoundFunctionKind.RuntimeRunProcess:
+                if (expression.Arguments.Count != 1)
+                {
+                    throw Error(expression.Line, expression.Column, $"{path} expects one dynamic Text argv array");
+                }
+                var argvType = InferExpression(
+                    expression.Arguments[0], functions, bindings,
+                    allowPrintCall: false, allowReadIntCall, allowFlowBindingTarget: false);
+                EnsureRuntimeInput(argvType, function, expression.Arguments[0].Line, expression.Arguments[0].Column, path);
                 return function.ReturnType;
             case BoundFunctionKind.RuntimeSeedRandom:
             case BoundFunctionKind.RuntimeRandomBelow:

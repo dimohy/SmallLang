@@ -47,7 +47,7 @@ The design deliberately combines a small set of compatible ideas:
   collections and cautions that argument zero is not a trusted executable path;
   Zig passes explicit process initialization state to `main`; Swift and Mojo
   keep child execution in a structured process API. SL follows those boundaries
-  with a read-only `Arguments` view now and an argv-based child-process API next.
+  with a read-only `Arguments` view and a shell-free argv-based child-process API.
   See Rust [`args_os`](https://doc.rust-lang.org/std/env/fn.args_os.html),
   Swift [`Process`](https://developer.apple.com/documentation/foundation/process),
   and Mojo [`subprocess`](https://docs.modular.com/mojo/std/subprocess/).
@@ -70,12 +70,12 @@ not lines of code.
 | Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
-| Compiler-construction primitives | 12 | 8 | 3 | 1 | 9.5 |
+| Compiler-construction primitives | 12 | 9 | 3 | 0 | 10.5 |
 | Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **39** | **13** | **8** | **45.5 / 60** |
+| **Total** | **60** | **40** | **13** | **7** | **46.5 / 60** |
 
-Current count-based progress: **75.8% (45.5 of 60 equivalent gates)**.
-There are **14.5 equivalent gates remaining**. Because the missing compiler
+Current count-based progress: **77.5% (46.5 of 60 equivalent gates)**.
+There are **13.5 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -125,9 +125,9 @@ estimate.
   enforced by executable top-level statements rather than a module manifest.
 - Missing (2): package manifest/dependency graph; module/interface cache.
 
-### Compiler-construction primitives — 9.5 / 12
+### Compiler-construction primitives — 10.5 / 12
 
-- Complete (8): Text values, validated UTF-8 iteration as fixed-width Unicode
+- Complete (9): Text values, validated UTF-8 iteration as fixed-width Unicode
   `CodePoint` scalar values, deterministic native file I/O wrappers needed by
   the existing demos, type-preserving array/dictionary iteration, and owned
   growable `UInt8` byte buffers with typed push/index/iteration/drop, plus typed
@@ -137,11 +137,12 @@ estimate.
   mapping adds affine bounded `UInt8` views, 64-bit file offsets/sizes,
   target-sized view lengths/indices, writeback, and deterministic unmapping.
   Native host context includes lossless process arguments and `Option<Text>`
-  environment lookup with process-lifetime UTF-8 views.
+  environment lookup with process-lifetime UTF-8 views. Shell-free structured
+  child execution accepts an owned Text argv array and returns a typed exit or
+  launch/wait/signal error on Windows and Linux.
 - Partial (3): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
   and user-value payloads plus function contracts; string processing is
   output-oriented; diagnostics have no reusable source-span type.
-- Missing (1): structured child-process execution.
 
 ### Standard library and tooling — 3.5 / 8
 

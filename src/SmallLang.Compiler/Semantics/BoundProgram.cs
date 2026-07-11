@@ -87,6 +87,7 @@ internal enum BoundFunctionKind
     RuntimeNowMillis,
     RuntimeArguments,
     RuntimeEnvironment,
+    RuntimeRunProcess,
     RuntimeWriteScalar,
     RuntimeReadScalar
 }

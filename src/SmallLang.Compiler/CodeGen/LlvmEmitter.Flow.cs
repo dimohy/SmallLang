@@ -17,6 +17,12 @@ internal sealed partial class LlvmEmitter
 
     private RuntimeFlowResult EmitFlowExpression(FlowExpression expression, string ok, bool allowBindingTarget)
     {
+        if (!_platform.SupportsChildProcesses
+            && expression.Targets.Any(target => TryResolveFunction(target.Path, out var function)
+                && function.Kind == BoundFunctionKind.RuntimeRunProcess))
+        {
+            throw new SmallLangException("child processes are unavailable on the current target");
+        }
         if (expression.Targets.Count == 1
             && expression.Targets[0].Arguments.Count == 0
             && TryResolveFunction(expression.Targets[0].Path, out var directFunction)
@@ -144,6 +150,11 @@ internal sealed partial class LlvmEmitter
                     case BoundFunctionKind.RuntimeCloseIntWriter:
                     case BoundFunctionKind.RuntimeCloseIntReader:
                         throw new SmallLangException($"{path} does not accept a flowed input");
+                    case BoundFunctionKind.RuntimeRunProcess:
+                        current = current is RuntimeDynamicInlineArray argv
+                            ? EmitRuntimeRunProcessIntrinsic(function, argv)
+                            : throw new SmallLangException($"{path} expects a dynamic Text argv array");
+                        continue;
                     case BoundFunctionKind.User:
                         current = EmitFlowFunctionCall(function, current, expression.Source);
                         continue;

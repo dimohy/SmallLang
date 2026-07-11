@@ -71,7 +71,7 @@ ownership behavior is part of the feature.
   reset, checked byte access, move/mut ABI, and one-shot drop
 - [ ] Reusable byte-offset source spans and diagnostics
 - [x] Command-line argument and environment access
-- [ ] Child-process execution
+- [x] Shell-free argv-based child-process execution with typed status/errors
 
 ## Design Direction
 

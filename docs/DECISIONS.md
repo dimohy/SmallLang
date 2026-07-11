@@ -3057,4 +3057,28 @@ Windows and Linux readers consume the exact scalar byte width sequentially.
 Example 86 covers a value, Bool, EOF, truncation, and invalid Bool encoding;
 diagnostics reject `Text` and empty parentheses.
 
+## D102 - Child Execution Is Shell-Free And Argv-Structured
+
+Status: implemented
+Date: 2026-07-12
+
+`sys.process.run` accepts `[Text; ~]` whose first element is the executable and
+whose remaining elements are literal arguments. It returns
+`Result<Int, Text>` with a normal exit code or stable `"spawn"`, `"wait"`, and
+`"signal"` errors. A single command string was rejected because it conflates
+program lookup, shell parsing, quoting, and user data, creating injection and
+cross-platform incompatibility.
+
+This follows Rust `Command`, Swift `Process`, and Mojo `Process.run`: configure
+the executable and argv separately, then explicitly wait for status. Windows
+uses strict UTF-8-to-UTF-16 conversion and complete Microsoft argv quoting,
+including quote/backslash runs; Linux uses `posix_spawnp` and `waitpid` with
+temporary zero-terminated storage. All temporary argv allocations are freed on
+success and failure paths. Browser wasm has a targeted capability diagnostic.
+
+Example 87 launches its own executable and verifies an argument containing a
+space, Hangul, exit code zero, and a missing-program spawn error on Windows and
+Linux. Two diagnostics cover the wasm boundary and non-Text argv. The complete
+suite has 151 passing examples/diagnostics with zero build warnings/errors.
+
 

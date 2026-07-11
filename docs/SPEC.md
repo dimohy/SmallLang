@@ -1068,6 +1068,32 @@ Lookup allocation or encoding failure traps rather than being reported as
 `None`; `None` means only that the variable is absent. Browser wasm rejects
 environment lookup until a host capability is explicitly supplied.
 
+## Structured Child Processes
+
+`sys.process.run` executes one program directly without invoking a shell:
+
+```smalllang
+import sys.process as process
+
+["clang", "module.ll", "-o", "module.exe", ~] => argv
+argv -> process.run => status
+```
+
+Its signature is `[Text; ~] -> Result<Int, Text>`. The first item is the
+program path or search name and every remaining item is one literal argv entry;
+spaces, Unicode, quotes, and backslashes are not reparsed as shell syntax.
+`Ok(exitCode)` represents normal termination. `Err("spawn")`, `Err("wait")`,
+and `Err("signal")` distinguish host launch failure, wait failure, and POSIX
+signal termination. The argv owner remains valid and is dropped normally after
+the call.
+
+Windows strictly converts UTF-8 entries to UTF-16, applies the Microsoft argv
+quoting rules, and waits through `_wspawnvp`. Linux creates temporary
+zero-terminated argv storage, calls `posix_spawnp`, waits with `waitpid`, and
+releases every temporary allocation. Browser wasm rejects the capability until
+a host process interface is supplied. Example 87 verifies self-launch, spaces,
+Hangul, exit status, and a missing executable on Windows and Linux.
+
 ## Generic Binary Scalar I/O
 
 `sys.file` provides a generic writer alongside the legacy sorted-Int64 demo
