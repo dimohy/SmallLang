@@ -1,0 +1,5 @@
+%smalllang.struct.1024 = type { i32, i32 }
+define internal i32 @smalllang_fn_advance(i32 %it)
+define internal i32 @smalllang_fn_remaining(i32 %it)
+sext i32
+zext i32

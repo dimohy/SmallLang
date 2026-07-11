@@ -17,8 +17,8 @@ The design deliberately combines a small set of compatible ideas:
   dispatch by default. See the official
   [trait reference](https://doc.rust-lang.org/reference/items/traits.html) and
   [associated items](https://doc.rust-lang.org/stable/reference/items/associated-items.html).
-- Mojo: the same visible `[]` surface for compile-time type and value
-  parameters, with specialization at use sites. See
+- Mojo: compile-time type and value parameterization with specialization at use
+  sites; SL uses angle brackets to keep this separate from arrays. See
   [generics](https://docs.modular.com/mojo/manual/generics/) and
   [parameterization](https://docs.modular.com/mojo/manual/parameters/).
 - Zig: an explicit root-module dependency graph and declaration discovery from
@@ -44,15 +44,15 @@ not lines of code.
 | Area | Gates | Complete | Partial | Missing | Score |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Core syntax and control flow | 10 | 8 | 2 | 0 | 9.0 |
-| Types, traits, and generics | 12 | 9 | 2 | 1 | 10.0 |
+| Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
 | Compiler-construction primitives | 12 | 5 | 3 | 4 | 6.5 |
 | Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **35** | **14** | **11** | **42.0 / 60** |
+| **Total** | **60** | **36** | **13** | **11** | **42.5 / 60** |
 
-Current count-based progress: **70.0% (42.0 of 60 equivalent gates)**.
-There are **18 equivalent gates remaining**. Because the missing compiler
+Current count-based progress: **70.8% (42.5 of 60 equivalent gates)**.
+There are **17.5 equivalent gates remaining**. Because the missing compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -65,18 +65,19 @@ estimate.
 - Partial (2): general multi-parameter functions; structured early exit with
   `return`/`break`/`continue` across ownership scopes.
 
-### Types, traits, and generics — 10.0 / 12
+### Types, traits, and generics — 10.5 / 12
 
-- Complete (9): nominal structs, payload enums, exhaustive matching, impl
+- Complete (10): nominal structs, payload enums, exhaustive matching, impl
   methods, nominal traits/static dispatch, checked type/value specialization,
   associated types with equality constraints, two-parameter generic inference,
   standard `Option<T>`/`Result<T, E>` tagged values, fixed-width signed,
   unsigned, and IEEE-754 scalar layouts with stable `Int32`/`Float32` defaults
-  plus `Long`/`Double` 64-bit aliases.
-- Partial (2): arrays and dictionaries preserve scalar/user-value layouts and
-  recursively drop owned elements, and dictionary function contracts preserve
-  concrete K/V types; dynamic-array function contracts preserve element types.
-  Owned-element move extraction, fixed-array generic contracts, general
+  plus `Long`/`Double` 64-bit aliases and target-ABI `Size`/`UIntSize`; arrays
+  and dictionaries preserve scalar/user-value layouts and recursively drop
+  owned elements.
+- Partial (1): dictionary function contracts preserve concrete K/V types and
+  dynamic-array function contracts preserve element types. Owned-element move
+  extraction, fixed-array generic contracts, general
   two-operand equality methods, and owned nominal dictionary keys remain.
 - Missing (1): explicit `dyn Trait`.
 

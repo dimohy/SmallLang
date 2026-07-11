@@ -349,7 +349,7 @@ internal sealed partial class LlvmEmitter
         }
     }
 
-    private static (BigInteger Minimum, BigInteger Maximum) IntegerRange(BoundType type)
+    private (BigInteger Minimum, BigInteger Maximum) IntegerRange(BoundType type)
     {
         var bits = NumericBitWidth(type);
         return IsSignedIntegerType(type)

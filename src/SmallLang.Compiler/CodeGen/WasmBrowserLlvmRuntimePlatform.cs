@@ -8,6 +8,8 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
 
     public override string EntryPointName => "smalllang_start";
 
+    public override int PointerBitWidth => 32;
+
     public override bool SupportsHeapAllocation => false;
 
     public override void EmitExternalDeclarations(StringBuilder functions)

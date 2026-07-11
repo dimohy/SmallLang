@@ -62,6 +62,7 @@ foreach (var expectedFile in expectedFiles)
     var outputPath = Path.Combine(artifactsDir, name + ".exe");
     var llvmContainsPath = Path.Combine(expectedDir, name + ".llvm.contains.txt");
     var llvmNotContainsPath = Path.Combine(expectedDir, name + ".llvm.not-contains.txt");
+    var wasmLlvmContainsPath = Path.Combine(expectedDir, name + ".wasm32.llvm.contains.txt");
     var sourcesPath = Path.Combine(expectedDir, name + ".sources.txt");
     var verifyLlvm = File.Exists(llvmContainsPath) || File.Exists(llvmNotContainsPath);
 
@@ -124,6 +125,35 @@ foreach (var expectedFile in expectedFiles)
         continue;
     }
 
+    if (File.Exists(wasmLlvmContainsPath))
+    {
+        var wasmOutputPath = Path.Combine(artifactsDir, name + ".wasm");
+        var wasmArguments = new List<string>
+        {
+            compilerDll, "build", sourcePath,
+            "-o", wasmOutputPath,
+            "--target", "wasm32-browser",
+            "--llvm", llvmDir,
+            "--keep-temps"
+        };
+        var wasmBuild = Run("dotnet", wasmArguments, input: null, repoRoot);
+        var wasmLlvmError = string.Empty;
+        if (wasmBuild.ExitCode != 0
+            || !VerifyLlvmAssertions(
+                Path.ChangeExtension(wasmOutputPath, ".ll"),
+                wasmLlvmContainsPath,
+                Path.Combine(expectedDir, name + ".wasm32.llvm.not-contains.txt"),
+                out wasmLlvmError))
+        {
+            Console.Error.WriteLine($"FAIL {name}: wasm32 LLVM verification failed");
+            Console.Error.WriteLine(wasmBuild.Stdout);
+            Console.Error.WriteLine(wasmBuild.Stderr);
+            Console.Error.WriteLine(wasmLlvmError);
+            failures++;
+            continue;
+        }
+    }
+
     var stdin = File.Exists(stdinPath)
         ? File.ReadAllText(stdinPath, Encoding.UTF8)
         : null;
@@ -162,6 +192,9 @@ foreach (var sourcePath in diagnosticFiles)
     var name = Path.GetFileNameWithoutExtension(sourcePath);
     var expectedPath = Path.Combine(diagnosticDir, name + ".stderr.contains.txt");
     var sourcesPath = Path.Combine(diagnosticDir, name + ".sources.txt");
+    var diagnosticTarget = name.Contains("-wasm32-", StringComparison.Ordinal)
+        ? "wasm32-browser"
+        : "windows-x64";
     if (!File.Exists(expectedPath))
     {
         Console.Error.WriteLine($"FAIL diagnostic/{name}: expected diagnostic file not found");
@@ -182,7 +215,7 @@ foreach (var sourcePath in diagnosticFiles)
     }
     diagnosticArguments.AddRange([
         "-o", Path.Combine(artifactsDir, "diagnostic-" + name + ".exe"),
-        "--target", "windows-x64",
+        "--target", diagnosticTarget,
         "--llvm", llvmDir
     ]);
     var build = Run(

@@ -234,6 +234,7 @@ internal sealed partial class LlvmEmitter
             BoundType.UInt32 => "i32",
             BoundType.Int64 => "i64",
             BoundType.UInt64 => "i64",
+            BoundType.Size or BoundType.UIntSize => $"i{_platform.PointerBitWidth}",
             BoundType.Float32 => "float",
             BoundType.Float64 => "double",
             BoundType.Bool => "i1",
@@ -246,21 +247,23 @@ internal sealed partial class LlvmEmitter
 
     private static bool IsIntegerType(BoundType type) => type is
         BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64
-        or BoundType.UInt8 or BoundType.UInt16 or BoundType.UInt32 or BoundType.UInt64;
+        or BoundType.UInt8 or BoundType.UInt16 or BoundType.UInt32 or BoundType.UInt64
+        or BoundType.Size or BoundType.UIntSize;
 
     private static bool IsSignedIntegerType(BoundType type) => type is
-        BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64;
+        BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64 or BoundType.Size;
 
     private static bool IsFloatType(BoundType type) => type is BoundType.Float32 or BoundType.Float64;
 
     private static bool IsNumericType(BoundType type) => IsIntegerType(type) || IsFloatType(type);
 
-    private static int NumericBitWidth(BoundType type) => type switch
+    private int NumericBitWidth(BoundType type) => type switch
     {
         BoundType.Int8 or BoundType.UInt8 => 8,
         BoundType.Int16 or BoundType.UInt16 => 16,
         BoundType.Int or BoundType.UInt32 or BoundType.Float32 => 32,
         BoundType.Int64 or BoundType.UInt64 or BoundType.Float64 => 64,
+        BoundType.Size or BoundType.UIntSize => _platform.PointerBitWidth,
         _ => throw new SmallLangException($"type {type} is not numeric")
     };
 

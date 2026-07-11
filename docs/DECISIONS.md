@@ -2868,4 +2868,23 @@ owner, and enum construction consumes a named owned payload so exactly one final
 drop obligation remains. Applying `?` to a named non-move owned Result remains a
 compile-time error.
 
+## D094 - Target-ABI Size Integers
+
+Status: implemented
+Date: 2026-07-12
+
+`Size` and `UIntSize` are distinct integer types whose representation follows
+the target pointer width. `Size` is signed so pointer differences and relative
+offsets can be negative; `UIntSize` is unsigned for allocation sizes,
+capacities, and non-negative native counts. They are not aliases of `Int`:
+`Int` remains the portable `Int32` default on x64 and wasm32.
+
+The selected compilation target is passed into semantic analysis before type
+layout is calculated. Consequently literal bounds, checked conversions,
+struct/enum/container layout, function ABI, arithmetic, comparison, hashing,
+and interpolation all agree on one width. LLVM lowers both types to `i64` on
+Windows/Linux x64 and `i32` on wasm32 while retaining signedness in operations
+and extensions. Example 79 verifies x64 execution and generated LLVM for both
+widths.
+
 

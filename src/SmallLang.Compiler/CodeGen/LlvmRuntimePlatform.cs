@@ -9,6 +9,8 @@ internal abstract class LlvmRuntimePlatform
 
     public abstract string EntryPointName { get; }
 
+    public virtual int PointerBitWidth => 64;
+
     public virtual void EmitGlobals(StringBuilder globals)
     {
     }

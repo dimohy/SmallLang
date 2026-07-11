@@ -17,10 +17,12 @@ internal sealed class SemanticCompiler
     private string? _currentTypeScopeName;
     private BoundType? _currentFunctionReturnType;
     private string? _currentMoveInputName;
+    private readonly int _pointerBitWidth;
 
-    public SemanticCompiler(SmallLangProgram program)
+    public SemanticCompiler(SmallLangProgram program, int pointerBitWidth)
     {
         _program = program;
+        _pointerBitWidth = pointerBitWidth;
         _types = BuildTypeDefinitions(program.Structs, program.Enums);
         _traits = BindTraits(program.Traits);
     }
@@ -3592,6 +3594,7 @@ internal sealed class SemanticCompiler
                 BoundType.Int8 or BoundType.UInt8 => 8,
                 BoundType.Int16 or BoundType.UInt16 => 16,
                 BoundType.Int or BoundType.UInt32 => 32,
+                BoundType.Size or BoundType.UIntSize => _pointerBitWidth,
                 _ => 64
             };
             var signed = IsSignedIntegerType(targetType);
@@ -3614,10 +3617,11 @@ internal sealed class SemanticCompiler
 
     private static bool IsIntegerType(BoundType type) => type is
         BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64
-        or BoundType.UInt8 or BoundType.UInt16 or BoundType.UInt32 or BoundType.UInt64;
+        or BoundType.UInt8 or BoundType.UInt16 or BoundType.UInt32 or BoundType.UInt64
+        or BoundType.Size or BoundType.UIntSize;
 
     private static bool IsSignedIntegerType(BoundType type) => type is
-        BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64;
+        BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64 or BoundType.Size;
 
     private static bool IsFloatType(BoundType type) => type is BoundType.Float32 or BoundType.Float64;
 
@@ -4042,6 +4046,8 @@ internal sealed class SemanticCompiler
             ["UInt16"] = BoundType.UInt16,
             ["UInt32"] = BoundType.UInt32,
             ["UInt64"] = BoundType.UInt64,
+            ["Size"] = BoundType.Size,
+            ["UIntSize"] = BoundType.UIntSize,
             ["Float"] = BoundType.Float32,
             ["Float32"] = BoundType.Float32,
             ["Float64"] = BoundType.Float64,
@@ -4238,7 +4244,7 @@ internal sealed class SemanticCompiler
             };
         }
 
-        return new TypeDefinitionTable(names, structs, enums, boxes);
+        return new TypeDefinitionTable(names, structs, enums, boxes, _pointerBitWidth / 8);
     }
 
     private void ValidateAcyclicValueTypes(
@@ -4349,6 +4355,7 @@ internal sealed class SemanticCompiler
             TypeId.Int16 or TypeId.UInt16 => 2,
             TypeId.Int or TypeId.UInt32 or TypeId.Float32 => 4,
             TypeId.Int64 or TypeId.UInt64 or TypeId.Float64 => 8,
+            TypeId.Size or TypeId.UIntSize => _pointerBitWidth / 8,
             TypeId.Text => 16,
             _ => throw new InvalidOperationException($"type {type} has no inline size")
         };
@@ -4518,6 +4525,8 @@ internal sealed class SemanticCompiler
             BoundType.UInt16 => "UInt16",
             BoundType.UInt32 => "UInt32",
             BoundType.UInt64 => "UInt64",
+            BoundType.Size => "Size",
+            BoundType.UIntSize => "UIntSize",
             BoundType.Float32 => "Float",
             BoundType.Float64 => "Double",
             BoundType.Bool => "Bool",

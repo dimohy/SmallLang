@@ -29,7 +29,7 @@ ownership behavior is part of the feature.
 - [x] Fixed-width `Int8/16/32/64`, `UInt8/16/32/64`, and `Float32/64` primitives
 - [x] Embedded-friendly `Int = Int32`, `Long = Int64`, `Float = Float32`, and
   `Double = Float64` source aliases
-- [ ] Target-pointer-width `Size` and `UIntSize` ABI types
+- [x] Target-pointer-width `Size` and `UIntSize` ABI types
 - [x] Explicit checked numeric conversions and same-type arithmetic
 - [x] Nominal `struct` value types with exact field layout
 - [x] Complete field initialization and direct field access

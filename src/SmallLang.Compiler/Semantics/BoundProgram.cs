@@ -100,6 +100,8 @@ internal enum TypeId
     UInt16,
     UInt32,
     UInt64,
+    Size,
+    UIntSize,
     Float32,
     Float64,
     IntSlice,
@@ -186,17 +188,20 @@ internal sealed class TypeDefinitionTable
     private readonly Dictionary<TypeId, TypeId> _optionValues = [];
     private readonly Dictionary<TypeId, (TypeId Ok, TypeId Error)> _resultTypes = [];
     private int _nextParametricTypeId;
+    private readonly int _pointerSize;
 
     public TypeDefinitionTable(
         IReadOnlyDictionary<string, TypeId> names,
         IReadOnlyDictionary<TypeId, BoundStructDefinition> structs,
         IReadOnlyDictionary<TypeId, BoundEnumDefinition> enums,
-        IReadOnlyDictionary<TypeId, BoundBoxDefinition> boxes)
+        IReadOnlyDictionary<TypeId, BoundBoxDefinition> boxes,
+        int pointerSize)
     {
         _names = new Dictionary<string, TypeId>(names, StringComparer.Ordinal);
         _structs = new Dictionary<TypeId, BoundStructDefinition>(structs);
         _enums = new Dictionary<TypeId, BoundEnumDefinition>(enums);
         _boxes = new Dictionary<TypeId, BoundBoxDefinition>(boxes);
+        _pointerSize = pointerSize;
         _nextParametricTypeId = _names.Values
             .Concat(_boxes.Keys)
             .Select(static type => (int)type)
@@ -441,6 +446,7 @@ internal sealed class TypeDefinitionTable
             TypeId.Int16 or TypeId.UInt16 => 2,
             TypeId.Int or TypeId.UInt32 or TypeId.Float32 => 4,
             TypeId.Int64 or TypeId.UInt64 or TypeId.Float64 => 8,
+            TypeId.Size or TypeId.UIntSize => _pointerSize,
             TypeId.Text => 16,
             _ => throw new InvalidOperationException($"type {type} has no inline size")
         };

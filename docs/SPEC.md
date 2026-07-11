@@ -719,8 +719,12 @@ Numeric rules:
 - Integer bindings can be interpolated using invariant decimal display.
 - `Long` aliases `Int64` and `Double` aliases `Float64`; the exact-width names
   remain available when representation should be explicit.
-- `Size` and `UIntSize` are reserved for a later target-pointer-width ABI slice;
-  ordinary `Int` never changes width with the target.
+- `Size` and `UIntSize` use the target pointer width: 64 bits on the current
+  Windows/Linux x64 targets and 32 bits on wasm32. `Size` is signed for offsets
+  and differences; `UIntSize` is unsigned for byte counts and capacities.
+  Literal range checks, explicit conversions, aggregate layout, and LLVM
+  function ABI all use that target width. Ordinary `Int` remains `Int32` on
+  every target.
 
 ## Nested Structs
 

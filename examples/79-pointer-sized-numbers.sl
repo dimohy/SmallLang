@@ -1,0 +1,16 @@
+struct NativeSpan {
+    offset: Size
+    length: UIntSize
+}
+
+advance value: Size -> Size => value + Size(2)
+remaining value: UIntSize -> UIntSize => value - UIntSize(3)
+
+main {
+    Size(-5) -> advance => offset
+    UIntSize(10) -> remaining => length
+    NativeSpan { offset: offset, length: length } => span
+
+    "native span = $(span.offset), $(span.length)" -> println
+    "fixed conversions = $(Int64(span.offset)), $(UInt64(span.length))" -> println
+}

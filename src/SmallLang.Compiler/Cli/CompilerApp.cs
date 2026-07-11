@@ -35,7 +35,8 @@ internal static class CompilerApp
     private static void Build(CliOptions options)
     {
         var program = LoadProgram(options.SourcePaths);
-        var boundProgram = new SemanticCompiler(program).Compile();
+        var pointerBitWidth = options.Target == CompilationTarget.Wasm32Browser ? 32 : 64;
+        var boundProgram = new SemanticCompiler(program, pointerBitWidth).Compile();
         var llvmIr = LlvmIrGenerator.GenerateProgram(boundProgram, options.Target);
         var toolchain = LlvmToolchain.From(options.LlvmHome);
 

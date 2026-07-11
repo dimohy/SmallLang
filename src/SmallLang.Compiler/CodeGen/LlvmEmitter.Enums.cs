@@ -221,13 +221,14 @@ internal sealed partial class LlvmEmitter
         return ExtractEnumPayload(result, operandTypes.Ok);
     }
 
-    private static int RuntimeAlignment(BoundType type)
+    private int RuntimeAlignment(BoundType type)
     {
         return type switch
         {
             BoundType.Bool or BoundType.Int8 or BoundType.UInt8 => 1,
             BoundType.Int16 or BoundType.UInt16 => 2,
             BoundType.Int or BoundType.UInt32 or BoundType.Float32 => 4,
+            BoundType.Size or BoundType.UIntSize => _platform.PointerBitWidth / 8,
             _ => 8
         };
     }
