@@ -64,6 +64,14 @@ ownership behavior is part of the feature.
 - [x] Explicit `box T` for stable identity or recursive-size breaks
 - [ ] Explicit `dyn Trait` and vtables for runtime polymorphism
 
+## Compiler Primitives
+
+- [x] UTF-8 `Text` iteration as validated Unicode `CodePoint` values
+- [ ] Arena/bump allocation
+- [ ] Reusable byte-offset source spans and diagnostics
+- [ ] Command-line argument and environment access
+- [ ] Child-process execution
+
 ## Design Direction
 
 SmallLang combines Rust-style ownership, `struct`/`enum`/`trait`/`impl`, and

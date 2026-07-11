@@ -347,11 +347,25 @@ internal sealed partial class LlvmEmitter
                 targetMax.ToString(CultureInfo.InvariantCulture));
             EmitTrapUnless(upper, "numeric_conversion_upper");
         }
+        if (targetType == BoundType.CodePoint && sourceMax >= 0xD800 && sourceMin <= 0xDFFF)
+        {
+            var below = NextTemp("codepoint_below_surrogate");
+            var above = NextTemp("codepoint_above_surrogate");
+            var valid = NextTemp("codepoint_not_surrogate");
+            EmitCompare(below, signed ? "slt" : "ult", llvmType, source.ValueName, "55296");
+            EmitCompare(above, signed ? "sgt" : "ugt", llvmType, source.ValueName, "57343");
+            EmitInstruction($"{valid} = or i1 {below}, {above}");
+            EmitTrapUnless(valid, "numeric_conversion_surrogate");
+        }
     }
 
     private (BigInteger Minimum, BigInteger Maximum) IntegerRange(BoundType type)
     {
         var bits = NumericBitWidth(type);
+        if (type == BoundType.CodePoint)
+        {
+            return (BigInteger.Zero, new BigInteger(0x10FFFF));
+        }
         return IsSignedIntegerType(type)
             ? (-(BigInteger.One << (bits - 1)), (BigInteger.One << (bits - 1)) - 1)
             : (BigInteger.Zero, (BigInteger.One << bits) - 1);

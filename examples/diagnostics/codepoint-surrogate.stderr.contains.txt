@@ -1,0 +1,1 @@
+numeric literal 55296 is a Unicode surrogate and cannot be a CodePoint

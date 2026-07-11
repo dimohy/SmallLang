@@ -1138,13 +1138,14 @@ internal sealed class SemanticCompiler
             {
                 BoundType.IntSlice or BoundType.StaticIntArray or BoundType.DynamicIntArray => BoundType.Int,
                 BoundType.StaticTextArray => BoundType.Text,
+                BoundType.Text => BoundType.CodePoint,
                 _ when _types.IsStaticArray(sourceType) => _types.GetStaticArray(sourceType).ElementType,
                 _ when _types.IsDynamicArray(sourceType) => _types.GetDynamicArray(sourceType).ElementType,
                 _ => BoundType.Unit
             };
             if (itemType == BoundType.Unit)
             {
-                throw Error(call.Source.Line, call.Source.Column, "each expects a range or array input");
+                throw Error(call.Source.Line, call.Source.Column, "each expects a range, Text, or array input");
             }
         }
 
@@ -2160,6 +2161,11 @@ internal sealed class SemanticCompiler
             allowPrintCall: false,
             allowReadIntCall,
             allowFlowBindingTarget: false);
+        if (left == BoundType.CodePoint)
+        {
+            throw Error(leftExpression.Line, leftExpression.Column,
+                $"CodePoint does not support '{operatorText}'; convert it to UInt32 before arithmetic");
+        }
         if (!IsNumericType(left) || (operatorText == "%" && !IsIntegerType(left)))
         {
             throw Error(leftExpression.Line, leftExpression.Column, $"left operand of '{operatorText}' must be a compatible numeric value");
@@ -3566,6 +3572,11 @@ internal sealed class SemanticCompiler
             throw Error(expression.Arguments[0].Line, expression.Arguments[0].Column,
                 $"numeric conversion '{expression.Path[0]}' expects a numeric value, got {FormatType(sourceType)}");
         }
+        if (targetType == BoundType.CodePoint && IsFloatType(sourceType))
+        {
+            throw Error(expression.Arguments[0].Line, expression.Arguments[0].Column,
+                "CodePoint conversion requires an integer Unicode scalar value");
+        }
         ValidateNumericLiteralConversion(expression.Arguments[0], targetType, expression.Path[0]);
         type = targetType;
         return true;
@@ -3599,11 +3610,18 @@ internal sealed class SemanticCompiler
             };
             var signed = IsSignedIntegerType(targetType);
             var minimum = signed ? -(BigInteger.One << (bits - 1)) : BigInteger.Zero;
-            var maximum = signed ? (BigInteger.One << (bits - 1)) - 1 : (BigInteger.One << bits) - 1;
+            var maximum = targetType == BoundType.CodePoint
+                ? new BigInteger(0x10FFFF)
+                : signed ? (BigInteger.One << (bits - 1)) - 1 : (BigInteger.One << bits) - 1;
             if (value < minimum || value > maximum)
             {
                 throw Error(argument.Line, argument.Column,
                     $"numeric literal {text} is out of range for {targetName} ({minimum}..{maximum})");
+            }
+            if (targetType == BoundType.CodePoint && value >= 0xD800 && value <= 0xDFFF)
+            {
+                throw Error(argument.Line, argument.Column,
+                    $"numeric literal {text} is a Unicode surrogate and cannot be a CodePoint");
             }
             return;
         }
@@ -3618,7 +3636,7 @@ internal sealed class SemanticCompiler
     private static bool IsIntegerType(BoundType type) => type is
         BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64
         or BoundType.UInt8 or BoundType.UInt16 or BoundType.UInt32 or BoundType.UInt64
-        or BoundType.Size or BoundType.UIntSize;
+        or BoundType.Size or BoundType.UIntSize or BoundType.CodePoint;
 
     private static bool IsSignedIntegerType(BoundType type) => type is
         BoundType.Int or BoundType.Int8 or BoundType.Int16 or BoundType.Int64 or BoundType.Size;
@@ -4048,6 +4066,7 @@ internal sealed class SemanticCompiler
             ["UInt64"] = BoundType.UInt64,
             ["Size"] = BoundType.Size,
             ["UIntSize"] = BoundType.UIntSize,
+            ["CodePoint"] = BoundType.CodePoint,
             ["Float"] = BoundType.Float32,
             ["Float32"] = BoundType.Float32,
             ["Float64"] = BoundType.Float64,
@@ -4354,6 +4373,7 @@ internal sealed class SemanticCompiler
             TypeId.Int8 or TypeId.UInt8 => 1,
             TypeId.Int16 or TypeId.UInt16 => 2,
             TypeId.Int or TypeId.UInt32 or TypeId.Float32 => 4,
+            TypeId.CodePoint => 4,
             TypeId.Int64 or TypeId.UInt64 or TypeId.Float64 => 8,
             TypeId.Size or TypeId.UIntSize => _pointerBitWidth / 8,
             TypeId.Text => 16,
@@ -4527,6 +4547,7 @@ internal sealed class SemanticCompiler
             BoundType.UInt64 => "UInt64",
             BoundType.Size => "Size",
             BoundType.UIntSize => "UIntSize",
+            BoundType.CodePoint => "CodePoint",
             BoundType.Float32 => "Float",
             BoundType.Float64 => "Double",
             BoundType.Bool => "Bool",

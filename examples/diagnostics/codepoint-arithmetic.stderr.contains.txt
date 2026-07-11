@@ -1,0 +1,1 @@
+CodePoint does not support '+'; convert it to UInt32 before arithmetic

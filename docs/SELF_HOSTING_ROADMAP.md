@@ -28,6 +28,11 @@ The design deliberately combines a small set of compatible ideas:
   are internal by default, and public API is opt-in. See
   [access control](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/accesscontrol/)
   and [packages](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/introducingpackages/).
+- Rust and Swift separate UTF-8 code units, Unicode scalar values, and
+  user-perceived grapheme clusters. SL adopts Rust's fixed-width scalar model
+  for compiler work while reserving grapheme segmentation for a library layer.
+  See Rust [`char`](https://doc.rust-lang.org/std/primitive.char.html) and
+  Swift [Strings and Characters](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/).
 
 SL keeps its own expression-first `=>` binding and fluent `->` application
 syntax. It does not adopt class inheritance, implicit null, implicit garbage
@@ -47,12 +52,12 @@ not lines of code.
 | Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
-| Compiler-construction primitives | 12 | 5 | 3 | 4 | 6.5 |
+| Compiler-construction primitives | 12 | 6 | 3 | 3 | 7.5 |
 | Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **36** | **13** | **11** | **42.5 / 60** |
+| **Total** | **60** | **37** | **13** | **10** | **43.5 / 60** |
 
-Current count-based progress: **70.8% (42.5 of 60 equivalent gates)**.
-There are **17.5 equivalent gates remaining**. Because the missing compiler
+Current count-based progress: **72.5% (43.5 of 60 equivalent gates)**.
+There are **16.5 equivalent gates remaining**. Because the missing compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -102,17 +107,18 @@ estimate.
   enforced by executable top-level statements rather than a module manifest.
 - Missing (2): package manifest/dependency graph; module/interface cache.
 
-### Compiler-construction primitives — 6.5 / 12
+### Compiler-construction primitives — 7.5 / 12
 
-- Complete (5): Text values, deterministic native file I/O wrappers needed by
+- Complete (6): Text values, validated UTF-8 iteration as fixed-width Unicode
+  `CodePoint` scalar values, deterministic native file I/O wrappers needed by
   the existing demos, type-preserving array/dictionary iteration, and owned
   growable `UInt8` byte buffers with typed push/index/iteration/drop, plus typed
   copyable/owned `Result<T, E>` propagation with deterministic cleanup.
 - Partial (3): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
   and user-value payloads plus function contracts; string processing is
   output-oriented; diagnostics have no reusable source-span type.
-- Missing (4): Unicode/code-point iteration, arena/bump allocation,
-  command-line/environment APIs, process execution.
+- Missing (3): arena/bump allocation, command-line/environment APIs, process
+  execution.
 
 ### Standard library and tooling — 3.5 / 8
 
@@ -152,4 +158,6 @@ estimate.
 6. Generic collection element types and ownership/drop specialization
    (implemented for fixed/growable arrays and Swiss-table dictionaries by
    examples 56-71; fixed-array generic contracts remain).
-7. `Option`/`Result` and compiler-grade byte/text/source-span libraries.
+7. `Option`/`Result` and compiler-grade byte/text/source-span libraries
+   (`Option`, `Result`, bytes, and Unicode code points implemented; reusable
+   source spans remain).

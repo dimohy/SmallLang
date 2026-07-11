@@ -2887,4 +2887,24 @@ Windows/Linux x64 and `i32` on wasm32 while retaining signedness in operations
 and extensions. Example 79 verifies x64 execution and generated LLVM for both
 widths.
 
+## D095 - UTF-8 Text Iterates Unicode Code Points
+
+Status: implemented
+Date: 2026-07-12
+
+SL distinguishes UTF-8 storage from decoded Unicode scalar values. The
+`CodePoint` value type has an `i32` ABI on every target and excludes UTF-16
+surrogates and values above `U+10FFFF`. `Text -> each scalar { ... }` decodes
+one scalar per iteration and never exposes continuation bytes as characters.
+
+This follows Rust's small compiler-friendly `char` model rather than making
+Swift-style extended grapheme clusters the primitive. Grapheme segmentation is
+important for user interfaces but requires Unicode property tables and is not
+the right unit for tokenization. The generated decoder validates continuation
+bytes, truncation, overlong encodings, surrogate values, and the Unicode upper
+bound before the loop body runs. `CodePoint` conversion enforces the same value
+invariant, and direct arithmetic is rejected so it cannot manufacture invalid
+scalars. Example 80 covers ASCII, Hangul, a decomposed combining mark, and a
+supplementary-plane emoji.
+
 

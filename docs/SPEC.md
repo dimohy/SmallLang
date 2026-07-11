@@ -944,6 +944,17 @@ Lexing principles:
 - Diagnostics must preserve byte offset, line, and column information.
 - The compiler must not normalize source text before tokenization.
 
+`Text` stores validated UTF-8 bytes and `text -> each scalar { ... }` decodes
+them into `CodePoint` values. `CodePoint` is a distinct unsigned 32-bit Unicode
+scalar type: its valid values are `U+0000..U+D7FF` and `U+E000..U+10FFFF`.
+Iteration advances by one UTF-8 sequence, not one byte or one user-perceived
+grapheme cluster. Malformed, truncated, overlong, surrogate, and out-of-range
+sequences trap at the safe runtime boundary. Explicit `CodePoint(integer)`
+conversion performs the same range and surrogate checks. Arithmetic is not
+defined directly on `CodePoint`; convert to `UInt32` first when numeric work is
+intentional. Equality and ordering comparisons remain available for lexer
+classification.
+
 The exact string escape set is not finalized. The first required string form is
 a double-quoted UTF-8 literal with optional identifier and expression
 interpolation:

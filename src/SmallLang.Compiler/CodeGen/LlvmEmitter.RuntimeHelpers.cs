@@ -408,6 +408,163 @@ internal sealed partial class LlvmEmitter
             }
 
             """);
+        EmitFunctionBlock("""
+            define internal i64 @smalllang_utf8_decode(ptr %data, i64 %len, i64 %index) #0 {
+            entry:
+              %has_first = icmp ult i64 %index, %len
+              br i1 %has_first, label %first, label %invalid
+
+            first:
+              %p0 = getelementptr i8, ptr %data, i64 %index
+              %b0raw = load i8, ptr %p0, align 1
+              %b0 = zext i8 %b0raw to i32
+              %ascii = icmp ult i32 %b0, 128
+              br i1 %ascii, label %ascii_result, label %classify
+
+            ascii_result:
+              %ascii_wide = zext i32 %b0 to i64
+              %ascii_packed = or i64 %ascii_wide, 4294967296
+              ret i64 %ascii_packed
+
+            classify:
+              %is2lo = icmp uge i32 %b0, 194
+              %is2hi = icmp ule i32 %b0, 223
+              %is2 = and i1 %is2lo, %is2hi
+              %is3lo = icmp uge i32 %b0, 224
+              %is3hi = icmp ule i32 %b0, 239
+              %is3 = and i1 %is3lo, %is3hi
+              %is4lo = icmp uge i32 %b0, 240
+              %is4hi = icmp ule i32 %b0, 244
+              %is4 = and i1 %is4lo, %is4hi
+              br i1 %is2, label %decode2, label %check3
+
+            check3:
+              br i1 %is3, label %decode3, label %check4
+
+            check4:
+              br i1 %is4, label %decode4, label %invalid
+
+            decode2:
+              %end2 = add i64 %index, 1
+              %has2 = icmp ult i64 %end2, %len
+              br i1 %has2, label %load2, label %invalid
+
+            load2:
+              %p1_2 = getelementptr i8, ptr %data, i64 %end2
+              %b1_2raw = load i8, ptr %p1_2, align 1
+              %b1_2 = zext i8 %b1_2raw to i32
+              %c1_2lo = icmp uge i32 %b1_2, 128
+              %c1_2hi = icmp ule i32 %b1_2, 191
+              %c1_2 = and i1 %c1_2lo, %c1_2hi
+              br i1 %c1_2, label %result2, label %invalid
+
+            result2:
+              %h2 = and i32 %b0, 31
+              %h2s = shl i32 %h2, 6
+              %l2 = and i32 %b1_2, 63
+              %cp2 = or i32 %h2s, %l2
+              %cp2wide = zext i32 %cp2 to i64
+              %packed2 = or i64 %cp2wide, 8589934592
+              ret i64 %packed2
+
+            decode3:
+              %end3 = add i64 %index, 2
+              %has3 = icmp ult i64 %end3, %len
+              br i1 %has3, label %load3, label %invalid
+
+            load3:
+              %i1_3 = add i64 %index, 1
+              %p1_3 = getelementptr i8, ptr %data, i64 %i1_3
+              %p2_3 = getelementptr i8, ptr %data, i64 %end3
+              %b1_3raw = load i8, ptr %p1_3, align 1
+              %b2_3raw = load i8, ptr %p2_3, align 1
+              %b1_3 = zext i8 %b1_3raw to i32
+              %b2_3 = zext i8 %b2_3raw to i32
+              %c1_3lo = icmp uge i32 %b1_3, 128
+              %c1_3hi = icmp ule i32 %b1_3, 191
+              %c1_3 = and i1 %c1_3lo, %c1_3hi
+              %c2_3lo = icmp uge i32 %b2_3, 128
+              %c2_3hi = icmp ule i32 %b2_3, 191
+              %c2_3 = and i1 %c2_3lo, %c2_3hi
+              %cont3 = and i1 %c1_3, %c2_3
+              br i1 %cont3, label %value3, label %invalid
+
+            value3:
+              %h3 = and i32 %b0, 15
+              %h3s = shl i32 %h3, 12
+              %m3 = and i32 %b1_3, 63
+              %m3s = shl i32 %m3, 6
+              %hm3 = or i32 %h3s, %m3s
+              %l3 = and i32 %b2_3, 63
+              %cp3 = or i32 %hm3, %l3
+              %min3 = icmp uge i32 %cp3, 2048
+              %below_surrogate = icmp ult i32 %cp3, 55296
+              %above_surrogate = icmp ugt i32 %cp3, 57343
+              %not_surrogate = or i1 %below_surrogate, %above_surrogate
+              %valid3 = and i1 %min3, %not_surrogate
+              br i1 %valid3, label %result3, label %invalid
+
+            result3:
+              %cp3wide = zext i32 %cp3 to i64
+              %packed3 = or i64 %cp3wide, 12884901888
+              ret i64 %packed3
+
+            decode4:
+              %end4 = add i64 %index, 3
+              %has4 = icmp ult i64 %end4, %len
+              br i1 %has4, label %load4, label %invalid
+
+            load4:
+              %i1_4 = add i64 %index, 1
+              %i2_4 = add i64 %index, 2
+              %p1_4 = getelementptr i8, ptr %data, i64 %i1_4
+              %p2_4 = getelementptr i8, ptr %data, i64 %i2_4
+              %p3_4 = getelementptr i8, ptr %data, i64 %end4
+              %b1_4raw = load i8, ptr %p1_4, align 1
+              %b2_4raw = load i8, ptr %p2_4, align 1
+              %b3_4raw = load i8, ptr %p3_4, align 1
+              %b1_4 = zext i8 %b1_4raw to i32
+              %b2_4 = zext i8 %b2_4raw to i32
+              %b3_4 = zext i8 %b3_4raw to i32
+              %c1_4lo = icmp uge i32 %b1_4, 128
+              %c1_4hi = icmp ule i32 %b1_4, 191
+              %c1_4 = and i1 %c1_4lo, %c1_4hi
+              %c2_4lo = icmp uge i32 %b2_4, 128
+              %c2_4hi = icmp ule i32 %b2_4, 191
+              %c2_4 = and i1 %c2_4lo, %c2_4hi
+              %c3_4lo = icmp uge i32 %b3_4, 128
+              %c3_4hi = icmp ule i32 %b3_4, 191
+              %c3_4 = and i1 %c3_4lo, %c3_4hi
+              %cont12_4 = and i1 %c1_4, %c2_4
+              %cont4 = and i1 %cont12_4, %c3_4
+              br i1 %cont4, label %value4, label %invalid
+
+            value4:
+              %h4 = and i32 %b0, 7
+              %h4s = shl i32 %h4, 18
+              %m1_4 = and i32 %b1_4, 63
+              %m1_4s = shl i32 %m1_4, 12
+              %m2_4 = and i32 %b2_4, 63
+              %m2_4s = shl i32 %m2_4, 6
+              %hm1_4 = or i32 %h4s, %m1_4s
+              %hm2_4 = or i32 %hm1_4, %m2_4s
+              %l4 = and i32 %b3_4, 63
+              %cp4 = or i32 %hm2_4, %l4
+              %min4 = icmp uge i32 %cp4, 65536
+              %max4 = icmp ule i32 %cp4, 1114111
+              %valid4 = and i1 %min4, %max4
+              br i1 %valid4, label %result4, label %invalid
+
+            result4:
+              %cp4wide = zext i32 %cp4 to i64
+              %packed4 = or i64 %cp4wide, 17179869184
+              ret i64 %packed4
+
+            invalid:
+              ret i64 -1
+            }
+
+            """);
     }
 
 }

@@ -235,6 +235,11 @@ internal sealed partial class LlvmEmitter
     private void EmitArrayEachBlockFunctionCall(BlockFunctionCallStatement statement)
     {
         var source = EmitExpression(statement.Source);
+        if (source is RuntimeText text)
+        {
+            EmitTextEachBlockFunctionCall(statement, text);
+            return;
+        }
         var length = source switch
         {
             RuntimeIntSlice slice => slice.LengthName,
@@ -243,7 +248,7 @@ internal sealed partial class LlvmEmitter
             RuntimeStaticInlineArray array => array.LengthName,
             RuntimeDynamicIntArray array => array.LengthName,
             RuntimeDynamicInlineArray array => array.LengthName,
-            _ => throw new SmallLangException("each expects a range or array input")
+            _ => throw new SmallLangException("each expects a range, Text, or array input")
         };
 
         var bodyLabel = NextLabel("array_each_body");
@@ -269,7 +274,7 @@ internal sealed partial class LlvmEmitter
             RuntimeStaticInlineArray array => EmitStaticInlineArrayLoad(array, index),
             RuntimeDynamicIntArray array => EmitDynamicArrayLoad(array, index),
             RuntimeDynamicInlineArray array => EmitDynamicInlineArrayLoad(array, index),
-            _ => throw new SmallLangException("each expects a range or array input")
+            _ => throw new SmallLangException("each expects a range, Text, or array input")
         };
 
         var outerLocals = CaptureLocals();
@@ -433,6 +438,64 @@ internal sealed partial class LlvmEmitter
         EmitCompare(done, "eq", "i64", next, capacity);
         EmitConditionalBranch(done, endLabel, loopLabel);
         EmitFunctionLine();
+        EmitLabel(endLabel);
+        _currentBlockLabel = endLabel;
+    }
+
+    private void EmitTextEachBlockFunctionCall(BlockFunctionCallStatement statement, RuntimeText text)
+    {
+        var bodyLabel = NextLabel("text_each_body");
+        var continueLabel = NextLabel("text_each_continue");
+        var invalidLabel = NextLabel("text_each_invalid");
+        var endLabel = NextLabel("text_each_end");
+        var entryLabel = _currentBlockLabel;
+        var nextIndex = NextTemp("text_each_next");
+        var initialDone = NextTemp("text_each_done");
+
+        EmitCompare(initialDone, "eq", "i64", text.LengthName, "0");
+        EmitConditionalBranch(initialDone, endLabel, bodyLabel);
+
+        EmitLabel(bodyLabel);
+        _currentBlockLabel = bodyLabel;
+        var index = NextTemp("text_each_i");
+        EmitPhi(index, "i64", ("0", entryLabel), (nextIndex, continueLabel));
+        var packed = NextTemp("utf8_decoded");
+        EmitCall(packed, "i64", "smalllang_utf8_decode",
+            $"ptr {text.PointerName}, i64 {text.LengthName}, i64 {index}");
+        var valid = NextTemp("utf8_valid");
+        EmitCompare(valid, "ne", "i64", packed, "-1");
+        var decodedLabel = NextLabel("text_each_decoded");
+        EmitConditionalBranch(valid, decodedLabel, invalidLabel);
+
+        EmitLabel(invalidLabel);
+        EmitTrap();
+
+        EmitLabel(decodedLabel);
+        _currentBlockLabel = decodedLabel;
+        var codePoint = NextTemp(statement.ItemName);
+        EmitAssign(codePoint, $"trunc i64 {packed} to i32");
+        var width = NextTemp("utf8_width");
+        EmitAssign(width, $"lshr i64 {packed}, 32");
+
+        var outerLocals = CaptureLocals();
+        try
+        {
+            _locals[statement.ItemName] = new RuntimeInt(BoundType.CodePoint, codePoint);
+            EmitStatements(statement.Body);
+            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+        }
+        finally
+        {
+            RestoreLocals(outerLocals);
+        }
+
+        EmitBranch(continueLabel);
+        EmitLabel(continueLabel);
+        _currentBlockLabel = continueLabel;
+        EmitBinary(nextIndex, "add", "i64", index, width);
+        var done = NextTemp("text_each_done");
+        EmitCompare(done, "uge", "i64", nextIndex, text.LengthName);
+        EmitConditionalBranch(done, endLabel, bodyLabel);
         EmitLabel(endLabel);
         _currentBlockLabel = endLabel;
     }
