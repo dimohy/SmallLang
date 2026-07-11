@@ -16,12 +16,15 @@ internal sealed partial class LlvmEmitter
             if (function.Kind != BoundFunctionKind.User
                 || function.IsStandardLibrary
                 || function.IsLocal
-                || (function.GenericParameterName is not null && function.SpecializedType is null)
+                || (function.GenericParameterName is not null
+                    && function.SpecializedType is null
+                    && function.SpecializedValue is null)
                 || !emitted.Add(function.Name))
             {
                 continue;
             }
 
+            _currentFunction = function;
             switch (function.ReturnType)
             {
                 case BoundType.Unit:
@@ -54,6 +57,8 @@ internal sealed partial class LlvmEmitter
                     throw new SmallLangException($"unsupported function return type {function.ReturnType}");
             }
         }
+
+        _currentFunction = null;
     }
 
     private void EmitStructFunction(BoundFunction function)

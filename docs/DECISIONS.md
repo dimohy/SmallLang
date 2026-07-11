@@ -2290,4 +2290,25 @@ not use metadata or vtables. Examples 48 and 49 verify single-owner box transfer
 readonly repeated access, recursive enum destruction, copy rejection, and
 use-after-move rejection.
 
+## D071 - Explicit Compile-Time Int Value Generics
+
+Status: implemented
+Date: 2026-07-11
+
+A global function may declare one compile-time `Int` value parameter:
+
+```smalllang
+sumFilled[N: Int] value: Int -> Int {
+    [value; N] => values
+    values -> fold 0 total, item { total + item }
+}
+```
+
+The value argument is explicit at the fluent call boundary, such as
+`7 -> sumFilled[3]`. It is not passed at runtime. Every used value produces a
+separately checked and emitted specialization, and symbolic fixed-repeat counts
+become LLVM constants in that specialization. Omitting the value argument is a
+compile error. Example 50 verifies distinct `3` and `5` specializations and
+their fixed LLVM array shapes.
+
 

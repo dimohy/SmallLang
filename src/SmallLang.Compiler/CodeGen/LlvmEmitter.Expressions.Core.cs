@@ -222,7 +222,18 @@ internal sealed partial class LlvmEmitter
 
     private RuntimeStaticIntArray EmitArrayRepeat(ArrayRepeatExpression expression)
     {
-        var allocatedLength = Math.Max(expression.Count, 1);
+        int? specializedCount = null;
+        if (_currentFunction is { GenericParameterName: { } parameterName, SpecializedValue: { } specializedValue }
+            && parameterName == expression.CountParameterName)
+        {
+            specializedCount = specializedValue;
+        }
+
+        var count = expression.Count
+            ?? specializedCount
+            ?? throw new SmallLangException(
+                $"array repeat count '{expression.CountParameterName}' was not specialized");
+        var allocatedLength = Math.Max(count, 1);
         string pointer;
         RuntimeContainerStorage storage;
         if (_currentStackFramePlan.TryGetAllocation(expression, out _))
@@ -237,14 +248,14 @@ internal sealed partial class LlvmEmitter
         }
 
         var value = EmitIntExpression(expression.Value);
-        for (var i = 0; i < expression.Count; i++)
+        for (var i = 0; i < count; i++)
         {
             StoreStaticArrayElement(pointer, allocatedLength, i, value.ValueName);
         }
 
         return new RuntimeStaticIntArray(
             pointer,
-            expression.Count.ToString(CultureInfo.InvariantCulture),
+            count.ToString(CultureInfo.InvariantCulture),
             allocatedLength,
             storage);
     }

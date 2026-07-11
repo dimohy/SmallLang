@@ -820,7 +820,9 @@ Container rules in the current slice:
 - Browser WebAssembly rejects heap-placed containers until the target has a
   linear-memory allocator. Stack-promoted readonly dynamic arrays and
   dictionaries require no allocator and are accepted.
-- Generic `[T; N]`, `[T; ~]`, and `{K: V}` are future work.
+- General generic `[T; N]`, `[T; ~]`, and `{K: V}` containers remain future
+  work. Compile-time `Int` value parameters may already specialize fixed repeat
+  counts inside functions, for example `[value; N]` in `fill[N: Int]`.
 
 ## Lexical Design
 
@@ -1313,7 +1315,9 @@ Current backend:
   direct nested field access, readonly `self` methods in `impl` blocks,
   parenthesis-free computed members, payload `enum` values, exhaustive enum
   `when` patterns, nominal traits with explicit implementations, checked
-  single-type generics with trait bounds and monomorphization, receiver-argument
+  single-type generics with trait bounds and monomorphization, compile-time
+  `Int` value generics with explicit fluent specialization such as
+  `value -> fill[4]`, receiver-argument
   flow targets, explicit `box T` owners, recursively sized user types through
   boxed fields or enum payloads, readonly owned-value borrows, static recursive
   drop glue, and expression-first bindings are type-checked for the current slice

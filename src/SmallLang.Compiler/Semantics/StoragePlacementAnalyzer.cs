@@ -753,8 +753,14 @@ internal static class StoragePlacementAnalyzer
                 payloadBytes = checked(array.Elements.Count * sizeof(long));
                 return true;
             case ArrayRepeatExpression repeat:
+                if (repeat.Count is null)
+                {
+                    kind = default;
+                    payloadBytes = 0;
+                    return false;
+                }
                 kind = PromotedOwnerKind.StaticArray;
-                payloadBytes = checked(Math.Max(repeat.Count, 1) * sizeof(long));
+                payloadBytes = checked(Math.Max(repeat.Count.Value, 1) * sizeof(long));
                 return true;
             case DictionaryLiteralExpression { Entries.Count: > 0 } dictionary:
                 kind = PromotedOwnerKind.Dictionary;

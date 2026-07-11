@@ -66,6 +66,8 @@ to the accepted language specification and decision log.
   nested branches and loop iterations
 - automatic heap placement for fixed arrays that exceed the planned stack
   budget
+- compile-time `Int` value generics with explicit fluent specialization, such
+  as `value -> fill[4]`, including symbolic fixed-array repeat counts
 - purpose-oriented pseudo-random integer generation with `seedRandom` and
   `randomBelow`
 - binary sorted `Int` file writing and nearest-value lookup with

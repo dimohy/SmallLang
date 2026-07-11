@@ -170,7 +170,9 @@ internal sealed class SemanticCompiler
         foreach (var function in functions.Values.ToArray())
         {
             if (function.Kind is not (BoundFunctionKind.User or BoundFunctionKind.UserBlock)
-                || (function.GenericParameterName is not null && function.SpecializedType is null)
+                || (function.GenericParameterName is not null
+                    && function.SpecializedType is null
+                    && function.SpecializedValue is null)
                 || !checkedFunctions.Add(function.Name))
             {
                 continue;
@@ -219,7 +221,9 @@ internal sealed class SemanticCompiler
     {
         ValidateFunctionDeclaration(function, isLocal);
 
-        if (function.GenericTraitBound is not null && !_traits.ContainsKey(function.GenericTraitBound))
+        if (function.GenericTraitBound is not null
+            && !function.IsValueGeneric
+            && !_traits.ContainsKey(function.GenericTraitBound))
         {
             throw Error(function.Line, function.Column, $"unknown trait bound '{function.GenericTraitBound}'");
         }
@@ -268,7 +272,8 @@ internal sealed class SemanticCompiler
             isLocal,
             function.TraitName,
             function.GenericParameterName,
-            function.GenericTraitBound);
+            function.GenericTraitBound,
+            IsValueGeneric: function.IsValueGeneric);
     }
 
     private BoundFunctionInputOwnership BindFunctionInputOwnership(
@@ -319,7 +324,7 @@ internal sealed class SemanticCompiler
             {
                 throw Error(function.Line, function.Column, "generic local and impl functions are not implemented yet");
             }
-            if (function.InputType != function.GenericParameterName)
+            if (!function.IsValueGeneric && function.InputType != function.GenericParameterName)
             {
                 throw Error(
                     function.Line,
@@ -410,6 +415,12 @@ internal sealed class SemanticCompiler
         if (function.InputType is { } inputType)
         {
             bodyBindings[function.InputName ?? "it"] = inputType;
+        }
+        if (function.IsValueGeneric
+            && function.SpecializedValue is not null
+            && function.GenericParameterName is { } valueParameterName)
+        {
+            bodyBindings[valueParameterName] = BoundType.Int;
         }
 
         var returnOuterBindings = new Dictionary<string, BoundType>(bodyBindings, StringComparer.Ordinal);
@@ -1316,6 +1327,15 @@ internal sealed class SemanticCompiler
         if (valueType != BoundType.Int)
         {
             throw Error(expression.Value.Line, expression.Value.Column, "array repeat value must be Int");
+        }
+
+        if (expression.CountParameterName is { } countParameterName
+            && (!bindings.TryGetValue(countParameterName, out var countType) || countType != BoundType.Int))
+        {
+            throw Error(
+                expression.Line,
+                expression.Column,
+                $"unknown compile-time Int value parameter '{countParameterName}'");
         }
 
         return BoundType.StaticIntArray;
@@ -2369,9 +2389,20 @@ internal sealed class SemanticCompiler
                     case BoundFunctionKind.RuntimeCloseIntReader:
                         throw Error(expression.Line, expression.Column, $"{path} does not accept a flowed input");
                     case BoundFunctionKind.User:
-                        if (function.GenericParameterName is not null && function.SpecializedType is null)
+                        if (function.GenericParameterName is not null
+                            && function.SpecializedType is null
+                            && function.SpecializedValue is null)
                         {
-                            function = ResolveGenericSpecialization(function, currentType, functions, target);
+                            function = function.IsValueGeneric
+                                ? ResolveValueGenericSpecialization(function, currentType, target.CompileTimeValueArgument, target)
+                                : ResolveGenericSpecialization(function, currentType, functions, target);
+                        }
+                        else if (target.CompileTimeValueArgument is not null)
+                        {
+                            throw Error(
+                                target.Line,
+                                target.Column,
+                                $"function '{path}' does not declare a compile-time value parameter");
                         }
 
                         if (IsMainOnlyRuntimeWrapper(function) && !allowReadIntCall)
@@ -2765,8 +2796,17 @@ internal sealed class SemanticCompiler
 
                 return BoundType.Int;
             case BoundFunctionKind.User:
-                if (function.GenericParameterName is not null && function.SpecializedType is null)
+                if (function.GenericParameterName is not null
+                    && function.SpecializedType is null
+                    && function.SpecializedValue is null)
                 {
+                    if (function.IsValueGeneric)
+                    {
+                        throw Error(
+                            expression.Line,
+                            expression.Column,
+                            $"value-generic function '{function.Name}' requires fluent syntax with an explicit value argument, for example 'value -> {function.Name}[4]'");
+                    }
                     return InferGenericCallExpression(
                         expression,
                         function,
@@ -2853,6 +2893,51 @@ internal sealed class SemanticCompiler
                     ? actualType
                     : template.ReturnType,
                 SpecializedType = actualType
+            };
+            _boundFunctions.Add(specializedName, specialization);
+            if (_validatingGenericSpecializations.Add(specialization))
+            {
+                ValidateUserFunction(
+                    specialization,
+                    _boundFunctions,
+                    new Dictionary<string, BoundType>(StringComparer.Ordinal));
+            }
+        }
+
+        _resolvedGenericCalls[callSite] = specialization;
+        return specialization;
+    }
+
+    private BoundFunction ResolveValueGenericSpecialization(
+        BoundFunction template,
+        BoundType actualType,
+        int? valueArgument,
+        object callSite)
+    {
+        if (valueArgument is null)
+        {
+            throw new SmallLangException(
+                $"value-generic function '{template.Name}' requires an explicit compile-time Int argument");
+        }
+        if (template.InputType != actualType)
+        {
+            throw new SmallLangException(
+                $"function '{template.Name}' expects {FormatType(template.InputType!.Value)} but received {FormatType(actualType)}");
+        }
+        if (_boundFunctions is null)
+        {
+            throw new InvalidOperationException("generic specialization requires bound functions");
+        }
+
+        var specializedName = template.Name
+            + "$v"
+            + valueArgument.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!_boundFunctions.TryGetValue(specializedName, out var specialization))
+        {
+            specialization = template with
+            {
+                Name = specializedName,
+                SpecializedValue = valueArgument.Value
             };
             _boundFunctions.Add(specializedName, specialization);
             if (_validatingGenericSpecializations.Add(specialization))

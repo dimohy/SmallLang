@@ -53,7 +53,8 @@ internal sealed record FunctionDeclaration(
     bool IsStandardLibrary,
     string? TraitName = null,
     string? GenericParameterName = null,
-    string? GenericTraitBound = null);
+    string? GenericTraitBound = null,
+    bool IsValueGeneric = false);
 
 internal enum FunctionInputOwnership
 {
@@ -175,6 +176,7 @@ internal sealed record FlowTarget(
     IReadOnlyList<string> Path,
     IReadOnlyList<Expression> Arguments,
     bool UsesCallSyntax,
+    int? CompileTimeValueArgument,
     int Line,
     int Column);
 
@@ -192,7 +194,12 @@ internal sealed record ArrayLiteralExpression(
     int Column)
     : Expression(Line, Column);
 
-internal sealed record ArrayRepeatExpression(Expression Value, int Count, int Line, int Column)
+internal sealed record ArrayRepeatExpression(
+    Expression Value,
+    int? Count,
+    string? CountParameterName,
+    int Line,
+    int Column)
     : Expression(Line, Column);
 
 internal sealed record TypedEmptyArrayExpression(string ElementType, int? CapacityHint, int Line, int Column)

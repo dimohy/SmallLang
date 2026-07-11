@@ -31,7 +31,9 @@ internal sealed record BoundFunction(
     string? TraitName = null,
     string? GenericParameterName = null,
     string? GenericTraitBound = null,
-    TypeId? SpecializedType = null);
+    TypeId? SpecializedType = null,
+    bool IsValueGeneric = false,
+    int? SpecializedValue = null);
 
 internal sealed record BoundTraitMethod(
     string Name,
