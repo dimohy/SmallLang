@@ -486,6 +486,14 @@ approved syntax.
   array with typed push and growth copying
 - `examples/61-owned-generic-dynamic-array.sl`: move-only owned elements with
   runtime-length recursive drop
+- `examples/62-generic-text-int-dictionary.sl`: `Text` hashing/equality, typed
+  lookup/update, capacity growth, and Swiss-table rehash
+- `examples/63-generic-int-text-dictionary.sl`: aggregate `Text` values in a
+  typed `Int`-keyed dictionary
+- `examples/64-owned-generic-dictionary-values.sl`: recursive destruction of
+  owned user values stored in dictionary entries
+- `examples/65-typed-empty-text-dictionary.sl`: capacity-hinted typed-empty
+  `{Text: Text}` construction and mutation
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
 - `examples/expected`: expected stdout/stdin fixtures for executable samples
 - `stdlib/sys/runtime.sl`: standard library intrinsic boundary declarations

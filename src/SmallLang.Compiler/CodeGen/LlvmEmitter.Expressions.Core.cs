@@ -427,8 +427,16 @@ internal sealed partial class LlvmEmitter
             capacity.ToString(CultureInfo.InvariantCulture));
     }
 
-    private RuntimeIntDictionary EmitDictionaryLiteral(DictionaryLiteralExpression expression)
+    private RuntimeValue EmitDictionaryLiteral(DictionaryLiteralExpression expression)
     {
+        var entries = expression.Entries
+            .Select(entry => (Key: EmitExpression(entry.Key), Value: EmitExpression(entry.Value)))
+            .ToArray();
+        if (entries[0].Key.Type != BoundType.Int || entries[0].Value.Type != BoundType.Int)
+        {
+            var dictionaryType = _program.Types.GetOrAddDictionary(entries[0].Key.Type, entries[0].Value.Type);
+            return EmitInlineDictionaryLiteral(expression, dictionaryType, entries);
+        }
         var length = expression.Entries.Count;
         var capacity = DictionaryCapacityForLength(length);
         var storage = _currentStackFramePlan.TryGetAllocation(expression, out _)
@@ -442,21 +450,28 @@ internal sealed partial class LlvmEmitter
             capacity.ToString(CultureInfo.InvariantCulture),
             storage);
 
-        foreach (var entry in expression.Entries)
+        foreach (var entry in entries)
         {
-            var key = EmitIntExpression(entry.Key);
-            var value = EmitIntExpression(entry.Value);
-            EmitDictionaryInsertUnique(dictionary, key.ValueName, value.ValueName);
+            EmitDictionaryInsertUnique(
+                dictionary,
+                ((RuntimeInt)entry.Key).ValueName,
+                ((RuntimeInt)entry.Value).ValueName);
         }
 
         return dictionary;
     }
 
-    private RuntimeIntDictionary EmitTypedEmptyDictionary(TypedEmptyDictionaryExpression expression)
+    private RuntimeValue EmitTypedEmptyDictionary(TypedEmptyDictionaryExpression expression)
     {
         if (expression.KeyType != "Int" || expression.ValueType != "Int")
         {
-            throw new SmallLangException("only {Int: Int} typed empty dictionaries are supported in the current runtime slice");
+            if (!_program.Types.TryResolve(expression.KeyType, out var keyType)
+                || !_program.Types.TryResolve(expression.ValueType, out var valueType)
+                || !_program.Types.TryGetDictionaryForTypes(keyType, valueType, out var dictionaryType))
+            {
+                throw new SmallLangException($"unknown dictionary type '{{{expression.KeyType}: {expression.ValueType}}}'");
+            }
+            return EmitTypedEmptyInlineDictionary(expression, dictionaryType);
         }
 
         if (expression.CapacityHint is null)
@@ -474,6 +489,10 @@ internal sealed partial class LlvmEmitter
     private RuntimeValue EmitIndexExpression(IndexExpression expression)
     {
         var source = EmitExpression(expression.Source);
+        if (source is RuntimeInlineDictionary inlineDictionary)
+        {
+            return EmitInlineDictionaryLookup(inlineDictionary, EmitExpression(expression.Index));
+        }
         var index = EmitIntExpression(expression.Index);
         return source switch
         {

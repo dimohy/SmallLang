@@ -70,9 +70,9 @@ estimate.
 - Complete (8): nominal structs, payload enums, exhaustive matching, impl
   methods, nominal traits/static dispatch, checked type/value specialization,
   associated types with equality constraints, two-parameter generic inference.
-- Partial (2): fixed and growable arrays preserve scalar/user-value layouts and
-  recursively drop owned elements, but owned-element move extraction and general
-  collection function contracts remain; dictionaries are still `Int`-specialized.
+- Partial (2): arrays and dictionaries preserve scalar/user-value layouts and
+  recursively drop owned elements, but owned-element move extraction, generic
+  collection function contracts, and user-defined `Hash`/`Eq` dispatch remain.
 - Missing (2): standard `Option[T]`/`Result[T, E]`, explicit `dyn Trait`.
 
 ### Ownership and storage — 8.0 / 10
@@ -100,9 +100,11 @@ estimate.
 
 - Complete (2): Text values and deterministic native file I/O wrappers needed
   by the existing demos.
-- Partial (3): arrays/dictionaries are `Int`-specialized; string processing is
-  output-oriented; diagnostics exist but have no reusable source-span type.
-- Missing (7): byte buffers, Unicode/code-point iteration, generic collections,
+- Partial (3): generic arrays/dictionaries now cover compiler-useful `Int`,
+  `Text`, and user-value payloads, but reusable collection function contracts
+  remain; string processing is output-oriented; diagnostics have no reusable
+  source-span type.
+- Missing (7): byte buffers, Unicode/code-point iteration, collection iterators,
   tagged error propagation, arena/bump allocation, command-line/environment
   APIs, process execution.
 
@@ -142,7 +144,6 @@ estimate.
 4. Associated types and equality constraints (implemented by example 54).
 5. Multi-parameter generics (implemented by example 55).
 6. Generic collection element types and ownership/drop specialization
-   (fixed `Text` and copyable user-value arrays are implemented by examples 56
-   through parametric growable arrays in examples 56-61; generic dictionaries
-   are next).
+   (implemented for fixed/growable arrays and Swiss-table dictionaries by
+   examples 56-65; function contracts and iterators remain).
 7. `Option`/`Result` and compiler-grade byte/text/source-span libraries.

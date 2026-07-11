@@ -761,11 +761,13 @@ Container rules in the current slice:
   inline stack payload storage when the compiler proves every remaining use is
   readonly and the owner does not escape. This optimization does not change the
   source type or syntax.
-- Dictionaries currently support `{Int: Int}` and own Swiss-style control bytes
-  plus slot-aligned key-value entries. Heap storage is the normal placement, but
-  a small nonempty dictionary literal may use one aligned stack block when its
-  immutable owner is proven readonly and non-escaping. `{Int: Int}` creates an
-  empty typed dictionary.
+- Dictionaries infer homogeneous key/value types and own Swiss-style control
+  bytes plus type-aligned key-value entries. `Int` and `Text` currently provide
+  the required built-in hash/equality operations. Values may be scalar, `Text`,
+  or inline user values; owned values receive recursive entry destruction.
+  `{Key: Value; N~}` creates an empty typed dictionary with a capacity hint.
+  The legacy `{Int: Int}` layout also supports readonly stack promotion; other
+  specializations currently use heap payload storage.
 - Typed empty arrays and dictionaries without capacity hints begin with a null
   pointer and zero capacity. Their first mutation allocates initial storage;
   readonly use of the empty value performs no heap allocation.

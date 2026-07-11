@@ -283,6 +283,10 @@ internal sealed partial class LlvmEmitter
             case RuntimeIntDictionary { Storage: RuntimeContainerStorage.Heap } dictionary:
                 EmitCall(target: null, "void", "smalllang_free", $"ptr {dictionary.PointerName}");
                 break;
+            case RuntimeInlineDictionary { Storage: RuntimeContainerStorage.Heap } dictionary:
+                DropInlineDictionaryElements(dictionary);
+                EmitCall(target: null, "void", "smalllang_free", $"ptr {dictionary.PointerName}");
+                break;
         }
 
         EndMutableContainerSlotLifetime(name);
@@ -353,12 +357,13 @@ internal sealed partial class LlvmEmitter
             or RuntimeDynamicIntArray { Storage: RuntimeContainerStorage.Heap }
             or RuntimeDynamicInlineArray { Storage: RuntimeContainerStorage.Heap }
             or RuntimeIntDictionary { Storage: RuntimeContainerStorage.Heap }
+            or RuntimeInlineDictionary { Storage: RuntimeContainerStorage.Heap }
             or RuntimeBox;
     }
 
     private bool IsOwnedContainerRuntimeValue(RuntimeValue value)
     {
-        return value is RuntimeDynamicIntArray or RuntimeDynamicInlineArray or RuntimeIntDictionary
+        return value is RuntimeDynamicIntArray or RuntimeDynamicInlineArray or RuntimeIntDictionary or RuntimeInlineDictionary
             || _program.Types.ContainsOwnedStorage(value.Type);
     }
 
@@ -443,6 +448,12 @@ internal sealed partial class LlvmEmitter
                 CapacityName = capacity
             },
             RuntimeIntDictionary => new RuntimeIntDictionary(pointer, length, capacity),
+            RuntimeInlineDictionary dictionary => dictionary with
+            {
+                PointerName = pointer,
+                LengthName = length,
+                CapacityName = capacity
+            },
             _ => value
         };
     }
@@ -467,6 +478,11 @@ internal sealed partial class LlvmEmitter
                 EmitStore("i64", array.CapacityName, slot.CapacityAddress, 8);
                 break;
             case RuntimeIntDictionary dictionary:
+                EmitStore("ptr", dictionary.PointerName, slot.PointerAddress, 8);
+                EmitStore("i64", dictionary.LengthName, slot.LengthAddress, 8);
+                EmitStore("i64", dictionary.CapacityName, slot.CapacityAddress, 8);
+                break;
+            case RuntimeInlineDictionary dictionary:
                 EmitStore("ptr", dictionary.PointerName, slot.PointerAddress, 8);
                 EmitStore("i64", dictionary.LengthName, slot.LengthAddress, 8);
                 EmitStore("i64", dictionary.CapacityName, slot.CapacityAddress, 8);
@@ -817,6 +833,16 @@ internal sealed partial class LlvmEmitter
 
     private sealed record RuntimeIntDictionaryView(string PointerName, string LengthName, string CapacityName)
         : RuntimeValue(BoundType.IntDictionaryView);
+
+    private sealed record RuntimeInlineDictionary(
+        BoundType DictionaryType,
+        BoundType KeyType,
+        BoundType ValueType,
+        string PointerName,
+        string LengthName,
+        string CapacityName,
+        RuntimeContainerStorage Storage = RuntimeContainerStorage.Heap)
+        : RuntimeValue(DictionaryType);
 
     private sealed record RuntimeMutableContainerReference(
         BoundType TargetType,

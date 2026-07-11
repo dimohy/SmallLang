@@ -1,0 +1,5 @@
+text_hash
+text_eq
+generic_dict_rehash
+generic_dict_value
+call void @smalllang_free

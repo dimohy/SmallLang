@@ -178,6 +178,7 @@ internal sealed partial class LlvmEmitter
                     RuntimeDynamicInlineArray dynamicArray => new RuntimeFlowResult(new RuntimeInt(dynamicArray.LengthName), null, _mainOk),
                     RuntimeIntDictionaryView dictionaryView => new RuntimeFlowResult(new RuntimeInt(dictionaryView.LengthName), null, _mainOk),
                     RuntimeIntDictionary intDictionary => new RuntimeFlowResult(new RuntimeInt(intDictionary.LengthName), null, _mainOk),
+                    RuntimeInlineDictionary inlineMap => new RuntimeFlowResult(new RuntimeInt(inlineMap.LengthName), null, _mainOk),
                     _ => result
                 };
                 return result.Value is not null;
@@ -193,6 +194,7 @@ internal sealed partial class LlvmEmitter
                     RuntimeDynamicInlineArray dynamicArray => new RuntimeFlowResult(new RuntimeInt(dynamicArray.CapacityName), null, _mainOk),
                     RuntimeIntDictionaryView dictionaryView => new RuntimeFlowResult(new RuntimeInt(dictionaryView.CapacityName), null, _mainOk),
                     RuntimeIntDictionary intDictionary => new RuntimeFlowResult(new RuntimeInt(intDictionary.CapacityName), null, _mainOk),
+                    RuntimeInlineDictionary inlineMap => new RuntimeFlowResult(new RuntimeInt(inlineMap.CapacityName), null, _mainOk),
                     _ => result
                 };
                 return result.Value is not null;
@@ -250,6 +252,21 @@ internal sealed partial class LlvmEmitter
                     _mainOk);
                 return true;
             case "put":
+                if (current is RuntimeInlineDictionary inlineDictionary)
+                {
+                    if (!isLast || target.Arguments.Count != 2)
+                    {
+                        throw new SmallLangException("put must be final and expects key and value arguments");
+                    }
+                    var inlineName = RequireMutableContainerSource(source, "put");
+                    var inlineKey = EmitExpression(target.Arguments[0]);
+                    var inlineValue = EmitExpression(target.Arguments[1]);
+                    var inlineUpdated = EmitInlineDictionaryPut(inlineDictionary, inlineKey, inlineValue);
+                    StoreMutableContainer(inlineName, inlineUpdated);
+                    _locals[inlineName] = inlineUpdated;
+                    result = new RuntimeFlowResult(null, null, _mainOk);
+                    return true;
+                }
                 if (current is not RuntimeIntDictionary dictionary)
                 {
                     return false;

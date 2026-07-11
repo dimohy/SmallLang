@@ -1,0 +1,3 @@
+generic_dict_rehash
+store %smalllang.text
+load %smalllang.text

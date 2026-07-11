@@ -1,0 +1,2 @@
+phase 2 = type-check
+phase 4 = emit

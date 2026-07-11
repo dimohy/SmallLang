@@ -181,6 +181,10 @@ internal sealed partial class LlvmEmitter
         {
             return "ptr";
         }
+        if (_program.Types.IsDictionary(type))
+        {
+            return "%smalllang.int_dictionary";
+        }
 
         return type switch
         {

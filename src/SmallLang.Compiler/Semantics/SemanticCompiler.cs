@@ -1482,6 +1482,8 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         bool allowReadIntCall)
     {
+        BoundType? inferredKeyType = null;
+        BoundType? inferredValueType = null;
         foreach (var entry in expression.Entries)
         {
             var keyType = InferExpression(
@@ -1491,10 +1493,16 @@ internal sealed class SemanticCompiler
                 allowPrintCall: false,
                 allowReadIntCall,
                 allowFlowBindingTarget: false);
-            if (keyType != BoundType.Int)
+            if (keyType is not (BoundType.Int or BoundType.Text))
             {
-                throw Error(entry.Key.Line, entry.Key.Column, "dictionary keys must be Int in the current slice");
+                throw Error(entry.Key.Line, entry.Key.Column, "dictionary keys must implement Hash and Eq; Int and Text are supported in the current slice");
             }
+            if (inferredKeyType is { } expectedKey && keyType != expectedKey)
+            {
+                throw Error(entry.Key.Line, entry.Key.Column,
+                    $"dictionary keys must have one type; expected {FormatType(expectedKey)}, got {FormatType(keyType)}");
+            }
+            inferredKeyType ??= keyType;
 
             var valueType = InferExpression(
                 entry.Value,
@@ -1503,26 +1511,37 @@ internal sealed class SemanticCompiler
                 allowPrintCall: false,
                 allowReadIntCall,
                 allowFlowBindingTarget: false);
-            if (valueType != BoundType.Int)
+            if (valueType == BoundType.Unit)
             {
-                throw Error(entry.Value.Line, entry.Value.Column, "dictionary values must be Int in the current slice");
+                throw Error(entry.Value.Line, entry.Value.Column, "dictionary values cannot be Unit");
             }
+            if (inferredValueType is { } expectedValue && valueType != expectedValue)
+            {
+                throw Error(entry.Value.Line, entry.Value.Column,
+                    $"dictionary values must have one type; expected {FormatType(expectedValue)}, got {FormatType(valueType)}");
+            }
+            inferredValueType ??= valueType;
         }
 
-        return BoundType.IntDictionary;
+        var key = inferredKeyType ?? throw Error(expression.Line, expression.Column, "dictionary literal requires at least one entry");
+        var value = inferredValueType!.Value;
+        return key == BoundType.Int && value == BoundType.Int
+            ? BoundType.IntDictionary
+            : _types.GetOrAddDictionary(key, value);
     }
 
     private BoundType InferTypedEmptyDictionaryExpression(TypedEmptyDictionaryExpression expression)
     {
-        if (expression.KeyType != "Int" || expression.ValueType != "Int")
+        var keyType = ParseType(expression.KeyType, expression.Line, expression.Column);
+        var valueType = ParseType(expression.ValueType, expression.Line, expression.Column);
+        if (keyType is not (BoundType.Int or BoundType.Text))
         {
-            throw Error(
-                expression.Line,
-                expression.Column,
-                "typed empty dictionaries only support {Int: Int} in the current slice");
+            throw Error(expression.Line, expression.Column,
+                "dictionary keys must implement Hash and Eq; Int and Text are supported in the current slice");
         }
-
-        return BoundType.IntDictionary;
+        return keyType == BoundType.Int && valueType == BoundType.Int
+            ? BoundType.IntDictionary
+            : _types.GetOrAddDictionary(keyType, valueType);
     }
 
     private BoundType InferIndexExpression(
@@ -1545,7 +1564,8 @@ internal sealed class SemanticCompiler
             or BoundType.IntDictionaryView
             or BoundType.IntDictionary)
             && !_types.IsStaticArray(sourceType)
-            && !_types.IsDynamicArray(sourceType))
+            && !_types.IsDynamicArray(sourceType)
+            && !_types.IsDictionary(sourceType))
         {
             throw Error(expression.Source.Line, expression.Source.Column, "indexing expects an array or dictionary");
         }
@@ -1557,9 +1577,13 @@ internal sealed class SemanticCompiler
             allowPrintCall: false,
             allowReadIntCall,
             allowFlowBindingTarget: false);
-        if (indexType != BoundType.Int)
+        var expectedIndexType = _types.IsDictionary(sourceType)
+            ? _types.GetDictionary(sourceType).KeyType
+            : BoundType.Int;
+        if (indexType != expectedIndexType)
         {
-            throw Error(expression.Index.Line, expression.Index.Column, "index must be Int");
+            throw Error(expression.Index.Line, expression.Index.Column,
+                $"index must be {FormatType(expectedIndexType)}");
         }
 
         if (_types.IsStaticArray(sourceType))
@@ -1585,6 +1609,16 @@ internal sealed class SemanticCompiler
                     $"indexing owned array element type {FormatType(elementType)} requires move extraction, which is not implemented yet");
             }
             return elementType;
+        }
+        if (_types.IsDictionary(sourceType))
+        {
+            var valueType = _types.GetDictionary(sourceType).ValueType;
+            if (_types.ContainsOwnedStorage(valueType))
+            {
+                throw Error(expression.Line, expression.Column,
+                    $"indexing owned dictionary value type {FormatType(valueType)} requires move extraction, which is not implemented yet");
+            }
+            return valueType;
         }
         return sourceType == BoundType.StaticTextArray ? BoundType.Text : BoundType.Int;
     }
@@ -2630,7 +2664,8 @@ internal sealed class SemanticCompiler
                     or BoundType.IntDictionaryView
                     or BoundType.IntDictionary)
                     && !_types.IsStaticArray(currentType)
-                    && !_types.IsDynamicArray(currentType))
+                    && !_types.IsDynamicArray(currentType)
+                    && !_types.IsDictionary(currentType))
                 {
                     return false;
                 }
@@ -2646,7 +2681,8 @@ internal sealed class SemanticCompiler
                 if (currentType is not (BoundType.DynamicIntArray
                     or BoundType.IntDictionaryView
                     or BoundType.IntDictionary)
-                    && !_types.IsDynamicArray(currentType))
+                    && !_types.IsDynamicArray(currentType)
+                    && !_types.IsDictionary(currentType))
                 {
                     return false;
                 }
@@ -2740,7 +2776,7 @@ internal sealed class SemanticCompiler
                         "put is not available on a readonly dictionary parameter; use 'mut {Int: Int}'");
                 }
 
-                if (currentType != BoundType.IntDictionary)
+                if (currentType != BoundType.IntDictionary && !_types.IsDictionary(currentType))
                 {
                     return false;
                 }
@@ -2754,11 +2790,19 @@ internal sealed class SemanticCompiler
 
                 if (target.Arguments.Count != 2)
                 {
-                    throw Error(target.Line, target.Column, "put expects key and value Int arguments");
+                    throw Error(target.Line, target.Column, "put expects key and value arguments");
                 }
 
-                foreach (var argument in target.Arguments)
+                var putKeyType = currentType == BoundType.IntDictionary
+                    ? BoundType.Int
+                    : _types.GetDictionary(currentType).KeyType;
+                var putValueType = currentType == BoundType.IntDictionary
+                    ? BoundType.Int
+                    : _types.GetDictionary(currentType).ValueType;
+                var expectedPutTypes = new[] { putKeyType, putValueType };
+                for (var argumentIndex = 0; argumentIndex < target.Arguments.Count; argumentIndex++)
                 {
+                    var argument = target.Arguments[argumentIndex];
                     var argumentType = InferExpression(
                         argument,
                         functions,
@@ -2766,9 +2810,10 @@ internal sealed class SemanticCompiler
                         allowPrintCall: false,
                         allowReadIntCall,
                         allowFlowBindingTarget: false);
-                    if (argumentType != BoundType.Int)
+                    if (argumentType != expectedPutTypes[argumentIndex])
                     {
-                        throw Error(argument.Line, argument.Column, "put expects Int key and Int value arguments");
+                        throw Error(argument.Line, argument.Column,
+                            $"put expects {FormatType(putKeyType)} key and {FormatType(putValueType)} value arguments");
                     }
                 }
 
@@ -3918,6 +3963,11 @@ internal sealed class SemanticCompiler
         {
             return $"[{FormatType(_types.GetDynamicArray(type).ElementType)}; ~]";
         }
+        if (_types.IsDictionary(type))
+        {
+            var dictionary = _types.GetDictionary(type);
+            return $"{{{FormatType(dictionary.KeyType)}: {FormatType(dictionary.ValueType)}}}";
+        }
 
         return type switch
         {
@@ -3942,6 +3992,7 @@ internal sealed class SemanticCompiler
         return type is BoundType.StaticIntArray or BoundType.StaticTextArray or BoundType.DynamicIntArray or BoundType.IntDictionary
             || _types.IsStaticArray(type)
             || _types.IsDynamicArray(type)
+            || _types.IsDictionary(type)
             || _types.ContainsOwnedStorage(type);
     }
 

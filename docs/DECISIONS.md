@@ -2485,4 +2485,29 @@ buffer. A named owned value cannot be pushed by implicit copy; a fresh value is
 accepted as a direct ownership transfer until explicit move arguments exist.
 Examples 59-61 verify `Text`, copyable struct, and owned struct arrays.
 
+## D079 - Parametric Swiss-Table Dictionaries
+
+Status: implemented for built-in `Int`/`Text` keys and inline value types
+Date: 2026-07-11
+
+Dictionary literals infer one homogeneous key type and one homogeneous value
+type. `TypeDefinitionTable` interns each `Dictionary[K, V]` specialization and
+records key/value size, alignment, value offset, and entry stride. The existing
+Swiss-table control-byte scheme remains shared, while entry addressing and LLVM
+load/store operations use the concrete K/V layouts.
+
+`Int` keys retain their integer mixer. `Text` keys use deterministic byte-wise
+FNV-1a hashing and length-plus-byte equality, so dictionary identity never
+depends on text pointer identity. Checked lookup, mutable `put`, load-threshold
+growth, and rehash preserve exact key/value types. Growth transfers entries to
+the new table before freeing the old allocation. Final destruction walks live
+control bytes, recursively drops owned key/value payloads exactly once, then
+frees the table.
+
+Examples 62-65 verify `Text -> Int`, `Int -> Text`, owned user-value payloads,
+and typed-empty `Text -> Text` dictionaries. User-defined key types remain
+closed until static `Hash` and `Eq` trait dispatch is wired into collection
+specialization; generic dictionary function contracts and iterators remain the
+next collection boundary.
+
 
