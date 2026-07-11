@@ -393,6 +393,7 @@ internal sealed class SemanticCompiler
             }
 
             if (inputType.Value is not (BoundType.DynamicIntArray or BoundType.IntDictionary)
+                && !_types.IsDynamicArray(inputType.Value)
                 && !_types.IsDictionary(inputType.Value)
                 && !_types.IsStruct(inputType.Value))
             {
@@ -1470,7 +1471,7 @@ internal sealed class SemanticCompiler
         }
         var elementType = ParseType(expression.ElementType, expression.Line, expression.Column);
         if (elementType == BoundType.Unit
-            || IsContainerType(elementType))
+            || IsNestedContainerElementType(elementType))
         {
             throw Error(expression.Line, expression.Column, "growable array elements must be inline scalar or user values");
         }
@@ -3909,6 +3910,19 @@ internal sealed class SemanticCompiler
 
     private BoundType ParseType(string typeName, int line, int column)
     {
+        if (typeName.StartsWith('[', StringComparison.Ordinal)
+            && typeName.EndsWith("; ~]", StringComparison.Ordinal))
+        {
+            var elementName = typeName[1..^4].Trim();
+            var elementType = ParseType(elementName, line, column);
+            if (elementType == BoundType.Unit || IsNestedContainerElementType(elementType))
+            {
+                throw Error(line, column, "growable array elements must be inline scalar or user values");
+            }
+            return elementType == BoundType.Int
+                ? BoundType.DynamicIntArray
+                : _types.GetOrAddDynamicArray(elementType);
+        }
         if (typeName.Length >= 5 && typeName[0] == '{' && typeName[^1] == '}')
         {
             var separator = typeName.IndexOf(':', StringComparison.Ordinal);
@@ -4014,6 +4028,19 @@ internal sealed class SemanticCompiler
             || _types.IsDynamicArray(type)
             || _types.IsDictionary(type)
             || _types.ContainsOwnedStorage(type);
+    }
+
+    private bool IsNestedContainerElementType(BoundType type)
+    {
+        return type is BoundType.IntSlice
+            or BoundType.StaticIntArray
+            or BoundType.StaticTextArray
+            or BoundType.DynamicIntArray
+            or BoundType.IntDictionaryView
+            or BoundType.IntDictionary
+            || _types.IsStaticArray(type)
+            || _types.IsDynamicArray(type)
+            || _types.IsDictionary(type);
     }
 
     private bool IsReadonlyIntViewCompatible(BoundType type)
@@ -4594,6 +4621,7 @@ internal sealed class SemanticCompiler
         return function.InputOwnership == BoundFunctionInputOwnership.MutableBorrow
             && function.InputType is { } inputType
             && (inputType is BoundType.DynamicIntArray or BoundType.IntDictionary
+                || _types.IsDynamicArray(inputType)
                 || _types.IsDictionary(inputType)
                 || _types.IsStruct(inputType));
     }
@@ -4603,6 +4631,7 @@ internal sealed class SemanticCompiler
         return (function.InputType == BoundType.IntDictionaryView
                 && actualType == BoundType.IntDictionary)
             || (function.InputType == actualType && _types.IsDictionary(actualType))
+            || (function.InputType == actualType && _types.IsDynamicArray(actualType))
             || (function.InputType == BoundType.IntSlice
                 && actualType == BoundType.DynamicIntArray);
     }

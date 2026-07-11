@@ -1,0 +1,4 @@
+define internal %smalllang.dynamic_int_array @smalllang_fn_forwardNodes(%smalllang.dynamic_int_array %it)
+drop_dynamic_array
+call void @smalllang_drop_1024(%smalllang.struct.1024
+call void @smalllang_free

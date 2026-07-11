@@ -1,0 +1,4 @@
+define internal %smalllang.text @smalllang_fn_readSecond(%smalllang.dynamic_int_array %it)
+define internal void @smalllang_fn_addBackend(%smalllang.mutable_container %it)
+define internal %smalllang.dynamic_int_array @smalllang_fn_forwardValues(%smalllang.dynamic_int_array %it)
+generic_array_copy

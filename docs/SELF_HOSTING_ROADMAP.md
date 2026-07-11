@@ -72,8 +72,9 @@ estimate.
   associated types with equality constraints, two-parameter generic inference.
 - Partial (2): arrays and dictionaries preserve scalar/user-value layouts and
   recursively drop owned elements, and dictionary function contracts preserve
-  concrete K/V types; owned-element move extraction, parametric array function
-  contracts, iterators, and user-defined `Hash`/`Eq` dispatch remain.
+  concrete K/V types; dynamic-array function contracts preserve element types.
+  Owned-element move extraction, fixed-array generic contracts, iterators, and
+  user-defined `Hash`/`Eq` dispatch remain.
 - Missing (2): standard `Option[T]`/`Result[T, E]`, explicit `dyn Trait`.
 
 ### Ownership and storage — 8.0 / 10
@@ -146,5 +147,5 @@ estimate.
 5. Multi-parameter generics (implemented by example 55).
 6. Generic collection element types and ownership/drop specialization
    (implemented for fixed/growable arrays and Swiss-table dictionaries by
-   examples 56-66; parametric array contracts and iterators remain).
+   examples 56-68; fixed-array generic contracts and iterators remain).
 7. `Option`/`Result` and compiler-grade byte/text/source-span libraries.

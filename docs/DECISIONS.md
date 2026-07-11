@@ -2530,4 +2530,23 @@ readonly lookup, mutable insertion, and move-return for `{Text: Int}`. Separate
 diagnostics reject mutation through a readonly parameter and calls with a
 different dictionary specialization.
 
+## D081 - Parametric Dynamic-Array Function Contracts
+
+Status: implemented
+Date: 2026-07-11
+
+Concrete `[T; ~]` types now cross user-function boundaries with the same
+ownership modes as other owned containers. A default parameter is readonly,
+`mut [T; ~]` borrows addressable handle slots, and `move [T; ~]` transfers the
+owner and may return the same element specialization.
+
+Every specialization uses the three-word `%smalllang.dynamic_int_array` LLVM
+handle ABI while the element TypeId, size, alignment, and recursive drop glue
+remain compile-time facts. A mutable callee that grows the buffer writes the new
+pointer/length/capacity back to the caller's owner slots. A move-return does not
+drop the transferred parameter inside the callee; the caller receives the one
+drop obligation. Example 67 verifies readonly/`mut`/`move` `[Text; ~]` calls and
+growth. Example 68 verifies that an owned user-element array survives a move
+round trip and recursively drops its elements exactly once at the final owner.
+
 

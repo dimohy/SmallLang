@@ -433,6 +433,7 @@ internal sealed partial class LlvmEmitter
             BoundType.Int => EmitIntFunctionCall(function, argument),
             BoundType.Bool => EmitBoolFunctionCall(function, argument),
             BoundType.DynamicIntArray => EmitDynamicIntArrayFunctionCall(function, argument),
+            _ when _program.Types.IsDynamicArray(function.ReturnType) => EmitDynamicInlineArrayFunctionCall(function, argument),
             BoundType.IntDictionary => EmitIntDictionaryFunctionCall(function, argument),
             _ when _program.Types.IsDictionary(function.ReturnType) => EmitInlineDictionaryFunctionCall(function, argument),
             _ when _program.Types.IsStruct(function.ReturnType)
@@ -508,6 +509,22 @@ internal sealed partial class LlvmEmitter
         return new RuntimeDynamicIntArray(pointer, length, capacity);
     }
 
+    private RuntimeDynamicInlineArray EmitDynamicInlineArrayFunctionCall(BoundFunction function, RuntimeValue? argument)
+    {
+        var aggregate = NextTemp("generic_array");
+        EmitCall(aggregate, "%smalllang.dynamic_int_array", SymbolForFunction(function.Name)[1..],
+            FunctionCallArgumentList(function, argument));
+        var pointer = NextTemp("generic_array_ptr");
+        EmitAssign(pointer, $"extractvalue %smalllang.dynamic_int_array {aggregate}, 0");
+        var length = NextTemp("generic_array_len");
+        EmitAssign(length, $"extractvalue %smalllang.dynamic_int_array {aggregate}, 1");
+        var capacity = NextTemp("generic_array_capacity");
+        EmitAssign(capacity, $"extractvalue %smalllang.dynamic_int_array {aggregate}, 2");
+        var definition = _program.Types.GetDynamicArray(function.ReturnType);
+        return new RuntimeDynamicInlineArray(function.ReturnType, definition.ElementType,
+            pointer, length, capacity);
+    }
+
     private RuntimeIntDictionary EmitIntDictionaryFunctionCall(BoundFunction function, RuntimeValue? argument)
     {
         var aggregate = NextTemp("dict");
@@ -575,6 +592,11 @@ internal sealed partial class LlvmEmitter
             }
         }
 
+        if (argument is RuntimeDynamicInlineArray inlineArray
+            && function.InputType == inlineArray.ArrayType)
+        {
+            return $"%smalllang.dynamic_int_array {BuildDynamicArrayAggregate(inlineArray.PointerName, inlineArray.LengthName, inlineArray.CapacityName)}";
+        }
         if (argument is RuntimeInlineDictionary inlineDictionary
             && function.InputType == inlineDictionary.DictionaryType)
         {
@@ -656,6 +678,7 @@ internal sealed partial class LlvmEmitter
         _locals[name] = reference.TargetType switch
         {
             BoundType.DynamicIntArray => new RuntimeDynamicIntArray("", "", ""),
+            _ when _program.Types.IsDynamicArray(reference.TargetType) => CreateEmptyRuntimeDynamicInlineArray(reference.TargetType),
             BoundType.IntDictionary => new RuntimeIntDictionary("", "", ""),
             _ when _program.Types.IsDictionary(reference.TargetType) => CreateEmptyRuntimeInlineDictionary(reference.TargetType),
             _ => throw new SmallLangException("unsupported mutable borrow input type")
@@ -736,6 +759,23 @@ internal sealed partial class LlvmEmitter
         var aggregate2 = NextTemp("array_arg");
         EmitAssign(aggregate2, $"insertvalue %smalllang.dynamic_int_array {aggregate1}, i64 {array.CapacityName}, 2");
         return $"%smalllang.dynamic_int_array {aggregate2}";
+    }
+
+    private string BuildDynamicArrayAggregate(string pointer, string length, string capacity)
+    {
+        var aggregate0 = NextTemp("generic_array_value");
+        EmitAssign(aggregate0, $"insertvalue %smalllang.dynamic_int_array poison, ptr {pointer}, 0");
+        var aggregate1 = NextTemp("generic_array_value");
+        EmitAssign(aggregate1, $"insertvalue %smalllang.dynamic_int_array {aggregate0}, i64 {length}, 1");
+        var aggregate2 = NextTemp("generic_array_value");
+        EmitAssign(aggregate2, $"insertvalue %smalllang.dynamic_int_array {aggregate1}, i64 {capacity}, 2");
+        return aggregate2;
+    }
+
+    private RuntimeDynamicInlineArray CreateEmptyRuntimeDynamicInlineArray(BoundType type)
+    {
+        var definition = _program.Types.GetDynamicArray(type);
+        return new RuntimeDynamicInlineArray(type, definition.ElementType, "", "", "");
     }
 
     private string BuildIntDictionaryArgument(RuntimeIntDictionary dictionary)

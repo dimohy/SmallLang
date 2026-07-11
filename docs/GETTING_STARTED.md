@@ -496,6 +496,10 @@ approved syntax.
   `{Text: Text}` construction and mutation
 - `examples/66-generic-dictionary-function-contracts.sl`: readonly, `mut`, and
   `move` function contracts for a concrete `{Text: Int}` specialization
+- `examples/67-generic-dynamic-array-function-contracts.sl`: readonly, `mut`,
+  and `move` function contracts for `[Text; ~]`, including callee-side growth
+- `examples/68-owned-array-function-transfer.sl`: move-return of an owned
+  user-element array with final recursive drop coverage
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
 - `examples/expected`: expected stdout/stdin fixtures for executable samples
 - `stdlib/sys/runtime.sl`: standard library intrinsic boundary declarations

@@ -46,6 +46,11 @@ internal sealed partial class LlvmEmitter
                     EmitIntDictionaryFunction(function);
                     break;
                 default:
+                    if (_program.Types.IsDynamicArray(function.ReturnType))
+                    {
+                        EmitDynamicInlineArrayFunction(function);
+                        break;
+                    }
                     if (_program.Types.IsDictionary(function.ReturnType))
                     {
                         EmitInlineDictionaryFunction(function);
@@ -285,6 +290,41 @@ internal sealed partial class LlvmEmitter
         }
     }
 
+    private void EmitDynamicInlineArrayFunction(BoundFunction function)
+    {
+        if (function.Body is null)
+        {
+            throw new SmallLangException($"function '{function.Name}' has no body");
+        }
+        var previousFunctions = _currentFunctions;
+        _currentFunctions = CreateFunctionScope(_program.Functions, function.LocalFunctions);
+        ClearLocalState();
+        SelectStackFrame(function);
+        try
+        {
+            EmitFunctionLine($"define internal %smalllang.dynamic_int_array {SymbolForFunction(function.Name)}({ParameterListForFunction(function)}) #0 {{");
+            EmitFunctionLine("entry:");
+            EmitStackFrameAllocations();
+            _currentBlockLabel = "entry";
+            var functionLocals = CaptureLocals();
+            BindFunctionParameter(function);
+            EmitStatements(function.BlockBody);
+            var value = EmitExpression(function.Body);
+            EnsureRuntimeType(value, function.ReturnType, function.Name);
+            var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);
+            DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName);
+            var array = (RuntimeDynamicInlineArray)value;
+            EmitRet("%smalllang.dynamic_int_array", BuildDynamicArrayAggregate(
+                array.PointerName, array.LengthName, array.CapacityName));
+            EmitFunctionLine("}");
+            EmitFunctionLine();
+        }
+        finally
+        {
+            _currentFunctions = previousFunctions;
+        }
+    }
+
     private void EmitIntDictionaryFunction(BoundFunction function)
     {
         if (function.Body is null)
@@ -374,6 +414,7 @@ internal sealed partial class LlvmEmitter
             return function.InputType switch
             {
                 BoundType.DynamicIntArray => "%smalllang.mutable_container %it",
+                _ when function.InputType is { } type && _program.Types.IsDynamicArray(type) => "%smalllang.mutable_container %it",
                 BoundType.IntDictionary => "%smalllang.mutable_container %it",
                 _ when function.InputType is { } type && _program.Types.IsDictionary(type) => "%smalllang.mutable_container %it",
                 _ => throw new SmallLangException("unsupported mutable borrow input type")
@@ -388,6 +429,10 @@ internal sealed partial class LlvmEmitter
             return $"{LlvmType(inputType)} %it";
         }
 
+        if (function.InputType is { } dynamicArrayType && _program.Types.IsDynamicArray(dynamicArrayType))
+        {
+            return "%smalllang.dynamic_int_array %it";
+        }
         if (function.InputType is { } dictionaryType && _program.Types.IsDictionary(dictionaryType))
         {
             return "%smalllang.int_dictionary %it";
@@ -450,6 +495,19 @@ internal sealed partial class LlvmEmitter
             EmitAssign(capacity, "extractvalue %smalllang.int_dictionary %it, 2");
             _locals.Add(function.InputName ?? "it", new RuntimeInlineDictionary(
                 dictionaryType, definition.KeyType, definition.ValueType, pointer, length, capacity));
+            return;
+        }
+        if (function.InputType is { } dynamicArrayType && _program.Types.IsDynamicArray(dynamicArrayType))
+        {
+            var definition = _program.Types.GetDynamicArray(dynamicArrayType);
+            var pointer = NextTemp("param_generic_array_ptr");
+            EmitAssign(pointer, "extractvalue %smalllang.dynamic_int_array %it, 0");
+            var length = NextTemp("param_generic_array_len");
+            EmitAssign(length, "extractvalue %smalllang.dynamic_int_array %it, 1");
+            var capacity = NextTemp("param_generic_array_capacity");
+            EmitAssign(capacity, "extractvalue %smalllang.dynamic_int_array %it, 2");
+            _locals.Add(function.InputName ?? "it", new RuntimeDynamicInlineArray(
+                dynamicArrayType, definition.ElementType, pointer, length, capacity));
             return;
         }
 
@@ -523,6 +581,7 @@ internal sealed partial class LlvmEmitter
         }
 
         if (function.InputType is not (BoundType.DynamicIntArray or BoundType.IntDictionary)
+            && (function.InputType is not { } dynamicType || !_program.Types.IsDynamicArray(dynamicType))
             && (function.InputType is not { } mutableType || !_program.Types.IsDictionary(mutableType)))
         {
             throw new SmallLangException("unsupported mutable borrow input type");
@@ -537,7 +596,13 @@ internal sealed partial class LlvmEmitter
 
         var name = function.InputName ?? "it";
         RuntimeValue mutableValue;
-        if (function.InputType is { } genericDictionary && _program.Types.IsDictionary(genericDictionary))
+        if (function.InputType is { } genericArray && _program.Types.IsDynamicArray(genericArray))
+        {
+            var definition = _program.Types.GetDynamicArray(genericArray);
+            mutableValue = new RuntimeDynamicInlineArray(
+                genericArray, definition.ElementType, "", "", "");
+        }
+        else if (function.InputType is { } genericDictionary && _program.Types.IsDictionary(genericDictionary))
         {
             var definition = _program.Types.GetDictionary(genericDictionary);
             mutableValue = new RuntimeInlineDictionary(
