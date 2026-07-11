@@ -167,17 +167,21 @@ internal sealed partial class LlvmEmitter
             return;
         }
         var index = EmitIntExpression(assignment.Index);
-        var value = EmitIntExpression(assignment.Value);
+        var value = EmitExpression(assignment.Value);
         switch (target)
         {
             case RuntimeStaticIntArray array:
-                EmitStaticArrayAssign(array, EmitIntAsSize(index, "assignment_index"), value.ValueName);
+                EmitStaticArrayAssign(array, EmitIntAsSize(index, "assignment_index"), ((RuntimeInt)value).ValueName);
                 return;
             case RuntimeDynamicIntArray array:
-                EmitDynamicArrayAssign(array, EmitIntAsSize(index, "assignment_index"), value.ValueName);
+                EmitDynamicArrayAssign(array, EmitIntAsSize(index, "assignment_index"), ((RuntimeInt)value).ValueName);
+                return;
+            case RuntimeDynamicInlineArray array:
+                EnsureRuntimeType(value, array.ElementType, "array indexed assignment");
+                EmitDynamicInlineArrayAssign(array, EmitIntAsSize(index, "assignment_index"), value);
                 return;
             case RuntimeIntDictionary dictionary:
-                EmitDictionaryAssignExisting(dictionary, index.ValueName, value.ValueName);
+                EmitDictionaryAssignExisting(dictionary, index.ValueName, ((RuntimeInt)value).ValueName);
                 return;
             default:
                 throw new SmallLangException("indexed assignment expects an array or dictionary owner");

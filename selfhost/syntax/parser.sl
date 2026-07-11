@@ -5,8 +5,8 @@ import syntax.generated.smalllang as grammar
 
 # Parser events are lossless building blocks for a green CST. Enter/exit events
 # carry rule ids, token events carry token indexes, and the final outcome event
-# carries 1 for acceptance or 0 for rejection. Kind 4 rewinds consumers to the
-# prior event depth when a grammar alternative backtracks.
+# carries 1 for acceptance or 0 for rejection. Backtracking rewinds the logical
+# event depth, so abandoned alternatives never escape the parser.
 public struct ParseEvent {
     kind: Int
     value: Int
@@ -50,7 +50,11 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                 value: activeRules![callDepth!]
                 tokenIndex: tokenIndex!
             } => exitEvent
-            events! -> push(exitEvent)
+            eventDepth! < (events! -> len) -> if {
+                exitEvent => events![eventDepth!]
+            } else {
+                events! -> push(exitEvent)
+            }
             eventDepth! + 1 => eventDepth!
             callDepth! == 0 -> if {
                 tokens! -> len => tokenCount
@@ -65,7 +69,11 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                 program![pc! + 1] => expectedKind
                 tokens![tokenIndex!].kind == expectedKind -> if {
                     ParseEvent { kind: 2, value: expectedKind, tokenIndex: tokenIndex! } => tokenEvent
-                    events! -> push(tokenEvent)
+                    eventDepth! < (events! -> len) -> if {
+                        tokenEvent => events![eventDepth!]
+                    } else {
+                        events! -> push(tokenEvent)
+                    }
                     eventDepth! + 1 => eventDepth!
                     tokenIndex! + 1 => tokenIndex!
                     pc! + 2 => pc!
@@ -75,10 +83,7 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                         choicePcs![choiceDepth!] => pc!
                         choiceTokens![choiceDepth!] => tokenIndex!
                         choiceCallDepths![choiceDepth!] => callDepth!
-                        choiceEventDepths![choiceDepth!] => tokenRollbackDepth
-                        ParseEvent { kind: 4, value: tokenRollbackDepth, tokenIndex: tokenIndex! } => tokenRollbackEvent
-                        events! -> push(tokenRollbackEvent)
-                        eventDepth! + 1 => eventDepth!
+                        choiceEventDepths![choiceDepth!] => eventDepth!
                     } else {
                         false => running!
                     }
@@ -104,7 +109,11 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                     }
                     token.kind == expectedKind and keywordMatches! -> if {
                         ParseEvent { kind: 2, value: expectedKind, tokenIndex: tokenIndex! } => keywordEvent
-                        events! -> push(keywordEvent)
+                        eventDepth! < (events! -> len) -> if {
+                            keywordEvent => events![eventDepth!]
+                        } else {
+                            events! -> push(keywordEvent)
+                        }
                         eventDepth! + 1 => eventDepth!
                         tokenIndex! + 1 => tokenIndex!
                         pc! + 3 => pc!
@@ -114,10 +123,7 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                             choicePcs![choiceDepth!] => pc!
                             choiceTokens![choiceDepth!] => tokenIndex!
                             choiceCallDepths![choiceDepth!] => callDepth!
-                            choiceEventDepths![choiceDepth!] => keywordRollbackDepth
-                            ParseEvent { kind: 4, value: keywordRollbackDepth, tokenIndex: tokenIndex! } => keywordRollbackEvent
-                            events! -> push(keywordRollbackEvent)
-                            eventDepth! + 1 => eventDepth!
+                            choiceEventDepths![choiceDepth!] => eventDepth!
                         } else {
                             false => running!
                         }
@@ -139,7 +145,11 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                             activeRules! -> push(rule)
                         }
                         ParseEvent { kind: 0, value: rule, tokenIndex: tokenIndex! } => enterEvent
-                        events! -> push(enterEvent)
+                        eventDepth! < (events! -> len) -> if {
+                            enterEvent => events![eventDepth!]
+                        } else {
+                            events! -> push(enterEvent)
+                        }
                         eventDepth! + 1 => eventDepth!
                         ruleOffsets![rule] => pc!
                     } else {
@@ -176,10 +186,7 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                                                 choicePcs![choiceDepth!] => pc!
                                                 choiceTokens![choiceDepth!] => tokenIndex!
                                                 choiceCallDepths![choiceDepth!] => callDepth!
-                                                choiceEventDepths![choiceDepth!] => lookaheadRollbackDepth
-                                                ParseEvent { kind: 4, value: lookaheadRollbackDepth, tokenIndex: tokenIndex! } => lookaheadRollbackEvent
-                                                events! -> push(lookaheadRollbackEvent)
-                                                eventDepth! + 1 => eventDepth!
+                                                choiceEventDepths![choiceDepth!] => eventDepth!
                                             } else {
                                                 false => running!
                                             }
@@ -201,8 +208,18 @@ public parseEvents source: Text -> [ParseEvent; ~] {
         value: accepted! -> if { 1 } else { 0 }
         tokenIndex: tokenIndex!
     } => outcome
-    events! -> push(outcome)
+    eventDepth! < (events! -> len) -> if {
+        outcome => events![eventDepth!]
+    } else {
+        events! -> push(outcome)
+    }
     eventDepth! + 1 => eventDepth!
 
-    events!
+    [ParseEvent; ~] => result!
+    0 => copyIndex!
+    copyIndex! < eventDepth! -> while {
+        result! -> push(events![copyIndex!])
+        copyIndex! + 1 => copyIndex!
+    }
+    result!
 }

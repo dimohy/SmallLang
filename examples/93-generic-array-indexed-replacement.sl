@@ -1,0 +1,13 @@
+struct Point {
+    x: Int
+    y: Int
+}
+
+main {
+    [Point; { x: 1, y: 2 }, { x: 3, y: 4 }, ~] => points!
+    Point { x: 10, y: 20 } => points![0]
+    points![0] => first
+    points![1] => second
+    "first = $(first.x),$(first.y)" -> println
+    "second = $(second.x),$(second.y)" -> println
+}

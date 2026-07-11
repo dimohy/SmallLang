@@ -89,9 +89,10 @@ formatter and language server, avoiding a second editor-only grammar.
 2. Expand `selfhost/syntax/lexer.sl` from the executable bootstrap lexer to full
    escape, number, trivia, and error parity with the current C# lexer.
 3. `selfhost/syntax/parser.sl` now emits deterministic enter-rule, exit-rule,
-   token, rollback, and outcome events while recognizing input. Materialize
-   these events into a compact green CST, then add recovery and diagnostic
-   parity.
+   token, and outcome events while recognizing input. Backtracking rewinds and
+   overwrites abandoned events before the result escapes. Materialize this
+   compact successful event stream into a green CST, then add recovery and
+   diagnostic parity.
 4. Write CST-to-AST lowering in ordinary SL modules.
 5. Reimplement `grammar build` itself in SL and require byte-identical output.
 6. Remove the C# source generators only after the SL compiler reproduces all

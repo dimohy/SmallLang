@@ -1124,8 +1124,9 @@ internal sealed class SemanticCompiler
             throw Error(assignment.Line, assignment.Column, $"unknown binding '{assignment.Name}'");
         }
 
+        var isDynamicArray = _types.IsDynamicArray(targetType);
         if (targetType is not (BoundType.StaticIntArray or BoundType.DynamicIntArray or BoundType.IntDictionary
-            or BoundType.MutableMappedBytes))
+            or BoundType.MutableMappedBytes) && !isDynamicArray)
         {
             throw Error(assignment.Line, assignment.Column, "indexed assignment expects an array or dictionary owner");
         }
@@ -1165,7 +1166,16 @@ internal sealed class SemanticCompiler
             allowFlowBindingTarget: false,
             yieldInputType: yieldInputType,
             mutableBindings: mutableBindings);
-        var expectedValueType = targetType == BoundType.MutableMappedBytes ? BoundType.UInt8 : BoundType.Int;
+        var expectedValueType = targetType == BoundType.MutableMappedBytes
+            ? BoundType.UInt8
+            : isDynamicArray
+                ? _types.GetDynamicArray(targetType).ElementType
+                : BoundType.Int;
+        if (isDynamicArray && _types.ContainsOwnedStorage(expectedValueType))
+        {
+            throw Error(assignment.Line, assignment.Column,
+                "indexed replacement of owned array elements is not supported yet; move-aware replacement must drop the previous element");
+        }
         if (valueType != expectedValueType)
         {
             throw Error(assignment.Value.Line, assignment.Value.Column,

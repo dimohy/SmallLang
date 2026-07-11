@@ -147,6 +147,15 @@ internal sealed partial class LlvmEmitter
         return DematerializeAggregateValue(definition.ElementType, value);
     }
 
+    private void EmitDynamicInlineArrayAssign(RuntimeDynamicInlineArray array, string index, RuntimeValue value)
+    {
+        var inBounds = NextTemp("dynamic_inline_assign_in_bounds");
+        EmitCompare(inBounds, "ult", "i64", index, array.LengthName);
+        EmitTrapUnless(inBounds, "dynamic_inline_assign_bounds");
+        var definition = _program.Types.GetDynamicArray(array.ArrayType);
+        StoreDynamicInlineArrayElement(array.PointerName, definition, index, value);
+    }
+
     private RuntimeInt EmitIntSliceLoad(RuntimeIntSlice slice, string index)
     {
         var inBounds = NextTemp("slice_in_bounds");

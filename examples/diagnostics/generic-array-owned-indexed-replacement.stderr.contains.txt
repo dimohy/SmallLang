@@ -1,0 +1,1 @@
+indexed replacement of owned array elements is not supported yet; move-aware replacement must drop the previous element
