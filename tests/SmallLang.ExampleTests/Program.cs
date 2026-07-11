@@ -60,6 +60,7 @@ foreach (var expectedFile in expectedFiles)
     var sourcePath = Path.Combine(repoRoot, "examples", name + ".sl");
     var stdinPath = Path.Combine(expectedDir, name + ".stdin.txt");
     var argumentsPath = Path.Combine(expectedDir, name + ".args.txt");
+    var environmentPath = Path.Combine(expectedDir, name + ".env.txt");
     var outputPath = Path.Combine(artifactsDir, name + ".exe");
     var llvmContainsPath = Path.Combine(expectedDir, name + ".llvm.contains.txt");
     var llvmNotContainsPath = Path.Combine(expectedDir, name + ".llvm.not-contains.txt");
@@ -161,7 +162,13 @@ foreach (var expectedFile in expectedFiles)
     var runArguments = File.Exists(argumentsPath)
         ? File.ReadAllLines(argumentsPath, Encoding.UTF8).ToList()
         : [];
-    var run = Run(outputPath, runArguments, stdin, repoRoot);
+    var runEnvironment = File.Exists(environmentPath)
+        ? File.ReadAllLines(environmentPath, Encoding.UTF8)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Split('=', 2))
+            .ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "", StringComparer.Ordinal)
+        : null;
+    var run = Run(outputPath, runArguments, stdin, repoRoot, runEnvironment);
     var expected = Normalize(File.ReadAllText(expectedFile, Encoding.UTF8));
     var actual = Normalize(run.Stdout);
 
@@ -264,7 +271,12 @@ static string FindRepositoryRoot(string startPath)
     throw new InvalidOperationException("Could not find repository root.");
 }
 
-static ProcessResult Run(string fileName, IReadOnlyList<string> args, string? input, string workingDirectory)
+static ProcessResult Run(
+    string fileName,
+    IReadOnlyList<string> args,
+    string? input,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environment = null)
 {
     using var process = new Process();
     process.StartInfo = new ProcessStartInfo
@@ -280,6 +292,13 @@ static ProcessResult Run(string fileName, IReadOnlyList<string> args, string? in
     foreach (var arg in args)
     {
         process.StartInfo.ArgumentList.Add(arg);
+    }
+    if (environment is not null)
+    {
+        foreach (var (name, value) in environment)
+        {
+            process.StartInfo.Environment[name] = value;
+        }
     }
 
     process.Start();

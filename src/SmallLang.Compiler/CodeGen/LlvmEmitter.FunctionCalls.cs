@@ -89,6 +89,24 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeArgumentsIntrinsic();
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeEnvironment)
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SmallLangException($"{path} expects exactly one Text name");
+            }
+            return EmitRuntimeEnvironmentIntrinsic(function, EmitExpression(expression.Arguments[0]));
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeWriteScalar)
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SmallLangException($"{path} expects exactly one scalar value");
+            }
+            return EmitRuntimeWriteScalar(function, EmitExpression(expression.Arguments[0]));
+        }
+
         if (function.Kind is BoundFunctionKind.RuntimeSeedRandom
             or BoundFunctionKind.RuntimeOpenIntWriter
             or BoundFunctionKind.RuntimeWriteInt
@@ -566,6 +584,24 @@ internal sealed partial class LlvmEmitter
                 throw new SmallLangException($"{function.Name} does not accept an argument");
             }
             return EmitRuntimeArgumentsIntrinsic();
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeEnvironment)
+        {
+            if (argument is null)
+            {
+                throw new SmallLangException($"{function.Name} expects exactly one Text name");
+            }
+            return EmitRuntimeEnvironmentIntrinsic(function, argument);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeWriteScalar)
+        {
+            if (argument is null)
+            {
+                throw new SmallLangException($"{function.Name} expects exactly one scalar value");
+            }
+            return EmitRuntimeWriteScalar(function, argument);
         }
 
         if (function.Kind is BoundFunctionKind.RuntimeSeedRandom

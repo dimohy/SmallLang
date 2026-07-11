@@ -29,6 +29,10 @@ internal abstract class LlvmRuntimePlatform
 
     public abstract void EmitProcessPrimitives(StringBuilder functions);
 
+    public virtual void EmitEnvironmentPrimitives(StringBuilder functions)
+    {
+    }
+
     public abstract void EmitEntryHandles(StringBuilder functions);
 
     public virtual void EmitProcessEntry(StringBuilder functions)
@@ -41,7 +45,13 @@ internal abstract class LlvmRuntimePlatform
 
     public virtual bool SupportsProcessArguments => true;
 
+    public virtual bool SupportsEnvironment => true;
+
     public virtual void EmitExitCleanup(StringBuilder functions)
+    {
+    }
+
+    public virtual void EmitEnvironmentCleanup(StringBuilder functions)
     {
     }
 

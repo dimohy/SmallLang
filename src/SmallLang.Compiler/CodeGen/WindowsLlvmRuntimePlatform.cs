@@ -14,6 +14,8 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         globals.AppendLine("@smalllang_file_reader = internal global ptr null");
         globals.AppendLine("@smalllang_argument_count_value = internal global i64 0");
         globals.AppendLine("@smalllang_argument_records = internal global ptr null");
+        globals.AppendLine("@smalllang_environment_allocations = internal global ptr null");
+        globals.AppendLine("@smalllang_environment_empty = internal constant [1 x i8] zeroinitializer, align 1");
     }
 
     public override void EmitExternalDeclarations(StringBuilder functions)
@@ -38,6 +40,10 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport ptr @CommandLineToArgvW(ptr, ptr)");
         functions.AppendLine("declare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)");
         functions.AppendLine("declare dllimport ptr @LocalFree(ptr)");
+        functions.AppendLine("declare dllimport i32 @MultiByteToWideChar(i32, i32, ptr, i32, ptr, i32)");
+        functions.AppendLine("declare dllimport i32 @GetEnvironmentVariableW(ptr, ptr, i32)");
+        functions.AppendLine("declare dllimport i32 @GetLastError()");
+        functions.AppendLine("declare dllimport void @SetLastError(i32)");
     }
 
     public override void EmitMemoryDeclarations(StringBuilder functions)
@@ -51,6 +57,181 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
             entry:
               %millis = call i64 @GetTickCount64()
               ret i64 %millis
+            }
+
+            """);
+    }
+
+    public override void EmitEnvironmentPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i1 @smalllang_track_environment_allocation(ptr %allocation) #0 {
+            entry:
+              %node = call ptr @smalllang_alloc(i64 16)
+              %ok = icmp ne ptr %node, null
+              br i1 %ok, label %store, label %fail
+
+            store:
+              store ptr %allocation, ptr %node, align 8
+              %next_slot = getelementptr i8, ptr %node, i64 8
+              %head = load ptr, ptr @smalllang_environment_allocations, align 8
+              store ptr %head, ptr %next_slot, align 8
+              store ptr %node, ptr @smalllang_environment_allocations, align 8
+              ret i1 true
+
+            fail:
+              ret i1 false
+            }
+
+            define internal %smalllang.environment_result @smalllang_environment(ptr %name, i64 %name_len) #0 {
+            entry:
+              %empty = icmp eq i64 %name_len, 0
+              br i1 %empty, label %missing, label %validate
+
+            validate:
+              %vi = phi i64 [ 0, %entry ], [ %vnext, %valid_byte ]
+              %validated = icmp eq i64 %vi, %name_len
+              br i1 %validated, label %key_size, label %check_byte
+
+            check_byte:
+              %name_byte_ptr = getelementptr i8, ptr %name, i64 %vi
+              %name_byte = load i8, ptr %name_byte_ptr, align 1
+              %name_byte_valid = icmp ne i8 %name_byte, 0
+              br i1 %name_byte_valid, label %valid_byte, label %error
+
+            valid_byte:
+              %vnext = add i64 %vi, 1
+              br label %validate
+
+            key_size:
+              %name_len32 = trunc i64 %name_len to i32
+              %wide_chars = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %name, i32 %name_len32, ptr null, i32 0)
+              %wide_valid = icmp sgt i32 %wide_chars, 0
+              br i1 %wide_valid, label %key_alloc, label %error
+
+            key_alloc:
+              %wide_chars_plus_null = add i32 %wide_chars, 1
+              %wide_chars64 = zext i32 %wide_chars_plus_null to i64
+              %key_bytes = mul i64 %wide_chars64, 2
+              %wide_key = call ptr @smalllang_alloc(i64 %key_bytes)
+              %key_ok = icmp ne ptr %wide_key, null
+              br i1 %key_ok, label %key_convert, label %error
+
+            key_convert:
+              %key_written = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %name, i32 %name_len32, ptr %wide_key, i32 %wide_chars)
+              %key_converted = icmp eq i32 %key_written, %wide_chars
+              br i1 %key_converted, label %key_terminate, label %free_key_error
+
+            key_terminate:
+              %key_end = getelementptr i16, ptr %wide_key, i32 %wide_chars
+              store i16 0, ptr %key_end, align 2
+              call void @SetLastError(i32 0)
+              %required = call i32 @GetEnvironmentVariableW(ptr %wide_key, ptr null, i32 0)
+              %last_error = call i32 @GetLastError()
+              %has_size = icmp ne i32 %required, 0
+              br i1 %has_size, label %value_alloc, label %zero_result
+
+            zero_result:
+              call void @smalllang_free(ptr %wide_key)
+              %not_found = icmp eq i32 %last_error, 203
+              br i1 %not_found, label %missing, label %empty_present
+
+            empty_present:
+              %empty_ptr = getelementptr inbounds [1 x i8], ptr @smalllang_environment_empty, i64 0, i64 0
+              %e0 = insertvalue %smalllang.environment_result zeroinitializer, ptr %empty_ptr, 0
+              %e1 = insertvalue %smalllang.environment_result %e0, i1 true, 2
+              %e2 = insertvalue %smalllang.environment_result %e1, i1 true, 3
+              ret %smalllang.environment_result %e2
+
+            value_alloc:
+              %required64 = zext i32 %required to i64
+              %wide_bytes = mul i64 %required64, 2
+              %wide_value = call ptr @smalllang_alloc(i64 %wide_bytes)
+              %wide_value_ok = icmp ne ptr %wide_value, null
+              br i1 %wide_value_ok, label %value_read, label %free_key_error
+
+            value_read:
+              %value_chars = call i32 @GetEnvironmentVariableW(ptr %wide_key, ptr %wide_value, i32 %required)
+              call void @smalllang_free(ptr %wide_key)
+              %value_empty = icmp eq i32 %value_chars, 0
+              br i1 %value_empty, label %free_wide_empty, label %value_read_check
+
+            free_wide_empty:
+              call void @smalllang_free(ptr %wide_value)
+              br label %empty_present
+
+            value_read_check:
+              %value_read_ok = icmp ult i32 %value_chars, %required
+              br i1 %value_read_ok, label %utf8_size, label %free_wide_error
+
+            utf8_size:
+              %utf8_bytes32 = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %wide_value, i32 %value_chars, ptr null, i32 0, ptr null, ptr null)
+              %utf8_size_ok = icmp sgt i32 %utf8_bytes32, 0
+              br i1 %utf8_size_ok, label %utf8_alloc, label %free_wide_error
+
+            utf8_alloc:
+              %utf8_bytes = zext i32 %utf8_bytes32 to i64
+              %utf8 = call ptr @smalllang_alloc(i64 %utf8_bytes)
+              %utf8_ok = icmp ne ptr %utf8, null
+              br i1 %utf8_ok, label %utf8_convert, label %free_wide_error
+
+            utf8_convert:
+              %utf8_written = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %wide_value, i32 %value_chars, ptr %utf8, i32 %utf8_bytes32, ptr null, ptr null)
+              call void @smalllang_free(ptr %wide_value)
+              %utf8_converted = icmp eq i32 %utf8_written, %utf8_bytes32
+              br i1 %utf8_converted, label %track, label %free_utf8_error
+
+            track:
+              %tracked = call i1 @smalllang_track_environment_allocation(ptr %utf8)
+              br i1 %tracked, label %present, label %free_utf8_error
+
+            present:
+              %p0 = insertvalue %smalllang.environment_result poison, ptr %utf8, 0
+              %p1 = insertvalue %smalllang.environment_result %p0, i64 %utf8_bytes, 1
+              %p2 = insertvalue %smalllang.environment_result %p1, i1 true, 2
+              %p3 = insertvalue %smalllang.environment_result %p2, i1 true, 3
+              ret %smalllang.environment_result %p3
+
+            free_utf8_error:
+              call void @smalllang_free(ptr %utf8)
+              br label %error
+
+            free_wide_error:
+              call void @smalllang_free(ptr %wide_value)
+              br label %error
+
+            free_key_error:
+              call void @smalllang_free(ptr %wide_key)
+              br label %error
+
+            missing:
+              %m0 = insertvalue %smalllang.environment_result zeroinitializer, i1 true, 3
+              ret %smalllang.environment_result %m0
+
+            error:
+              ret %smalllang.environment_result zeroinitializer
+            }
+
+            define internal void @smalllang_dispose_environment() #0 {
+            entry:
+              %head = load ptr, ptr @smalllang_environment_allocations, align 8
+              br label %loop
+
+            loop:
+              %node = phi ptr [ %head, %entry ], [ %next, %free_node ]
+              %done = icmp eq ptr %node, null
+              br i1 %done, label %finish, label %free_node
+
+            free_node:
+              %allocation = load ptr, ptr %node, align 8
+              %next_slot = getelementptr i8, ptr %node, i64 8
+              %next = load ptr, ptr %next_slot, align 8
+              call void @smalllang_free(ptr %allocation)
+              call void @smalllang_free(ptr %node)
+              br label %loop
+
+            finish:
+              ret void
             }
 
             """);
@@ -532,5 +713,10 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
     public override void EmitExitCleanup(StringBuilder functions)
     {
         functions.AppendLine("  call void @smalllang_dispose_arguments()");
+    }
+
+    public override void EmitEnvironmentCleanup(StringBuilder functions)
+    {
+        functions.AppendLine("  call void @smalllang_dispose_environment()");
     }
 }

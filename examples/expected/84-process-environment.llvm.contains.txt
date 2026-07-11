@@ -1,0 +1,4 @@
+@smalllang_environment
+@GetEnvironmentVariableW
+@MultiByteToWideChar
+@smalllang_dispose_environment

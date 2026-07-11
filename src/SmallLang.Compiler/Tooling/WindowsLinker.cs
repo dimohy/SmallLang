@@ -67,6 +67,10 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             GetTickCount64
             GetCommandLineW
             WideCharToMultiByte
+            MultiByteToWideChar
+            GetEnvironmentVariableW
+            GetLastError
+            SetLastError
             LocalFree
             GetProcessHeap
             HeapAlloc

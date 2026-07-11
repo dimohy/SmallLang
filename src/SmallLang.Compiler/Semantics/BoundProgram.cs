@@ -85,7 +85,9 @@ internal enum BoundFunctionKind
     RuntimeClosestInt,
     RuntimeCloseIntReader,
     RuntimeNowMillis,
-    RuntimeArguments
+    RuntimeArguments,
+    RuntimeEnvironment,
+    RuntimeWriteScalar
 }
 
 internal enum TypeId

@@ -70,7 +70,7 @@ ownership behavior is part of the feature.
 - [x] Owned byte `Arena` with aligned bump allocation, stable offsets, growth,
   reset, checked byte access, move/mut ABI, and one-shot drop
 - [ ] Reusable byte-offset source spans and diagnostics
-- [~] Command-line argument access implemented; environment access remains
+- [x] Command-line argument and environment access
 - [ ] Child-process execution
 
 ## Design Direction

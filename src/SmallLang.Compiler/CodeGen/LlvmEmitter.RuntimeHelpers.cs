@@ -14,9 +14,13 @@ internal sealed partial class LlvmEmitter
         EmitPlatformFunctionBlock(_platform.EmitFilePrimitives);
         EmitPlatformFunctionBlock(_platform.EmitMappedFilePrimitives);
         EmitPlatformFunctionBlock(_platform.EmitTimePrimitives);
-        if (_usesProcessArguments)
+        if (UsesProcessRuntime)
         {
             EmitPlatformFunctionBlock(_platform.EmitProcessPrimitives);
+        }
+        if (_usesProcessEnvironment)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitEnvironmentPrimitives);
         }
         EmitPlatformFunctionBlock(_platform.EmitMemoryPrimitives);
         EmitFunctionBlock("""

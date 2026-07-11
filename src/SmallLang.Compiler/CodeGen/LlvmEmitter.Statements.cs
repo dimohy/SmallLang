@@ -31,6 +31,10 @@ internal sealed partial class LlvmEmitter
         EmitStatements(_program.MainStatements);
 
         DropOwnedLocals();
+        if (_usesProcessEnvironment)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitEnvironmentCleanup);
+        }
         if (_usesProcessArguments)
         {
             EmitPlatformFunctionBlock(_platform.EmitExitCleanup);

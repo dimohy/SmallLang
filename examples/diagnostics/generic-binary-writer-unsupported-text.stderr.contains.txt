@@ -1,0 +1,1 @@
+generic file write supports Bool, CodePoint, and fixed-width numeric scalars; got Text

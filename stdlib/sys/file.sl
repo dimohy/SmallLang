@@ -25,3 +25,11 @@ closestInt target: Int -> Int {
 closeIntReader: -> Unit {
     rt.closeIntReader
 }
+
+# Generic canonical binary writer. Existing Int-specific names remain for the
+# sorted Int64 demo format.
+openWriter path: Text -> Unit = intrinsic
+
+write<T> value: T -> Unit = intrinsic
+
+closeWriter: -> Unit = intrinsic

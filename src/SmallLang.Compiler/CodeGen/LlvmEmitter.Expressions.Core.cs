@@ -21,6 +21,16 @@ internal sealed partial class LlvmEmitter
             return _mainOk;
         }
 
+        if (expression is FieldAccessExpression field)
+        {
+            var value = EmitFieldAccessExpression(field);
+            if (value.Type != BoundType.Unit)
+            {
+                throw new SmallLangException("only zero-input properties with side effects are valid expression statements");
+            }
+            return _mainOk;
+        }
+
         if (expression is FlowExpression flow)
         {
             var result = EmitFlowExpression(flow, ok, allowBindingTarget: false);

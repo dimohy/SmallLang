@@ -126,6 +126,16 @@ internal sealed partial class LlvmEmitter
                             Value: null,
                             Binding: null,
                             Ok: _mainOk);
+                    case BoundFunctionKind.RuntimeWriteScalar:
+                        if (!isLast)
+                        {
+                            throw new SmallLangException($"{path} must be the final value-flow target");
+                        }
+                        EmitRuntimeWriteScalar(function, current);
+                        return new RuntimeFlowResult(
+                            Value: null,
+                            Binding: null,
+                            Ok: _mainOk);
                     case BoundFunctionKind.RuntimeRandomBelow:
                     case BoundFunctionKind.RuntimeClosestInt:
                         current = EmitRuntimeIntIntrinsic(function, current, path);

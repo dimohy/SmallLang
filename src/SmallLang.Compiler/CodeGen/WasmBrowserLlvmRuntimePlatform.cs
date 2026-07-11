@@ -16,6 +16,8 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
 
     public override bool SupportsProcessArguments => false;
 
+    public override bool SupportsEnvironment => false;
+
     public override void EmitProcessPrimitives(StringBuilder functions)
     {
     }

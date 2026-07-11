@@ -2990,4 +2990,54 @@ owned collections, and Zig's explicit process initialization context. Example
 Windows execution, and Linux execution. Environment access and structured
 child-process execution remain the next host-boundary slices.
 
+## D099 - Environment Lookup Distinguishes Missing From Empty
+
+Status: implemented
+Date: 2026-07-12
+
+`sys.process.environment: Text -> Option<Text>` returns `None` only when a name
+is absent and `Some(text)` for every present value, including empty text. A
+plain `Text` return with an empty fallback was rejected because it would erase
+this distinction and force compiler/build logic to guess whether configuration
+was intentionally empty.
+
+The returned text is a process-lifetime borrow. Linux uses `getenv` storage,
+which remains stable because safe SL exposes no environment mutation. Windows
+converts the Unicode value to UTF-8 and records every successful conversion in
+a runtime-owned linked allocation list. Program exit frees both the values and
+tracking nodes exactly once. Missing, empty, non-ASCII, allocation failure, and
+invalid embedded-zero names have distinct runtime paths; operational failures
+trap and are never disguised as `None`.
+
+Host runtime code is generated only when an environment intrinsic occurs in
+main or a user function. Example 84 uses a per-example environment fixture and
+verifies Hangul, a present empty value, and a missing value on Windows and
+Linux. Browser wasm has a targeted unsupported diagnostic. This completes the
+command-line/environment host-context gate; structured argv-based child
+execution remains next.
+
+## D100 - Generic File Output Is Constrained To Canonical Scalars
+
+Status: implemented
+Date: 2026-07-12
+
+The Int-only bootstrap writer remains for the existing sorted Int64 examples,
+but new code uses `sys.file.openWriter`, `write<T>`, and `closeWriter`.
+`write<T>` is a true semantic specialization rather than an `Int` overload:
+the inferred scalar type determines its LLVM storage type, alignment, and exact
+byte count.
+
+Supported specializations are `Bool`, `CodePoint`, every fixed-width numeric
+type, and target-sized `Size`/`UIntSize`. Pointer-bearing or variable-length
+types are rejected. This avoids the unsafe and unstable behavior of treating
+all copyable values as raw bytes. The native targets currently serialize the
+specialized scalar's canonical little-endian bit pattern. The legacy Int64
+buffer is flushed before a generic scalar write, preserving call order.
+
+Example 85 writes `UInt8`, `UInt16`, `UInt32`, and `Bool`, maps the resulting
+file, and verifies all eight bytes on Windows and Linux. A diagnostic rejects
+`Text`. The next file-I/O slice is a symmetric generic reader with explicit EOF,
+truncation, and OS-error semantics; user structs will require an explicit
+serialization trait rather than implicit ABI dumping.
+
 

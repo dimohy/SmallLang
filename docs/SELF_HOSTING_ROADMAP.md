@@ -70,12 +70,12 @@ not lines of code.
 | Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
-| Compiler-construction primitives | 12 | 7 | 4 | 1 | 9.0 |
+| Compiler-construction primitives | 12 | 8 | 3 | 1 | 9.5 |
 | Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **38** | **14** | **8** | **45.0 / 60** |
+| **Total** | **60** | **39** | **13** | **8** | **45.5 / 60** |
 
-Current count-based progress: **75.0% (45 of 60 equivalent gates)**.
-There are **15 equivalent gates remaining**. Because the missing compiler
+Current count-based progress: **75.8% (45.5 of 60 equivalent gates)**.
+There are **14.5 equivalent gates remaining**. Because the missing compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -125,9 +125,9 @@ estimate.
   enforced by executable top-level statements rather than a module manifest.
 - Missing (2): package manifest/dependency graph; module/interface cache.
 
-### Compiler-construction primitives — 9.0 / 12
+### Compiler-construction primitives — 9.5 / 12
 
-- Complete (7): Text values, validated UTF-8 iteration as fixed-width Unicode
+- Complete (8): Text values, validated UTF-8 iteration as fixed-width Unicode
   `CodePoint` scalar values, deterministic native file I/O wrappers needed by
   the existing demos, type-preserving array/dictionary iteration, and owned
   growable `UInt8` byte buffers with typed push/index/iteration/drop, plus typed
@@ -136,11 +136,11 @@ estimate.
   move/mutable-borrow ABI, and one-shot backing-store release. Native memory
   mapping adds affine bounded `UInt8` views, 64-bit file offsets/sizes,
   target-sized view lengths/indices, writeback, and deterministic unmapping.
-- Partial (4): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
+  Native host context includes lossless process arguments and `Option<Text>`
+  environment lookup with process-lifetime UTF-8 views.
+- Partial (3): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
   and user-value payloads plus function contracts; string processing is
-  output-oriented; diagnostics have no reusable source-span type; native
-  command-line arguments are available as a UTF-8 `Arguments` view, while the
-  environment half of the host-context gate remains.
+  output-oriented; diagnostics have no reusable source-span type.
 - Missing (1): structured child-process execution.
 
 ### Standard library and tooling — 3.5 / 8
@@ -148,7 +148,8 @@ estimate.
 - Complete (2): basic `sys.io` and three LLVM-backed target link paths.
 - Partial (3): file/random/time APIs are narrow compiler intrinsics; VS Code
   support is grammar-only; tests are example-driven without an SL unit-test
-  framework.
+  framework. File output now monomorphizes canonical scalar `write<T>` calls,
+  while generic reading and explicit user-value serialization remain.
 - Missing (3): portable path/filesystem library, package/build command, formatter
   and language server based on the real parser.
 

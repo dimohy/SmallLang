@@ -1046,6 +1046,60 @@ Argument setup and its allocation helpers are emitted only when the program
 actually references `sys.process.arguments`, preserving allocation-free LLVM
 for programs that do not use this host capability.
 
+Environment lookup uses the same module and returns an option so a present
+empty value is distinct from a missing name:
+
+```smalllang
+process.environment("LLVM_ROOT") -> when {
+    Option<Text>.None => "LLVM_ROOT is not set"
+    Option<Text>.Some(path) => path
+} => llvmRoot
+```
+
+The input name must be valid UTF-8 without an embedded zero byte. The returned
+`Text` is a borrowed process-lifetime view. Linux borrows the stable `getenv`
+storage because safe SL currently has no environment mutation API. Windows
+queries the Unicode environment, converts a present value to UTF-8, retains it
+in a runtime-owned allocation list, and releases the list at process exit.
+Repeated Windows lookups may retain duplicate converted values until exit; a
+future cache may deduplicate them without changing source semantics.
+
+Lookup allocation or encoding failure traps rather than being reported as
+`None`; `None` means only that the variable is absent. Browser wasm rejects
+environment lookup until a host capability is explicitly supplied.
+
+## Generic Binary Scalar Output
+
+`sys.file` provides a generic writer alongside the legacy sorted-Int64 demo
+API:
+
+```smalllang
+import sys.file as file
+
+"values.bin" -> file.openWriter
+UInt8(65) -> file.write
+UInt16(258) -> file.write
+Float32(1.5) -> file.write
+file.closeWriter
+```
+
+`write<T>` is monomorphized for `Bool`, `CodePoint`, the fixed-width signed and
+unsigned integers, `Float32`/`Float64`, and target-sized `Size`/`UIntSize`.
+Unsupported values such as `Text`, arrays, dictionaries, boxes, and arbitrary
+structs are rejected rather than dumping pointer-bearing in-memory layouts.
+
+The current native targets are little-endian, and scalar files use the exact
+little-endian bit representation and byte width of the specialized type. A
+generic write flushes the legacy Int64 record buffer first so mixing old and new
+calls cannot reorder bytes. I/O failure follows the existing fail-fast runtime
+status path.
+
+The symmetric `read<T> -> Option<T>`/`Result<T, FileError>` design remains a
+follow-up. It must distinguish clean EOF, truncated scalar data, invalid
+encodings, and operating-system errors before being added; reading arbitrary
+struct layouts without an explicit serialization contract is intentionally not
+planned.
+
 The exact string escape set is not finalized. The first required string form is
 a double-quoted UTF-8 literal with optional identifier and expression
 interpolation:

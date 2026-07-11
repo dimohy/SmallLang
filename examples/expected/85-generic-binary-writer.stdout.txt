@@ -1,0 +1,9 @@
+binary byte count = 8
+binary byte = 65
+binary byte = 2
+binary byte = 1
+binary byte = 4
+binary byte = 3
+binary byte = 2
+binary byte = 1
+binary byte = 1

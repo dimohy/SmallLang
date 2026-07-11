@@ -1,0 +1,4 @@
+call i32 @smalllang_platform_write_file_bytes(ptr %file_scalar
+i64 1
+i64 2
+i64 4

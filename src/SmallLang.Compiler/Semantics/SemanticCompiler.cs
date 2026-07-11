@@ -754,8 +754,52 @@ internal sealed class SemanticCompiler
                 expectedInputType: null,
                 BoundType.Arguments,
                 BoundFunctionKind.RuntimeArguments),
+            "sys.process.environment" => RequireEnvironmentIntrinsicSignature(
+                function,
+                inputType,
+                returnType),
+            "sys.file.write" => RequireGenericScalarWriteSignature(
+                function,
+                inputType,
+                returnType),
+            "sys.file.openWriter" => RequireIntrinsicSignature(
+                function, inputType, returnType, BoundType.Text, BoundType.Unit,
+                BoundFunctionKind.RuntimeOpenIntWriter),
+            "sys.file.closeWriter" => RequireIntrinsicSignature(
+                function, inputType, returnType, expectedInputType: null, BoundType.Unit,
+                BoundFunctionKind.RuntimeCloseIntWriter),
             _ => throw Error(function.Line, function.Column, $"unknown intrinsic function '{function.Name}'")
         };
+    }
+
+    private BoundFunctionKind RequireEnvironmentIntrinsicSignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (inputType != BoundType.Text
+            || !_types.TryGetOptionValue(returnType, out var valueType)
+            || valueType != BoundType.Text)
+        {
+            throw Error(function.Line, function.Column,
+                $"intrinsic '{function.Name}' must have signature Text -> Option<Text>");
+        }
+        return BoundFunctionKind.RuntimeEnvironment;
+    }
+
+    private BoundFunctionKind RequireGenericScalarWriteSignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (function.GenericParameterName is null
+            || inputType != BoundType.GenericParameter
+            || returnType != BoundType.Unit)
+        {
+            throw Error(function.Line, function.Column,
+                $"intrinsic '{function.Name}' must have signature write<T>: T -> Unit");
+        }
+        return BoundFunctionKind.RuntimeWriteScalar;
     }
 
     private BoundFunctionKind RequireIntrinsicSignature(
@@ -2938,6 +2982,13 @@ internal sealed class SemanticCompiler
                         }
 
                         return new FlowResult(BoundType.Unit, FlowEffect.None);
+                    case BoundFunctionKind.RuntimeWriteScalar:
+                        function = ResolveGenericSpecialization(function, currentType, functions, target);
+                        if (!isLast)
+                        {
+                            throw Error(expression.Line, expression.Column, $"{path} must be the final value-flow target");
+                        }
+                        return new FlowResult(BoundType.Unit, FlowEffect.None);
                     case BoundFunctionKind.RuntimeOpenIntWriter:
                     case BoundFunctionKind.RuntimeOpenIntReader:
                         EnsureRuntimeIntrinsicAllowed(function, allowReadIntCall, expression.Line, expression.Column, path);
@@ -2957,6 +3008,14 @@ internal sealed class SemanticCompiler
                     case BoundFunctionKind.RuntimeCloseIntWriter:
                     case BoundFunctionKind.RuntimeCloseIntReader:
                         throw Error(expression.Line, expression.Column, $"{path} does not accept a flowed input");
+                    case BoundFunctionKind.RuntimeEnvironment:
+                        if (currentType != BoundType.Text)
+                        {
+                            throw Error(expression.Line, expression.Column,
+                                $"{path} expects Text but received {FormatType(currentType)}");
+                        }
+                        currentType = function.ReturnType;
+                        continue;
                     case BoundFunctionKind.User:
                         if (function.GenericParameterName is not null
                             && function.SpecializedType is null
@@ -3489,6 +3548,20 @@ internal sealed class SemanticCompiler
                 }
 
                 return function.ReturnType;
+            case BoundFunctionKind.RuntimeEnvironment:
+                if (expression.Arguments.Count != 1)
+                {
+                    throw Error(expression.Line, expression.Column, $"{path} expects exactly one Text name");
+                }
+                var environmentNameType = InferExpression(
+                    expression.Arguments[0], functions, bindings,
+                    allowPrintCall: false, allowReadIntCall, allowFlowBindingTarget: false);
+                if (environmentNameType != BoundType.Text)
+                {
+                    throw Error(expression.Arguments[0].Line, expression.Arguments[0].Column,
+                        $"{path} expects Text but received {FormatType(environmentNameType)}");
+                }
+                return function.ReturnType;
             case BoundFunctionKind.RuntimeSeedRandom:
             case BoundFunctionKind.RuntimeRandomBelow:
             case BoundFunctionKind.RuntimeOpenIntWriter:
@@ -3528,6 +3601,9 @@ internal sealed class SemanticCompiler
                 }
 
                 return function.ReturnType;
+            case BoundFunctionKind.RuntimeWriteScalar:
+                return InferGenericCallExpression(
+                    expression, function, functions, bindings, allowReadIntCall);
             case BoundFunctionKind.User:
                 if (function.GenericParameterName is not null
                     && function.SpecializedType is null
@@ -3591,6 +3667,14 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundFunction> functions,
         object callSite)
     {
+        if (template.Kind == BoundFunctionKind.RuntimeWriteScalar
+            && actualType != BoundType.Bool
+            && !IsNumericType(actualType)
+            && actualType != BoundType.CodePoint)
+        {
+            throw new SmallLangException(
+                $"generic file write supports Bool, CodePoint, and fixed-width numeric scalars; got {FormatType(actualType)}");
+        }
         if (actualType is BoundType.Unit
             or BoundType.IntSlice
             or BoundType.StaticIntArray

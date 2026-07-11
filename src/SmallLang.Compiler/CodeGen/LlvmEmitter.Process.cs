@@ -36,4 +36,51 @@ internal sealed partial class LlvmEmitter
         EmitAssign(length, $"extractvalue %smalllang.text {value}, 1");
         return new RuntimeText(pointer, length);
     }
+
+    private RuntimeEnum EmitRuntimeEnvironmentIntrinsic(BoundFunction function, RuntimeValue nameValue)
+    {
+        if (!_platform.SupportsEnvironment)
+        {
+            throw new SmallLangException("environment access is unavailable on the current target");
+        }
+        var name = nameValue as RuntimeText
+            ?? throw new SmallLangException($"{function.Name} expects Text");
+        var raw = NextTemp("environment_result");
+        EmitCall(raw, "%smalllang.environment_result", "smalllang_environment",
+            $"ptr {name.PointerName}, i64 {name.LengthName}");
+        var pointer = NextTemp("environment_ptr");
+        EmitAssign(pointer, $"extractvalue %smalllang.environment_result {raw}, 0");
+        var length = NextTemp("environment_len");
+        EmitAssign(length, $"extractvalue %smalllang.environment_result {raw}, 1");
+        var found = NextTemp("environment_found");
+        EmitAssign(found, $"extractvalue %smalllang.environment_result {raw}, 2");
+        var ok = NextTemp("environment_ok");
+        EmitAssign(ok, $"extractvalue %smalllang.environment_result {raw}, 3");
+        EmitTrapUnless(ok, "environment_lookup");
+
+        var definition = _program.Types.GetEnum(function.ReturnType);
+        var noneVariant = definition.Variants.First(variant => variant.Name == "None");
+        var someVariant = definition.Variants.First(variant => variant.Name == "Some");
+        var someLabel = NextLabel("environment_some");
+        var noneLabel = NextLabel("environment_none");
+        var endLabel = NextLabel("environment_end");
+        EmitConditionalBranch(found, someLabel, noneLabel);
+
+        EmitLabel(someLabel);
+        _currentBlockLabel = someLabel;
+        var some = EmitEnumValue(function.ReturnType, someVariant, new RuntimeText(pointer, length));
+        EmitBranch(endLabel);
+        var someExit = _currentBlockLabel;
+
+        EmitLabel(noneLabel);
+        _currentBlockLabel = noneLabel;
+        var none = EmitEnumValue(function.ReturnType, noneVariant, payload: null);
+        EmitBranch(endLabel);
+        var noneExit = _currentBlockLabel;
+
+        EmitLabel(endLabel);
+        _currentBlockLabel = endLabel;
+        return EmitEnumPhi("environment_option", function.ReturnType,
+            [(some, someExit), (none, noneExit)]);
+    }
 }

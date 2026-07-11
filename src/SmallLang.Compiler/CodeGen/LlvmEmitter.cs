@@ -11,6 +11,8 @@ internal sealed partial class LlvmEmitter
     private readonly BoundProgram _program;
     private readonly LlvmRuntimePlatform _platform;
     private readonly bool _usesProcessArguments;
+    private readonly bool _usesProcessEnvironment;
+    private bool UsesProcessRuntime => _usesProcessArguments || _usesProcessEnvironment;
     private readonly List<string> _globals = [];
     private readonly List<string> _functions = [];
     private readonly Dictionary<string, RuntimeValue> _locals = new(StringComparer.Ordinal);
@@ -36,6 +38,10 @@ internal sealed partial class LlvmEmitter
         _platform = platform;
         _currentFunctions = program.Functions;
         _usesProcessArguments = program.MainStatements.Any(UsesProcessArguments);
+        _usesProcessEnvironment = program.MainStatements.Any(UsesProcessEnvironment)
+            || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
+                (function.Body is not null && UsesProcessEnvironment(function.Body))
+                || function.BlockBody.Any(UsesProcessEnvironment));
     }
 
     private bool UsesProcessArguments(Statement statement) => statement switch
@@ -109,6 +115,77 @@ internal sealed partial class LlvmEmitter
         body.Statements.Any(UsesProcessArguments)
         || (body.Value is not null && UsesProcessArguments(body.Value));
 
+    private bool UsesProcessEnvironment(Statement statement) => statement switch
+    {
+        BindingStatement binding => UsesProcessEnvironment(binding.Value),
+        ExpressionStatement value => UsesProcessEnvironment(value.Expression),
+        IndexAssignmentStatement value => UsesProcessEnvironment(value.Index) || UsesProcessEnvironment(value.Value),
+        FieldAssignmentStatement value => UsesProcessEnvironment(value.Value),
+        BlockFunctionCallStatement value => UsesProcessEnvironment(value.Source)
+            || value.Body.Any(UsesProcessEnvironment),
+        _ => false
+    };
+
+    private bool UsesProcessEnvironment(Expression expression)
+    {
+        if (expression is CallExpression call
+            && string.Join('.', call.Path) == "sys.process.environment")
+        {
+            return true;
+        }
+        if (expression is FlowExpression flow
+            && flow.Targets.Any(target => string.Join('.', target.Path) == "sys.process.environment"))
+        {
+            return true;
+        }
+        return expression switch
+        {
+            StringExpression value => value.Segments.OfType<InterpolationSegment>().Any(segment => UsesProcessEnvironment(segment.Expression)),
+            AddExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            SubtractExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            MultiplyExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            DivideExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            ModuloExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            NegateExpression value => UsesProcessEnvironment(value.Value),
+            CompareExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            AndExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            OrExpression value => UsesProcessEnvironment(value.Left) || UsesProcessEnvironment(value.Right),
+            NotExpression value => UsesProcessEnvironment(value.Value),
+            FlowExpression value => UsesProcessEnvironment(value.Source) || value.Targets.SelectMany(target => target.Arguments).Any(UsesProcessEnvironment),
+            CallExpression value => value.Arguments.Any(UsesProcessEnvironment),
+            RangeExpression value => UsesProcessEnvironment(value.Start) || UsesProcessEnvironment(value.End),
+            ArrayLiteralExpression value => value.Elements.Any(UsesProcessEnvironment),
+            ArrayRepeatExpression value => UsesProcessEnvironment(value.Value),
+            DictionaryLiteralExpression value => value.Entries.Any(entry => UsesProcessEnvironment(entry.Key) || UsesProcessEnvironment(entry.Value)),
+            IndexExpression value => UsesProcessEnvironment(value.Source) || UsesProcessEnvironment(value.Index),
+            StructLiteralExpression value => value.Fields.Any(field => UsesProcessEnvironment(field.Value)),
+            BoxExpression value => UsesProcessEnvironment(value.Value),
+            TryExpression value => UsesProcessEnvironment(value.Value),
+            FieldAccessExpression value => UsesProcessEnvironment(value.Source),
+            MapExpression value => UsesProcessEnvironment(value.Path)
+                || (value.Offset is not null && UsesProcessEnvironment(value.Offset))
+                || (value.Length is not null && UsesProcessEnvironment(value.Length))
+                || (value.FileSize is not null && UsesProcessEnvironment(value.FileSize)),
+            IfExpression value => UsesProcessEnvironment(value.Condition)
+                || UsesProcessEnvironment(value.Then)
+                || (value.Else is not null && UsesProcessEnvironment(value.Else)),
+            WhenExpression value => (value.Subject is not null && UsesProcessEnvironment(value.Subject))
+                || value.Arms.Any(arm => UsesProcessEnvironment(arm.Condition) || UsesProcessEnvironment(arm.Body))
+                || UsesProcessEnvironment(value.Else),
+            EnumMatchExpression value => UsesProcessEnvironment(value.Subject)
+                || value.Arms.Any(arm => UsesProcessEnvironment(arm.Body))
+                || (value.Else is not null && UsesProcessEnvironment(value.Else)),
+            FoldExpression value => UsesProcessEnvironment(value.Source)
+                || UsesProcessEnvironment(value.Initial)
+                || UsesProcessEnvironment(value.Body),
+            _ => false
+        };
+    }
+
+    private bool UsesProcessEnvironment(BlockBody body) =>
+        body.Statements.Any(UsesProcessEnvironment)
+        || (body.Value is not null && UsesProcessEnvironment(body.Value));
+
     public string Emit()
     {
         var header = $$"""
@@ -123,6 +200,7 @@ internal sealed partial class LlvmEmitter
             %smalllang.file_int_result = type { i64, i32 }
             %smalllang.file_count_result = type { i64, i32 }
             %smalllang.mapped_bytes = type { ptr, i64, ptr, i64, i1 }
+            %smalllang.environment_result = type { ptr, i64, i1, i1 }
 
             """;
         header += EmitStructTypeDefinitions();

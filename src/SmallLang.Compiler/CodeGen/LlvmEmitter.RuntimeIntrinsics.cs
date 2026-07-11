@@ -203,5 +203,43 @@ internal sealed partial class LlvmEmitter
         return wide;
     }
 
+    private RuntimeUnit EmitRuntimeWriteScalar(BoundFunction function, RuntimeValue value)
+    {
+        if (function.SpecializedType is not { } scalarType || value.Type != scalarType)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid scalar specialization");
+        }
+        if (scalarType != BoundType.Bool && !IsNumericType(scalarType) && scalarType != BoundType.CodePoint)
+        {
+            throw new SmallLangException($"{function.Name} does not support {scalarType}");
+        }
+
+        var materialized = MaterializeAggregateValue(value);
+        var slot = NextTemp("file_scalar");
+        EmitAlloca(slot, materialized.TypeName, RuntimeAlignment(scalarType));
+        EmitStore(materialized.TypeName, materialized.ValueName, slot, RuntimeAlignment(scalarType));
+
+        var flushOk = NextTemp("file_scalar_flush_ok");
+        EmitCall(flushOk, "i32", "smalllang_flush_i64_file", "");
+        var writeOk = NextTemp("file_scalar_write_ok");
+        EmitCall(writeOk, "i32", "smalllang_platform_write_file_bytes",
+            $"ptr {slot}, i64 {RuntimeScalarByteSize(scalarType)}");
+        var ok = NextTemp("file_scalar_ok");
+        EmitAssign(ok, $"and i32 {flushOk}, {writeOk}");
+        _mainOk = CombineWriteOk(ok, _mainOk);
+        EmitReturnIfReadFailed(ok);
+        return RuntimeUnit.Instance;
+    }
+
+    private int RuntimeScalarByteSize(BoundType type) => type switch
+    {
+        BoundType.Bool or BoundType.Int8 or BoundType.UInt8 => 1,
+        BoundType.Int16 or BoundType.UInt16 => 2,
+        BoundType.Int or BoundType.UInt32 or BoundType.Float32 or BoundType.CodePoint => 4,
+        BoundType.Int64 or BoundType.UInt64 or BoundType.Float64 => 8,
+        BoundType.Size or BoundType.UIntSize => _platform.PointerBitWidth / 8,
+        _ => throw new SmallLangException($"{type} is not a binary scalar")
+    };
+
 }
 
