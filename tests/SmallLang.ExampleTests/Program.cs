@@ -5,6 +5,42 @@ var repoRoot = FindRepositoryRoot(AppContext.BaseDirectory);
 var expectedDir = Path.Combine(repoRoot, "examples", "expected");
 var artifactsDir = Path.Combine(repoRoot, "artifacts", "example-tests");
 Directory.CreateDirectory(artifactsDir);
+var llvmDir = Path.Combine(repoRoot, ".tools", "llvm-22.1.8");
+var clangPath = Path.Combine(llvmDir, "bin", "clang.exe");
+if (!File.Exists(clangPath))
+{
+    Console.Error.WriteLine($"LLVM toolchain not found: {clangPath}");
+    Console.Error.WriteLine("Run scripts/smalllang.ps1 once to install the pinned toolchain.");
+    return 1;
+}
+
+var compilerProject = Path.Combine(repoRoot, "src", "SmallLang.Compiler", "SmallLang.Compiler.csproj");
+var compilerBuild = Run(
+    "dotnet",
+    ["build", compilerProject, "-c", "Release", "--nologo", "--no-restore"],
+    input: null,
+    repoRoot);
+if (compilerBuild.ExitCode != 0)
+{
+    Console.Error.WriteLine("FAIL compiler bootstrap build");
+    Console.Error.WriteLine(compilerBuild.Stdout);
+    Console.Error.WriteLine(compilerBuild.Stderr);
+    return 1;
+}
+
+var compilerDll = Path.Combine(
+    repoRoot,
+    "src",
+    "SmallLang.Compiler",
+    "bin",
+    "Release",
+    "net11.0",
+    "SmallLang.Compiler.dll");
+if (!File.Exists(compilerDll))
+{
+    Console.Error.WriteLine($"Compiler output not found: {compilerDll}");
+    return 1;
+}
 
 var expectedFiles = Directory
     .EnumerateFiles(expectedDir, "*.stdout.txt")
@@ -38,27 +74,31 @@ foreach (var expectedFile in expectedFiles)
 
     var compilerArguments = new List<string>
     {
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        Path.Combine(repoRoot, "scripts", "smalllang.ps1"),
-        File.Exists(sourcesPath) ? "-SourcesFile" : "-Source",
-        File.Exists(sourcesPath)
-            ? Path.Combine("examples", "expected", name + ".sources.txt")
-            : Path.Combine("examples", name + ".sl"),
-        "-Output",
-        Path.Combine("artifacts", "example-tests", name + ".exe"),
-        "-Target",
-        "windows-x64"
+        compilerDll,
+        "build"
     };
+    if (File.Exists(sourcesPath))
+    {
+        compilerArguments.AddRange(File.ReadLines(sourcesPath)
+            .Where(static line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => Path.GetFullPath(line.Trim(), repoRoot)));
+    }
+    else
+    {
+        compilerArguments.Add(sourcePath);
+    }
+    compilerArguments.AddRange([
+        "-o", outputPath,
+        "--target", "windows-x64",
+        "--llvm", llvmDir
+    ]);
     if (verifyLlvm)
     {
-        compilerArguments.Add("-KeepTemps");
+        compilerArguments.Add("--keep-temps");
     }
 
     var build = Run(
-        "powershell.exe",
+        "dotnet",
         compilerArguments,
         input: null,
         repoRoot);
@@ -129,21 +169,25 @@ foreach (var sourcePath in diagnosticFiles)
         continue;
     }
 
+    var diagnosticArguments = new List<string> { compilerDll, "build" };
+    if (File.Exists(sourcesPath))
+    {
+        diagnosticArguments.AddRange(File.ReadLines(sourcesPath)
+            .Where(static line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => Path.GetFullPath(line.Trim(), repoRoot)));
+    }
+    else
+    {
+        diagnosticArguments.Add(sourcePath);
+    }
+    diagnosticArguments.AddRange([
+        "-o", Path.Combine(artifactsDir, "diagnostic-" + name + ".exe"),
+        "--target", "windows-x64",
+        "--llvm", llvmDir
+    ]);
     var build = Run(
-        "powershell.exe",
-        [
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            Path.Combine(repoRoot, "scripts", "smalllang.ps1"),
-            File.Exists(sourcesPath) ? "-SourcesFile" : "-Source",
-            Path.GetRelativePath(repoRoot, File.Exists(sourcesPath) ? sourcesPath : sourcePath),
-            "-Output",
-            Path.Combine("artifacts", "example-tests", "diagnostic-" + name + ".exe"),
-            "-Target",
-            "windows-x64"
-        ],
+        "dotnet",
+        diagnosticArguments,
         input: null,
         repoRoot);
     var expectedDiagnostic = Normalize(File.ReadAllText(expectedPath, Encoding.UTF8)).Trim();
