@@ -1,0 +1,3 @@
+argument count = 3
+first argument = hello world
+second argument = 한글 인자

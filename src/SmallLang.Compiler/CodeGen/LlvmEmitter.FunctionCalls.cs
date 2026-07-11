@@ -80,6 +80,15 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeNowMillisIntrinsic(path);
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeArguments)
+        {
+            if (expression.Arguments.Count != 0)
+            {
+                throw new SmallLangException($"{path} does not accept arguments");
+            }
+            return EmitRuntimeArgumentsIntrinsic();
+        }
+
         if (function.Kind is BoundFunctionKind.RuntimeSeedRandom
             or BoundFunctionKind.RuntimeOpenIntWriter
             or BoundFunctionKind.RuntimeWriteInt
@@ -548,6 +557,15 @@ internal sealed partial class LlvmEmitter
             }
 
             return EmitRuntimeNowMillisIntrinsic(function.Name);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeArguments)
+        {
+            if (argument is not null)
+            {
+                throw new SmallLangException($"{function.Name} does not accept an argument");
+            }
+            return EmitRuntimeArgumentsIntrinsic();
         }
 
         if (function.Kind is BoundFunctionKind.RuntimeSeedRandom

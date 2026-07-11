@@ -250,6 +250,8 @@ internal sealed partial class LlvmEmitter
                     RuntimeInlineDictionary inlineMap => new RuntimeFlowResult(EmitSizeAsInt(inlineMap.LengthName, "dict_len_value"), null, _mainOk),
                     RuntimeMappedBytes mapped => new RuntimeFlowResult(
                         new RuntimeInt(BoundType.UIntSize, EmitArenaResultSize(mapped.LengthName)), null, _mainOk),
+                    RuntimeArguments arguments => new RuntimeFlowResult(
+                        new RuntimeInt(BoundType.UIntSize, EmitArenaResultSize(arguments.LengthName)), null, _mainOk),
                     _ => result
                 };
                 return result.Value is not null;

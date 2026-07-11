@@ -12,6 +12,8 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
     {
         globals.AppendLine("@smalllang_file_writer = internal global ptr null");
         globals.AppendLine("@smalllang_file_reader = internal global ptr null");
+        globals.AppendLine("@smalllang_argument_count_value = internal global i64 0");
+        globals.AppendLine("@smalllang_argument_records = internal global ptr null");
     }
 
     public override void EmitExternalDeclarations(StringBuilder functions)
@@ -32,6 +34,10 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport ptr @HeapAlloc(ptr, i32, i64)");
         functions.AppendLine("declare dllimport i32 @HeapFree(ptr, i32, ptr)");
         functions.AppendLine("declare dllimport i64 @GetTickCount64()");
+        functions.AppendLine("declare dllimport ptr @GetCommandLineW()");
+        functions.AppendLine("declare dllimport ptr @CommandLineToArgvW(ptr, ptr)");
+        functions.AppendLine("declare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)");
+        functions.AppendLine("declare dllimport ptr @LocalFree(ptr)");
     }
 
     public override void EmitMemoryDeclarations(StringBuilder functions)
@@ -71,6 +77,134 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
               br label %done
 
             done:
+              ret void
+            }
+
+            """);
+    }
+
+    public override void EmitProcessPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i32 @smalllang_init_arguments() #0 {
+            entry:
+              %argc_slot = alloca i32, align 4
+              %command = call ptr @GetCommandLineW()
+              %wide_argv = call ptr @CommandLineToArgvW(ptr %command, ptr %argc_slot)
+              %argv_ok = icmp ne ptr %wide_argv, null
+              br i1 %argv_ok, label %allocate, label %fail
+
+            allocate:
+              %argc32 = load i32, ptr %argc_slot, align 4
+              %argc = zext i32 %argc32 to i64
+              %record_bytes = mul i64 %argc, 16
+              %records = call ptr @smalllang_alloc(i64 %record_bytes)
+              %records_ok = icmp ne ptr %records, null
+              br i1 %records_ok, label %loop, label %free_wide_fail
+
+            loop:
+              %i = phi i64 [ 0, %allocate ], [ %next, %stored ]
+              %done = icmp eq i64 %i, %argc
+              br i1 %done, label %success, label %convert_size
+
+            convert_size:
+              %wide_slot = getelementptr ptr, ptr %wide_argv, i64 %i
+              %wide = load ptr, ptr %wide_slot, align 8
+              %bytes32 = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %wide, i32 -1, ptr null, i32 0, ptr null, ptr null)
+              %bytes_valid = icmp sgt i32 %bytes32, 0
+              br i1 %bytes_valid, label %convert_alloc, label %cleanup_partial
+
+            convert_alloc:
+              %bytes = zext i32 %bytes32 to i64
+              %utf8 = call ptr @smalllang_alloc(i64 %bytes)
+              %utf8_ok = icmp ne ptr %utf8, null
+              br i1 %utf8_ok, label %convert, label %cleanup_partial
+
+            convert:
+              %written = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %wide, i32 -1, ptr %utf8, i32 %bytes32, ptr null, ptr null)
+              %converted = icmp eq i32 %written, %bytes32
+              br i1 %converted, label %stored, label %free_current
+
+            free_current:
+              call void @smalllang_free(ptr %utf8)
+              br label %cleanup_partial
+
+            stored:
+              %record = getelementptr %smalllang.text, ptr %records, i64 %i
+              %ptr_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 0
+              store ptr %utf8, ptr %ptr_slot, align 8
+              %len_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 1
+              %length = sub i64 %bytes, 1
+              store i64 %length, ptr %len_slot, align 8
+              %next = add i64 %i, 1
+              br label %loop
+
+            cleanup_partial:
+              %j = phi i64 [ %i, %convert_size ], [ %i, %convert_alloc ], [ %i, %free_current ], [ %prev, %cleanup_free ]
+              %cleanup_done = icmp eq i64 %j, 0
+              br i1 %cleanup_done, label %free_records_fail, label %cleanup_free
+
+            cleanup_free:
+              %prev = sub i64 %j, 1
+              %old_record = getelementptr %smalllang.text, ptr %records, i64 %prev
+              %old_ptr_slot = getelementptr inbounds %smalllang.text, ptr %old_record, i32 0, i32 0
+              %old_ptr = load ptr, ptr %old_ptr_slot, align 8
+              call void @smalllang_free(ptr %old_ptr)
+              br label %cleanup_partial
+
+            free_records_fail:
+              call void @smalllang_free(ptr %records)
+              br label %free_wide_fail
+
+            success:
+              store i64 %argc, ptr @smalllang_argument_count_value, align 8
+              store ptr %records, ptr @smalllang_argument_records, align 8
+              %ignored_wide = call ptr @LocalFree(ptr %wide_argv)
+              ret i32 1
+
+            free_wide_fail:
+              %ignored_fail = call ptr @LocalFree(ptr %wide_argv)
+              br label %fail
+
+            fail:
+              ret i32 0
+            }
+
+            define internal i64 @smalllang_argument_count() #0 {
+            entry:
+              %count = load i64, ptr @smalllang_argument_count_value, align 8
+              ret i64 %count
+            }
+
+            define internal %smalllang.text @smalllang_argument(i64 %index) #0 {
+            entry:
+              %records = load ptr, ptr @smalllang_argument_records, align 8
+              %record = getelementptr %smalllang.text, ptr %records, i64 %index
+              %value = load %smalllang.text, ptr %record, align 8
+              ret %smalllang.text %value
+            }
+
+            define internal void @smalllang_dispose_arguments() #0 {
+            entry:
+              %count = load i64, ptr @smalllang_argument_count_value, align 8
+              %records = load ptr, ptr @smalllang_argument_records, align 8
+              br label %loop
+
+            loop:
+              %i = phi i64 [ 0, %entry ], [ %next, %free_item ]
+              %done = icmp eq i64 %i, %count
+              br i1 %done, label %finish, label %free_item
+
+            free_item:
+              %record = getelementptr %smalllang.text, ptr %records, i64 %i
+              %ptr_slot = getelementptr inbounds %smalllang.text, ptr %record, i32 0, i32 0
+              %ptr = load ptr, ptr %ptr_slot, align 8
+              call void @smalllang_free(ptr %ptr)
+              %next = add i64 %i, 1
+              br label %loop
+
+            finish:
+              call void @smalllang_free(ptr %records)
               ret void
             }
 
@@ -386,5 +520,17 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
     {
         functions.AppendLine("  %stdin = call ptr @GetStdHandle(i32 -10)");
         functions.AppendLine("  %stdout = call ptr @GetStdHandle(i32 -11)");
+    }
+
+    public override void EmitProcessEntry(StringBuilder functions)
+    {
+        functions.AppendLine("  %arguments_ok = call i32 @smalllang_init_arguments()");
+        functions.AppendLine("  %arguments_valid = icmp ne i32 %arguments_ok, 0");
+        functions.AppendLine("  store i1 %arguments_valid, ptr %ok_state, align 1");
+    }
+
+    public override void EmitExitCleanup(StringBuilder functions)
+    {
+        functions.AppendLine("  call void @smalllang_dispose_arguments()");
     }
 }

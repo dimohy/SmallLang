@@ -10,6 +10,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
     {
         var objectPath = Path.Combine(workDir, Path.GetFileNameWithoutExtension(outputPath) + ".obj");
         var importLib = CreateKernel32ImportLibrary(workDir);
+        var shellImportLib = CreateShell32ImportLibrary(workDir);
 
         Run(toolchain.Clang,
         [
@@ -39,6 +40,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             "/merge:.xdata=.text",
             objectPath,
             importLib,
+            shellImportLib,
             "/out:" + outputPath
         ]);
     }
@@ -63,9 +65,33 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             FlushViewOfFile
             UnmapViewOfFile
             GetTickCount64
+            GetCommandLineW
+            WideCharToMultiByte
+            LocalFree
             GetProcessHeap
             HeapAlloc
             HeapFree
+            """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        Run(toolchain.LlvmLib,
+        [
+            "/nologo",
+            "/machine:x64",
+            "/def:" + defPath,
+            "/out:" + libPath
+        ]);
+
+        return libPath;
+    }
+
+    private string CreateShell32ImportLibrary(string workDir)
+    {
+        var defPath = Path.Combine(workDir, "shell32.def");
+        var libPath = Path.Combine(workDir, "shell32.lib");
+        File.WriteAllText(defPath, """
+            LIBRARY shell32.dll
+            EXPORTS
+            CommandLineToArgvW
             """, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         Run(toolchain.LlvmLib,

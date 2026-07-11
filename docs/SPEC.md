@@ -1015,6 +1015,37 @@ output! -> flush
 - Windows x64 and Linux x64 use their native mapping APIs. Browser wasm rejects
   `map` because it has no corresponding host-file mapping primitive.
 
+## Process Arguments
+
+Native entry points expose their launch arguments through the standard-library
+property `sys.process.arguments`:
+
+```smalllang
+import sys.process as process
+
+process.arguments => args
+args -> len => count
+args[1] => sourcePath
+args -> each argument {
+    "argument = $argument" -> println
+}
+```
+
+`Arguments` is a copyable, process-lifetime, read-only view rather than an owned
+`[Text; ~]`. Its `len` and index use `UIntSize`; indexing returns borrowed
+`Text`; `each` binds `Text`. The first item is the executable name supplied by
+the host and must not be treated as a canonical or security-checked path.
+
+On Windows, SL uses the operating system's Unicode command-line parser and
+converts each UTF-16 item to validated UTF-8 storage retained until program
+exit. That storage is released exactly once by the runtime. On Linux, the
+native `argc`/`argv` entry ABI supplies stable byte spans directly. Browser wasm
+does not currently define host process arguments and rejects the property.
+
+Argument setup and its allocation helpers are emitted only when the program
+actually references `sys.process.arguments`, preserving allocation-free LLVM
+for programs that do not use this host capability.
+
 The exact string escape set is not finalized. The first required string form is
 a double-quoted UTF-8 literal with optional identifier and expression
 interpolation:

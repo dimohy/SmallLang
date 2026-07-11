@@ -831,6 +831,9 @@ internal sealed partial class LlvmEmitter
     private sealed record RuntimeArena(string PointerName, string UsedName, string CapacityName)
         : RuntimeValue(BoundType.Arena);
 
+    private sealed record RuntimeArguments(string LengthName)
+        : RuntimeValue(BoundType.Arguments);
+
     private sealed record RuntimeMappedBytes(
         BoundType MappedType,
         string DataPointerName,

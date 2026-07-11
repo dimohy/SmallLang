@@ -2152,6 +2152,7 @@ internal static class ParserEmitter
         builder.AppendLine("            or \"Size\" or \"UIntSize\"");
         builder.AppendLine("            or \"CodePoint\"");
         builder.AppendLine("            or \"Arena\"");
+        builder.AppendLine("            or \"Arguments\" or \"MappedBytes\" or \"MutableMappedBytes\"");
         builder.AppendLine("            or \"Float\" or \"Double\" or \"Float32\" or \"Float64\";");
         builder.AppendLine("    }");
         builder.AppendLine();

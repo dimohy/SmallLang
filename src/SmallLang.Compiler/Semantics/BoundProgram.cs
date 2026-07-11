@@ -84,7 +84,8 @@ internal enum BoundFunctionKind
     RuntimeOpenIntReader,
     RuntimeClosestInt,
     RuntimeCloseIntReader,
-    RuntimeNowMillis
+    RuntimeNowMillis,
+    RuntimeArguments
 }
 
 internal enum TypeId
@@ -103,6 +104,7 @@ internal enum TypeId
     Size,
     UIntSize,
     CodePoint,
+    Arguments,
     Arena,
     MappedBytes,
     MutableMappedBytes,
@@ -454,6 +456,7 @@ internal sealed class TypeDefinitionTable
             TypeId.Int64 or TypeId.UInt64 or TypeId.Float64 => 8,
             TypeId.Size or TypeId.UIntSize => _pointerSize,
             TypeId.Text => 16,
+            TypeId.Arguments => 8,
             TypeId.Arena => 24,
             TypeId.MappedBytes or TypeId.MutableMappedBytes => 40,
             _ => throw new InvalidOperationException($"type {type} has no inline size")

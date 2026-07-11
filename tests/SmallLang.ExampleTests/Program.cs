@@ -59,6 +59,7 @@ foreach (var expectedFile in expectedFiles)
     var name = Path.GetFileName(expectedFile)[..^".stdout.txt".Length];
     var sourcePath = Path.Combine(repoRoot, "examples", name + ".sl");
     var stdinPath = Path.Combine(expectedDir, name + ".stdin.txt");
+    var argumentsPath = Path.Combine(expectedDir, name + ".args.txt");
     var outputPath = Path.Combine(artifactsDir, name + ".exe");
     var llvmContainsPath = Path.Combine(expectedDir, name + ".llvm.contains.txt");
     var llvmNotContainsPath = Path.Combine(expectedDir, name + ".llvm.not-contains.txt");
@@ -157,7 +158,10 @@ foreach (var expectedFile in expectedFiles)
     var stdin = File.Exists(stdinPath)
         ? File.ReadAllText(stdinPath, Encoding.UTF8)
         : null;
-    var run = Run(outputPath, [], stdin, repoRoot);
+    var runArguments = File.Exists(argumentsPath)
+        ? File.ReadAllLines(argumentsPath, Encoding.UTF8).ToList()
+        : [];
+    var run = Run(outputPath, runArguments, stdin, repoRoot);
     var expected = Normalize(File.ReadAllText(expectedFile, Encoding.UTF8));
     var actual = Normalize(run.Stdout);
 

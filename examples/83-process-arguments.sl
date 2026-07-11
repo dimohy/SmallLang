@@ -1,0 +1,12 @@
+import sys.process as process
+
+main {
+    process.arguments => args
+    args -> len => count
+    args[1] => first
+    args[2] => second
+
+    "argument count = $count" -> println
+    "first argument = $first" -> println
+    "second argument = $second" -> println
+}

@@ -9,6 +9,8 @@ internal abstract class LlvmRuntimePlatform
 
     public abstract string EntryPointName { get; }
 
+    public virtual string EntryPointParameters => "";
+
     public virtual int PointerBitWidth => 64;
 
     public virtual void EmitGlobals(StringBuilder globals)
@@ -25,11 +27,23 @@ internal abstract class LlvmRuntimePlatform
 
     public abstract void EmitTimePrimitives(StringBuilder functions);
 
+    public abstract void EmitProcessPrimitives(StringBuilder functions);
+
     public abstract void EmitEntryHandles(StringBuilder functions);
+
+    public virtual void EmitProcessEntry(StringBuilder functions)
+    {
+    }
 
     public virtual bool SupportsHeapAllocation => true;
 
     public virtual bool SupportsMemoryMapping => true;
+
+    public virtual bool SupportsProcessArguments => true;
+
+    public virtual void EmitExitCleanup(StringBuilder functions)
+    {
+    }
 
     public abstract void EmitMemoryDeclarations(StringBuilder functions);
 

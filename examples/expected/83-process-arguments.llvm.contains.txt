@@ -1,0 +1,5 @@
+@smalllang_argument_count
+@smalllang_argument
+@CommandLineToArgvW
+@WideCharToMultiByte
+@smalllang_dispose_arguments

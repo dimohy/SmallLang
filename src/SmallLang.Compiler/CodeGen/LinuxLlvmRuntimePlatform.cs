@@ -8,10 +8,14 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
 
     public override string EntryPointName => "main";
 
+    public override string EntryPointParameters => "i32 %argc, ptr %argv";
+
     public override void EmitGlobals(StringBuilder globals)
     {
         globals.AppendLine("@smalllang_file_writer_fd = internal global i32 -1");
         globals.AppendLine("@smalllang_file_reader_fd = internal global i32 -1");
+        globals.AppendLine("@smalllang_argument_count_value = internal global i64 0");
+        globals.AppendLine("@smalllang_argument_vector = internal global ptr null");
     }
 
     public override void EmitExternalDeclarations(StringBuilder functions)
@@ -74,6 +78,42 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
 
             done:
               ret void
+            }
+
+            """);
+    }
+
+    public override void EmitProcessPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            define internal i64 @smalllang_argument_count() #0 {
+            entry:
+              %count = load i64, ptr @smalllang_argument_count_value, align 8
+              ret i64 %count
+            }
+
+            define internal %smalllang.text @smalllang_argument(i64 %index) #0 {
+            entry:
+              %argv = load ptr, ptr @smalllang_argument_vector, align 8
+              %slot = getelementptr ptr, ptr %argv, i64 %index
+              %value = load ptr, ptr %slot, align 8
+              br label %length
+
+            length:
+              %i = phi i64 [ 0, %entry ], [ %next, %more ]
+              %byte_ptr = getelementptr i8, ptr %value, i64 %i
+              %byte = load i8, ptr %byte_ptr, align 1
+              %done = icmp eq i8 %byte, 0
+              br i1 %done, label %result, label %more
+
+            more:
+              %next = add i64 %i, 1
+              br label %length
+
+            result:
+              %r0 = insertvalue %smalllang.text poison, ptr %value, 0
+              %r1 = insertvalue %smalllang.text %r0, i64 %i, 1
+              ret %smalllang.text %r1
             }
 
             """);
@@ -363,5 +403,12 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
     {
         functions.AppendLine("  %stdin = inttoptr i64 0 to ptr");
         functions.AppendLine("  %stdout = inttoptr i64 1 to ptr");
+    }
+
+    public override void EmitProcessEntry(StringBuilder functions)
+    {
+        functions.AppendLine("  %argc64 = zext i32 %argc to i64");
+        functions.AppendLine("  store i64 %argc64, ptr @smalllang_argument_count_value, align 8");
+        functions.AppendLine("  store ptr %argv, ptr @smalllang_argument_vector, align 8");
     }
 }

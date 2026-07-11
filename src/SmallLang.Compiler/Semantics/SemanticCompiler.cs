@@ -747,6 +747,13 @@ internal sealed class SemanticCompiler
                 expectedInputType: null,
                 BoundType.Int64,
                 BoundFunctionKind.RuntimeNowMillis),
+            "sys.process.arguments" => RequireIntrinsicSignature(
+                function,
+                inputType,
+                returnType,
+                expectedInputType: null,
+                BoundType.Arguments,
+                BoundFunctionKind.RuntimeArguments),
             _ => throw Error(function.Line, function.Column, $"unknown intrinsic function '{function.Name}'")
         };
     }
@@ -1151,6 +1158,7 @@ internal sealed class SemanticCompiler
                 BoundType.IntSlice or BoundType.StaticIntArray or BoundType.DynamicIntArray => BoundType.Int,
                 BoundType.StaticTextArray => BoundType.Text,
                 BoundType.Text => BoundType.CodePoint,
+                BoundType.Arguments => BoundType.Text,
                 BoundType.MappedBytes or BoundType.MutableMappedBytes => BoundType.UInt8,
                 _ when _types.IsStaticArray(sourceType) => _types.GetStaticArray(sourceType).ElementType,
                 _ when _types.IsDynamicArray(sourceType) => _types.GetDynamicArray(sourceType).ElementType,
@@ -1159,7 +1167,7 @@ internal sealed class SemanticCompiler
             if (itemType == BoundType.Unit)
             {
                 throw Error(call.Source.Line, call.Source.Column,
-                    "each expects a range, Text, array, or mapped byte view");
+                    "each expects a range, Text, array, Arguments, or mapped byte view");
             }
         }
 
@@ -1709,6 +1717,7 @@ internal sealed class SemanticCompiler
             or BoundType.DynamicIntArray
             or BoundType.IntDictionaryView
             or BoundType.IntDictionary
+            or BoundType.Arguments
             or BoundType.MappedBytes
             or BoundType.MutableMappedBytes)
             && !_types.IsStaticArray(sourceType)
@@ -1719,13 +1728,13 @@ internal sealed class SemanticCompiler
                 "indexing expects an array, dictionary, or mapped byte view");
         }
 
-        var expectedIndexType = sourceType is BoundType.MappedBytes or BoundType.MutableMappedBytes
+        var expectedIndexType = sourceType is BoundType.MappedBytes or BoundType.MutableMappedBytes or BoundType.Arguments
             ? BoundType.UIntSize
             : _types.IsDictionary(sourceType)
             ? _types.GetDictionary(sourceType).KeyType
             : BoundType.Int;
         var indexType = expression.Index is NumberExpression
-                && sourceType is BoundType.MappedBytes or BoundType.MutableMappedBytes
+                && sourceType is BoundType.MappedBytes or BoundType.MutableMappedBytes or BoundType.Arguments
             ? BoundType.UIntSize
             : expression.Index is DictionaryLiteralExpression contextual
             && _types.IsStruct(expectedIndexType)
@@ -1758,6 +1767,10 @@ internal sealed class SemanticCompiler
         if (sourceType is BoundType.MappedBytes or BoundType.MutableMappedBytes)
         {
             return BoundType.UInt8;
+        }
+        if (sourceType == BoundType.Arguments)
+        {
+            return BoundType.Text;
         }
         if (_types.IsDynamicArray(sourceType))
         {
@@ -3112,6 +3125,7 @@ internal sealed class SemanticCompiler
                     or BoundType.DynamicIntArray
                     or BoundType.IntDictionaryView
                     or BoundType.IntDictionary
+                    or BoundType.Arguments
                     or BoundType.MappedBytes
                     or BoundType.MutableMappedBytes)
                     && !_types.IsStaticArray(currentType)
@@ -3122,7 +3136,7 @@ internal sealed class SemanticCompiler
                 }
 
                 result = new FlowResult(
-                    currentType is BoundType.MappedBytes or BoundType.MutableMappedBytes
+                    currentType is BoundType.MappedBytes or BoundType.MutableMappedBytes or BoundType.Arguments
                         ? BoundType.UIntSize
                         : BoundType.Int,
                     FlowEffect.None);
@@ -3506,6 +3520,7 @@ internal sealed class SemanticCompiler
 
                 return BoundType.Unit;
             case BoundFunctionKind.RuntimeNowMillis:
+            case BoundFunctionKind.RuntimeArguments:
                 EnsureRuntimeIntrinsicAllowed(function, allowReadIntCall, expression.Line, expression.Column, path);
                 if (expression.Arguments.Count != 0)
                 {
@@ -4110,7 +4125,8 @@ internal sealed class SemanticCompiler
             or "sys.file.openIntReader"
             or "sys.file.closestInt"
             or "sys.file.closeIntReader"
-            or "sys.time.nowMillis";
+            or "sys.time.nowMillis"
+            or "sys.process.arguments";
     }
 
     private void EnsureRuntimeIntrinsicAllowed(
@@ -4265,6 +4281,7 @@ internal sealed class SemanticCompiler
             ["UIntSize"] = BoundType.UIntSize,
             ["CodePoint"] = BoundType.CodePoint,
             ["Arena"] = BoundType.Arena,
+            ["Arguments"] = BoundType.Arguments,
             ["MappedBytes"] = BoundType.MappedBytes,
             ["MutableMappedBytes"] = BoundType.MutableMappedBytes,
             ["Float"] = BoundType.Float32,
@@ -4577,6 +4594,7 @@ internal sealed class SemanticCompiler
             TypeId.Int64 or TypeId.UInt64 or TypeId.Float64 => 8,
             TypeId.Size or TypeId.UIntSize => _pointerBitWidth / 8,
             TypeId.Text => 16,
+            TypeId.Arguments => 8,
             TypeId.Arena => 24,
             TypeId.MappedBytes or TypeId.MutableMappedBytes => 40,
             _ => throw new InvalidOperationException($"type {type} has no inline size")
@@ -4751,6 +4769,7 @@ internal sealed class SemanticCompiler
             BoundType.UIntSize => "UIntSize",
             BoundType.CodePoint => "CodePoint",
             BoundType.Arena => "Arena",
+            BoundType.Arguments => "Arguments",
             BoundType.MappedBytes => "MappedBytes",
             BoundType.MutableMappedBytes => "MutableMappedBytes",
             BoundType.Float32 => "Float",

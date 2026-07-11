@@ -2960,4 +2960,34 @@ aligned length are retained for flush/unmap. Example 82 verifies literal
 inference beyond signed 32-bit range, mutable indexed syntax, read/write
 lowering, iteration, writeback, and deterministic unmapping.
 
+## D098 - Process Arguments Are A Read-Only Host View
+
+Status: implemented
+Date: 2026-07-12
+
+SL exposes launch arguments as `sys.process.arguments: -> Arguments`. The type
+is deliberately not an owned dynamic Text array: the host already owns the
+Linux argument bytes, while the Windows runtime owns one conversion lifetime.
+Treating either as an ordinary independently movable array would invent the
+wrong ownership and mutation semantics. `Arguments` is therefore a copyable,
+read-only, process-lifetime view with checked `UIntSize` indexing, `UIntSize`
+`len`, and borrowed `Text` iteration.
+
+Windows uses `CommandLineToArgvW`, so quoting and backslash behavior follows the
+operating system instead of a hand-written partial parser. Each item is
+converted with strict UTF-8 output, retained for the program lifetime, and
+freed with the records table at exit. Linux accepts `argc` and `argv` in the
+generated `main` ABI and measures each selected argument without copying.
+Arguments can contain spaces and non-ASCII text on both targets. The first item
+remains host-provided and is not a trusted canonical executable path.
+
+The compiler detects whether the main AST reaches this intrinsic. Argument
+helpers, Windows allocations, initialization, and teardown are omitted when it
+does not, preserving stack-placement LLVM assertions and small programs. This
+follows Rust's distinction between process-provided argument views and ordinary
+owned collections, and Zig's explicit process initialization context. Example
+83 and its argument fixture verify count, checked indexing, spaces, Hangul,
+Windows execution, and Linux execution. Environment access and structured
+child-process execution remain the next host-boundary slices.
+
 

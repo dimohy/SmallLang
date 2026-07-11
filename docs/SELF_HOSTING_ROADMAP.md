@@ -43,6 +43,14 @@ The design deliberately combines a small set of compatible ideas:
   ownership and aligns hidden base mappings to the host granularity. See
   Microsoft [Creating a View Within a File](https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-view)
   and Linux [`mmap(2)`](https://man7.org/linux/man-pages/man2/munmap.2.html).
+- Rust exposes process-provided arguments separately from ordinary owned
+  collections and cautions that argument zero is not a trusted executable path;
+  Zig passes explicit process initialization state to `main`; Swift and Mojo
+  keep child execution in a structured process API. SL follows those boundaries
+  with a read-only `Arguments` view now and an argv-based child-process API next.
+  See Rust [`args_os`](https://doc.rust-lang.org/std/env/fn.args_os.html),
+  Swift [`Process`](https://developer.apple.com/documentation/foundation/process),
+  and Mojo [`subprocess`](https://docs.modular.com/mojo/std/subprocess/).
 
 SL keeps its own expression-first `=>` binding and fluent `->` application
 syntax. It does not adopt class inheritance, implicit null, implicit garbage
@@ -62,12 +70,12 @@ not lines of code.
 | Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
-| Compiler-construction primitives | 12 | 7 | 3 | 2 | 8.5 |
+| Compiler-construction primitives | 12 | 7 | 4 | 1 | 9.0 |
 | Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **38** | **13** | **9** | **44.5 / 60** |
+| **Total** | **60** | **38** | **14** | **8** | **45.0 / 60** |
 
-Current count-based progress: **74.2% (44.5 of 60 equivalent gates)**.
-There are **15.5 equivalent gates remaining**. Because the missing compiler
+Current count-based progress: **75.0% (45 of 60 equivalent gates)**.
+There are **15 equivalent gates remaining**. Because the missing compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -117,7 +125,7 @@ estimate.
   enforced by executable top-level statements rather than a module manifest.
 - Missing (2): package manifest/dependency graph; module/interface cache.
 
-### Compiler-construction primitives — 8.5 / 12
+### Compiler-construction primitives — 9.0 / 12
 
 - Complete (7): Text values, validated UTF-8 iteration as fixed-width Unicode
   `CodePoint` scalar values, deterministic native file I/O wrappers needed by
@@ -128,10 +136,12 @@ estimate.
   move/mutable-borrow ABI, and one-shot backing-store release. Native memory
   mapping adds affine bounded `UInt8` views, 64-bit file offsets/sizes,
   target-sized view lengths/indices, writeback, and deterministic unmapping.
-- Partial (3): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
+- Partial (4): generic arrays/dictionaries cover compiler-useful `Int`, `Text`,
   and user-value payloads plus function contracts; string processing is
-  output-oriented; diagnostics have no reusable source-span type.
-- Missing (2): command-line/environment APIs and process execution.
+  output-oriented; diagnostics have no reusable source-span type; native
+  command-line arguments are available as a UTF-8 `Arguments` view, while the
+  environment half of the host-context gate remains.
+- Missing (1): structured child-process execution.
 
 ### Standard library and tooling — 3.5 / 8
 

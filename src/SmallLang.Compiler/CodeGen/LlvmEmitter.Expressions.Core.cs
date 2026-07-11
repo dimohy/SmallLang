@@ -599,6 +599,10 @@ internal sealed partial class LlvmEmitter
         {
             return EmitMappedLoad(mapped, expression.Index);
         }
+        if (source is RuntimeArguments arguments)
+        {
+            return EmitArgumentLoad(arguments, expression.Index);
+        }
         var index = EmitIntExpression(expression.Index);
         var indexSize = EmitIntAsSize(index, "index_size");
         return source switch

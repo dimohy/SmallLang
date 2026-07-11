@@ -15,7 +15,7 @@ internal sealed partial class LlvmEmitter
         _currentStackFramePlan = _program.MainStackFrame;
         _mainOk = "true";
         _currentBlockLabel = "entry";
-        EmitFunctionLine($"define dso_local i32 @{_platform.EntryPointName}() local_unnamed_addr {{");
+        EmitFunctionLine($"define dso_local i32 @{_platform.EntryPointName}({_platform.EntryPointParameters}) local_unnamed_addr {{");
         EmitLabel("entry");
         EmitStackFrameAllocations();
         EmitAlloca("%written", "i32", 4);
@@ -23,10 +23,18 @@ internal sealed partial class LlvmEmitter
         EmitAlloca("%ok_state", "i1", 1);
         EmitStore("i1", "true", "%ok_state", 1);
         EmitPlatformFunctionBlock(_platform.EmitEntryHandles);
+        if (_usesProcessArguments)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitProcessEntry);
+        }
 
         EmitStatements(_program.MainStatements);
 
         DropOwnedLocals();
+        if (_usesProcessArguments)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitExitCleanup);
+        }
 
         var finalOk = NextTemp("final_ok");
         EmitLoad(finalOk, "i1", "%ok_state", 1);
@@ -256,6 +264,7 @@ internal sealed partial class LlvmEmitter
             RuntimeDynamicIntArray array => array.LengthName,
             RuntimeDynamicInlineArray array => array.LengthName,
             RuntimeMappedBytes mapped => mapped.LengthName,
+            RuntimeArguments arguments => arguments.LengthName,
             _ => throw new SmallLangException("each expects a range, Text, or array input")
         };
 
@@ -283,6 +292,7 @@ internal sealed partial class LlvmEmitter
             RuntimeDynamicIntArray array => EmitDynamicArrayLoad(array, index),
             RuntimeDynamicInlineArray array => EmitDynamicInlineArrayLoad(array, index),
             RuntimeMappedBytes mapped => EmitMappedLoad(mapped, index),
+            RuntimeArguments => EmitArgumentLoad(index),
             _ => throw new SmallLangException("each expects a range, Text, or array input")
         };
 

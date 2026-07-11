@@ -247,7 +247,8 @@ internal static class CompilerApp
             Path.Combine(root, "stdlib", "sys", "io.sl"),
             Path.Combine(root, "stdlib", "sys", "random.sl"),
             Path.Combine(root, "stdlib", "sys", "time.sl"),
-            Path.Combine(root, "stdlib", "sys", "file.sl")
+            Path.Combine(root, "stdlib", "sys", "file.sl"),
+            Path.Combine(root, "stdlib", "sys", "process.sl")
         };
 
         foreach (var path in paths)

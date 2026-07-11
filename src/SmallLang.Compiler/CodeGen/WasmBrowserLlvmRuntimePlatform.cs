@@ -14,6 +14,12 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
 
     public override bool SupportsMemoryMapping => false;
 
+    public override bool SupportsProcessArguments => false;
+
+    public override void EmitProcessPrimitives(StringBuilder functions)
+    {
+    }
+
     public override void EmitMappedFilePrimitives(StringBuilder functions)
     {
     }

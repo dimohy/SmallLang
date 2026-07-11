@@ -14,6 +14,10 @@ internal sealed partial class LlvmEmitter
         EmitPlatformFunctionBlock(_platform.EmitFilePrimitives);
         EmitPlatformFunctionBlock(_platform.EmitMappedFilePrimitives);
         EmitPlatformFunctionBlock(_platform.EmitTimePrimitives);
+        if (_usesProcessArguments)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitProcessPrimitives);
+        }
         EmitPlatformFunctionBlock(_platform.EmitMemoryPrimitives);
         EmitFunctionBlock("""
             define dso_local ptr @memset(ptr %dest, i32 %value, i64 %count) #0 {
