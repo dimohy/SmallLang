@@ -569,6 +569,34 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
               ret %smalllang.file_int_result %fail1
             }
 
+            define internal %smalllang.file_count_result @smalllang_platform_read_file_bytes(ptr %data, i64 %len64) #0 {
+            entry:
+              %handle = load ptr, ptr @smalllang_file_reader, align 8
+              %has_handle = icmp ne ptr %handle, null
+              %fits = icmp ule i64 %len64, 4294967295
+              %ready = and i1 %has_handle, %fits
+              br i1 %ready, label %read, label %fail
+
+            read:
+              %len = trunc i64 %len64 to i32
+              %count_ptr = alloca i32, align 4
+              %result = call i32 @ReadFile(ptr %handle, ptr %data, i32 %len, ptr %count_ptr, ptr null)
+              %ok = icmp ne i32 %result, 0
+              br i1 %ok, label %success, label %fail
+
+            success:
+              %count32 = load i32, ptr %count_ptr, align 4
+              %count = zext i32 %count32 to i64
+              %ok0 = insertvalue %smalllang.file_count_result poison, i64 %count, 0
+              %ok1 = insertvalue %smalllang.file_count_result %ok0, i32 1, 1
+              ret %smalllang.file_count_result %ok1
+
+            fail:
+              %fail0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
+              %fail1 = insertvalue %smalllang.file_count_result %fail0, i32 0, 1
+              ret %smalllang.file_count_result %fail1
+            }
+
             define internal i32 @smalllang_platform_close_read_file() #0 {
             entry:
               %handle = load ptr, ptr @smalllang_file_reader, align 8

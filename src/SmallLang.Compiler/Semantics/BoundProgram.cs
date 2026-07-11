@@ -87,7 +87,8 @@ internal enum BoundFunctionKind
     RuntimeNowMillis,
     RuntimeArguments,
     RuntimeEnvironment,
-    RuntimeWriteScalar
+    RuntimeWriteScalar,
+    RuntimeReadScalar
 }
 
 internal enum TypeId
@@ -461,6 +462,7 @@ internal sealed class TypeDefinitionTable
             TypeId.Arguments => 8,
             TypeId.Arena => 24,
             TypeId.MappedBytes or TypeId.MutableMappedBytes => 40,
+            TypeId.GenericParameter or TypeId.SecondaryGenericParameter => 8,
             _ => throw new InvalidOperationException($"type {type} has no inline size")
         };
     }

@@ -1,0 +1,1 @@
+zero-input generic applications use property syntax without parentheses

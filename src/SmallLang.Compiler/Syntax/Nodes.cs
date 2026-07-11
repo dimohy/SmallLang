@@ -227,6 +227,13 @@ internal sealed record ArrayLiteralExpression(
     string? ElementType = null)
     : Expression(Line, Column);
 
+internal sealed record TypeApplicationExpression(
+    IReadOnlyList<string> Path,
+    string TypeArgument,
+    int Line,
+    int Column)
+    : Expression(Line, Column);
+
 internal sealed record ArrayRepeatExpression(
     Expression Value,
     int? Count,

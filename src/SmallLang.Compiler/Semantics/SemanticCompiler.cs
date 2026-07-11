@@ -422,7 +422,9 @@ internal sealed class SemanticCompiler
             {
                 throw Error(function.Line, function.Column, "generic local and impl functions are not implemented yet");
             }
-            if (!function.IsValueGeneric && function.InputType != function.GenericParameterName)
+            if (!function.IsValueGeneric
+                && function.InputType is not null
+                && function.InputType != function.GenericParameterName)
             {
                 throw Error(
                     function.Line,
@@ -762,12 +764,22 @@ internal sealed class SemanticCompiler
                 function,
                 inputType,
                 returnType),
+            "sys.file.read" => RequireGenericScalarReadSignature(
+                function,
+                inputType,
+                returnType),
             "sys.file.openWriter" => RequireIntrinsicSignature(
                 function, inputType, returnType, BoundType.Text, BoundType.Unit,
                 BoundFunctionKind.RuntimeOpenIntWriter),
             "sys.file.closeWriter" => RequireIntrinsicSignature(
                 function, inputType, returnType, expectedInputType: null, BoundType.Unit,
                 BoundFunctionKind.RuntimeCloseIntWriter),
+            "sys.file.openReader" => RequireIntrinsicSignature(
+                function, inputType, returnType, BoundType.Text, BoundType.Unit,
+                BoundFunctionKind.RuntimeOpenIntReader),
+            "sys.file.closeReader" => RequireIntrinsicSignature(
+                function, inputType, returnType, expectedInputType: null, BoundType.Unit,
+                BoundFunctionKind.RuntimeCloseIntReader),
             _ => throw Error(function.Line, function.Column, $"unknown intrinsic function '{function.Name}'")
         };
     }
@@ -800,6 +812,24 @@ internal sealed class SemanticCompiler
                 $"intrinsic '{function.Name}' must have signature write<T>: T -> Unit");
         }
         return BoundFunctionKind.RuntimeWriteScalar;
+    }
+
+    private BoundFunctionKind RequireGenericScalarReadSignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (function.GenericParameterName is null
+            || inputType is not null
+            || !_types.TryGetResultTypes(returnType, out var resultTypes)
+            || !_types.TryGetOptionValue(resultTypes.Ok, out var valueType)
+            || valueType != BoundType.GenericParameter
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw Error(function.Line, function.Column,
+                $"intrinsic '{function.Name}' must have signature read<T>: -> Result<Option<T>, Text>");
+        }
+        return BoundFunctionKind.RuntimeReadScalar;
     }
 
     private BoundFunctionKind RequireIntrinsicSignature(
@@ -1445,6 +1475,7 @@ internal sealed class SemanticCompiler
             BoolExpression => BoundType.Bool,
             NameExpression name => InferNameExpression(name, functions, bindings, allowReadIntCall),
             ArrayLiteralExpression array => InferArrayLiteralExpression(array, functions, bindings, allowReadIntCall),
+            TypeApplicationExpression application => InferTypeApplicationExpression(application, functions, allowReadIntCall),
             ArrayRepeatExpression repeat => InferArrayRepeatExpression(repeat, functions, bindings, allowReadIntCall),
             TypedEmptyArrayExpression typedArray => InferTypedEmptyArrayExpression(typedArray),
             DictionaryLiteralExpression dictionary => InferDictionaryLiteralExpression(dictionary, functions, bindings, allowReadIntCall),
@@ -3667,13 +3698,14 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundFunction> functions,
         object callSite)
     {
-        if (template.Kind == BoundFunctionKind.RuntimeWriteScalar
+        if (template.Kind is BoundFunctionKind.RuntimeWriteScalar or BoundFunctionKind.RuntimeReadScalar
             && actualType != BoundType.Bool
             && !IsNumericType(actualType)
             && actualType != BoundType.CodePoint)
         {
+            var operation = template.Kind == BoundFunctionKind.RuntimeReadScalar ? "read" : "write";
             throw new SmallLangException(
-                $"generic file write supports Bool, CodePoint, and fixed-width numeric scalars; got {FormatType(actualType)}");
+                $"generic file {operation} supports Bool, CodePoint, and fixed-width numeric scalars; got {FormatType(actualType)}");
         }
         if (actualType is BoundType.Unit
             or BoundType.IntSlice
@@ -3736,17 +3768,14 @@ internal sealed class SemanticCompiler
             specialization = template with
             {
                 Name = specializedName,
-                InputType = actualType,
-                ReturnType = template.ReturnType == BoundType.GenericParameter
-                    ? actualType
-                    : template.ReturnType == BoundType.SecondaryGenericParameter
-                        ? inferredSecondaryType!.Value
-                        : template.ReturnType,
+                InputType = template.InputType is null ? null : actualType,
+                ReturnType = SubstituteGenericType(template.ReturnType, actualType, inferredSecondaryType),
                 SpecializedType = actualType,
                 SpecializedSecondaryType = inferredSecondaryType
             };
             _boundFunctions.Add(specializedName, specialization);
-            if (_validatingGenericSpecializations.Add(specialization))
+            if (specialization.Kind is BoundFunctionKind.User or BoundFunctionKind.UserBlock
+                && _validatingGenericSpecializations.Add(specialization))
             {
                 ValidateUserFunction(
                     specialization,
@@ -3757,6 +3786,56 @@ internal sealed class SemanticCompiler
 
         _resolvedGenericCalls[callSite] = specialization;
         return specialization;
+    }
+
+    private BoundType SubstituteGenericType(
+        BoundType type,
+        BoundType primaryType,
+        BoundType? secondaryType)
+    {
+        if (type == BoundType.GenericParameter) return primaryType;
+        if (type == BoundType.SecondaryGenericParameter) return secondaryType!.Value;
+        if (_types.TryGetOptionValue(type, out var optionValue))
+        {
+            var value = SubstituteGenericType(optionValue, primaryType, secondaryType);
+            return _types.GetOrAddOption(value, $"Option<{FormatType(value)}>");
+        }
+        if (_types.TryGetResultTypes(type, out var resultTypes))
+        {
+            var ok = SubstituteGenericType(resultTypes.Ok, primaryType, secondaryType);
+            var error = SubstituteGenericType(resultTypes.Error, primaryType, secondaryType);
+            return _types.GetOrAddResult(ok, error, $"Result<{FormatType(ok)}, {FormatType(error)}>");
+        }
+        return type;
+    }
+
+    private BoundType InferTypeApplicationExpression(
+        TypeApplicationExpression expression,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        bool allowRuntimeCall)
+    {
+        var path = string.Join('.', expression.Path);
+        if (!functions.TryGetValue(path, out var template))
+        {
+            throw Error(expression.Line, expression.Column, $"unknown generic function '{path}'");
+        }
+        EnsureFunctionVisible(template, expression.Line, expression.Column);
+        if (template.GenericParameterName is null || template.SpecializedType is not null)
+        {
+            throw Error(expression.Line, expression.Column, $"function '{path}' is not generic");
+        }
+        if (template.InputType is not null)
+        {
+            throw Error(expression.Line, expression.Column,
+                $"generic function '{path}' expects an argument and must use call or flow syntax");
+        }
+        if (IsMainOnlyRuntimeWrapper(template) && !allowRuntimeCall)
+        {
+            throw Error(expression.Line, expression.Column,
+                $"{path} is only valid in main for the current runtime slice");
+        }
+        var actualType = ParseType(expression.TypeArgument, expression.Line, expression.Column);
+        return ResolveGenericSpecialization(template, actualType, functions, expression).ReturnType;
     }
 
     private BoundFunction ResolveValueGenericSpecialization(
@@ -4777,6 +4856,26 @@ internal sealed class SemanticCompiler
         {
             return BoundType.IntSlice;
         }
+        if (typeName.StartsWith("Option<", StringComparison.Ordinal) && typeName.EndsWith('>'))
+        {
+            var value = ParseFunctionType(typeName[7..^1].Trim(), genericParameterName,
+                secondaryGenericParameterName, line, column);
+            return _types.GetOrAddOption(value, $"Option<{FormatType(value)}>");
+        }
+        if (typeName.StartsWith("Result<", StringComparison.Ordinal) && typeName.EndsWith('>'))
+        {
+            var arguments = typeName[7..^1];
+            var separator = FindTopLevelTypeComma(arguments);
+            if (separator < 0)
+            {
+                throw Error(line, column, "Result requires success and error types");
+            }
+            var ok = ParseFunctionType(arguments[..separator].Trim(), genericParameterName,
+                secondaryGenericParameterName, line, column);
+            var error = ParseFunctionType(arguments[(separator + 1)..].Trim(), genericParameterName,
+                secondaryGenericParameterName, line, column);
+            return _types.GetOrAddResult(ok, error, $"Result<{FormatType(ok)}, {FormatType(error)}>");
+        }
 
         return ParseType(typeName, line, column);
     }
@@ -4788,8 +4887,8 @@ internal sealed class SemanticCompiler
         {
             depth += text[index] switch
             {
-                '[' or '{' => 1,
-                ']' or '}' => -1,
+                '[' or '{' or '<' => 1,
+                ']' or '}' or '>' => -1,
                 _ => 0
             };
             if (text[index] == ',' && depth == 0)

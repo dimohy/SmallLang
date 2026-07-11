@@ -133,6 +133,13 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
               ret %smalllang.file_int_result %fail1
             }
 
+            define internal %smalllang.file_count_result @smalllang_platform_read_file_bytes(ptr %data, i64 %len) #0 {
+            entry:
+              %fail0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
+              %fail1 = insertvalue %smalllang.file_count_result %fail0, i32 0, 1
+              ret %smalllang.file_count_result %fail1
+            }
+
             define internal i32 @smalllang_platform_close_read_file() #0 {
             entry:
               ret i32 0

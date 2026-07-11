@@ -3036,8 +3036,25 @@ buffer is flushed before a generic scalar write, preserving call order.
 
 Example 85 writes `UInt8`, `UInt16`, `UInt32`, and `Bool`, maps the resulting
 file, and verifies all eight bytes on Windows and Linux. A diagnostic rejects
-`Text`. The next file-I/O slice is a symmetric generic reader with explicit EOF,
-truncation, and OS-error semantics; user structs will require an explicit
-serialization trait rather than implicit ABI dumping.
+`Text`. User structs require an explicit serialization trait rather than
+implicit ABI dumping.
+
+## D101 - Zero-Input Generic Reads Use Explicit Type Application
+
+Status: implemented
+Date: 2026-07-12
+
+`sys.file.read<T>` has no value argument from which to infer `T`, so callers use
+`file.read<UInt16>` while retaining SmallLang's property syntax for zero-input
+functions. `file.read<UInt16>()` is a compile error. Parser lookahead recognizes
+the closed type application without consuming ordinary comparisons such as
+`left < right`.
+
+The result is `Result<Option<T>, Text>`: `Ok(None)` is clean EOF, while the
+stable errors `"truncated"`, `"invalid"`, and `"io"` distinguish incomplete
+scalars, invalid Bool/Unicode scalar encodings, and host failures. Native
+Windows and Linux readers consume the exact scalar byte width sequentially.
+Example 86 covers a value, Bool, EOF, truncation, and invalid Bool encoding;
+diagnostics reject `Text` and empty parentheses.
 
 

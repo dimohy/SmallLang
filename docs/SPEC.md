@@ -1068,7 +1068,7 @@ Lookup allocation or encoding failure traps rather than being reported as
 `None`; `None` means only that the variable is absent. Browser wasm rejects
 environment lookup until a host capability is explicitly supplied.
 
-## Generic Binary Scalar Output
+## Generic Binary Scalar I/O
 
 `sys.file` provides a generic writer alongside the legacy sorted-Int64 demo
 API:
@@ -1094,11 +1094,21 @@ generic write flushes the legacy Int64 record buffer first so mixing old and new
 calls cannot reorder bytes. I/O failure follows the existing fail-fast runtime
 status path.
 
-The symmetric `read<T> -> Option<T>`/`Result<T, FileError>` design remains a
-follow-up. It must distinguish clean EOF, truncated scalar data, invalid
-encodings, and operating-system errors before being added; reading arbitrary
-struct layouts without an explicit serialization contract is intentionally not
-planned.
+The reader uses explicit zero-input type application and property-call syntax:
+
+```smalllang
+"values.bin" -> file.openReader
+file.read<UInt16> => value
+file.closeReader
+```
+
+Its type is `read<T>: -> Result<Option<T>, Text>`. `Ok(Some(value))` is a full
+scalar, `Ok(None)` is clean EOF, and `Err("truncated")`, `Err("invalid")`, or
+`Err("io")` distinguish partial data, invalid `Bool`/`CodePoint` encodings, and
+host failures. The supported specializations and exact native byte layouts are
+the same as `write<T>`. Empty parentheses remain invalid for zero-input calls,
+so `read<UInt16>()` is rejected. Arbitrary structs still require an explicit
+serialization contract rather than implicit ABI dumping.
 
 The exact string escape set is not finalized. The first required string form is
 a double-quoted UTF-8 literal with optional identifier and expression

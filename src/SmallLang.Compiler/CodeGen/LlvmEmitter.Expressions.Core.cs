@@ -172,6 +172,7 @@ internal sealed partial class LlvmEmitter
             NumberExpression number => EmitNumberLiteral(number),
             BoolExpression boolean => new RuntimeBool(boolean.Value ? "true" : "false"),
             NameExpression name => EmitNameExpression(name),
+            TypeApplicationExpression application => EmitTypeApplicationExpression(application),
             ArrayLiteralExpression array => EmitArrayLiteral(array),
             ArrayRepeatExpression repeat => EmitArrayRepeat(repeat),
             TypedEmptyArrayExpression typedArray => EmitTypedEmptyArray(typedArray),
@@ -222,6 +223,15 @@ internal sealed partial class LlvmEmitter
             return EmitFunctionCall(function, argument: null);
         }
         throw new SmallLangException($"unknown runtime binding or zero-argument function '{expression.Name}'");
+    }
+
+    private RuntimeValue EmitTypeApplicationExpression(TypeApplicationExpression expression)
+    {
+        if (!_program.ResolvedGenericCalls.TryGetValue(expression, out var function))
+        {
+            throw new SmallLangException($"unresolved generic application '{string.Join('.', expression.Path)}'");
+        }
+        return EmitFunctionCall(function, argument: null);
     }
 
     private RuntimeText EmitTextLiteral(StringExpression expression)

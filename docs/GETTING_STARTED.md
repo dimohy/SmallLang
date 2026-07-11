@@ -513,8 +513,8 @@ approved syntax.
 - `stdlib/sys/io.sl`: SmallLang implementation of `sys.io` wrappers
 - `stdlib/sys/random.sl`: SmallLang wrappers for pseudo-random runtime
   intrinsics
-- `stdlib/sys/file.sl`: SmallLang wrappers for binary sorted `Int` file runtime
-  intrinsics
+- `stdlib/sys/file.sl`: legacy sorted-`Int` helpers plus generic canonical
+  scalar `write<T>` and `read<T>` file intrinsics
 - `scripts/smalllang.ps1`: local build/bootstrap script
 - `tools/vscode-smalllang`: local VS Code extension for `.sl` syntax
   highlighting

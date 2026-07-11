@@ -148,8 +148,9 @@ estimate.
 - Complete (2): basic `sys.io` and three LLVM-backed target link paths.
 - Partial (3): file/random/time APIs are narrow compiler intrinsics; VS Code
   support is grammar-only; tests are example-driven without an SL unit-test
-  framework. File output now monomorphizes canonical scalar `write<T>` calls,
-  while generic reading and explicit user-value serialization remain.
+  framework. File I/O now monomorphizes canonical scalar `write<T>` and
+  zero-input `read<T>` calls with explicit EOF/error results, while explicit
+  user-value serialization remains.
 - Missing (3): portable path/filesystem library, package/build command, formatter
   and language server based on the real parser.
 

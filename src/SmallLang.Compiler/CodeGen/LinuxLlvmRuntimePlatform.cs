@@ -352,6 +352,28 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               ret %smalllang.file_int_result %fail1
             }
 
+            define internal %smalllang.file_count_result @smalllang_platform_read_file_bytes(ptr %data, i64 %len) #0 {
+            entry:
+              %fd = load i32, ptr @smalllang_file_reader_fd, align 4
+              %has_fd = icmp sge i32 %fd, 0
+              br i1 %has_fd, label %read_file, label %fail
+
+            read_file:
+              %count = call i64 @read(i32 %fd, ptr %data, i64 %len)
+              %ok = icmp sge i64 %count, 0
+              br i1 %ok, label %success, label %fail
+
+            success:
+              %ok0 = insertvalue %smalllang.file_count_result poison, i64 %count, 0
+              %ok1 = insertvalue %smalllang.file_count_result %ok0, i32 1, 1
+              ret %smalllang.file_count_result %ok1
+
+            fail:
+              %fail0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
+              %fail1 = insertvalue %smalllang.file_count_result %fail0, i32 0, 1
+              ret %smalllang.file_count_result %fail1
+            }
+
             define internal i32 @smalllang_platform_close_read_file() #0 {
             entry:
               %fd = load i32, ptr @smalllang_file_reader_fd, align 4

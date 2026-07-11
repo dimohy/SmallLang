@@ -231,6 +231,155 @@ internal sealed partial class LlvmEmitter
         return RuntimeUnit.Instance;
     }
 
+    private RuntimeEnum EmitRuntimeReadScalar(BoundFunction function)
+    {
+        if (function.SpecializedType is not { } scalarType
+            || (scalarType != BoundType.Bool && !IsNumericType(scalarType) && scalarType != BoundType.CodePoint))
+        {
+            throw new SmallLangException($"{function.Name} has an invalid scalar specialization");
+        }
+        if (!_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || !_program.Types.TryGetOptionValue(resultTypes.Ok, out var optionValue)
+            || optionValue != scalarType)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid scalar result type");
+        }
+
+        var resultDefinition = _program.Types.GetEnum(function.ReturnType);
+        var okVariant = resultDefinition.Variants.First(variant => variant.Name == "Ok");
+        var errVariant = resultDefinition.Variants.First(variant => variant.Name == "Err");
+        var optionDefinition = _program.Types.GetEnum(resultTypes.Ok);
+        var someVariant = optionDefinition.Variants.First(variant => variant.Name == "Some");
+        var noneVariant = optionDefinition.Variants.First(variant => variant.Name == "None");
+        if (resultTypes.Error != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} requires Text errors");
+        }
+
+        var byteSize = RuntimeScalarByteSize(scalarType);
+        var storageType = scalarType == BoundType.Bool ? "i8" : LlvmType(scalarType);
+        var slot = NextTemp("file_scalar_read");
+        EmitAlloca(slot, storageType, RuntimeAlignment(scalarType));
+        var readResult = NextTemp("file_scalar_read_result");
+        EmitCall(readResult, "%smalllang.file_count_result", "smalllang_platform_read_file_bytes",
+            $"ptr {slot}, i64 {byteSize}");
+        var count = NextTemp("file_scalar_read_count");
+        EmitAssign(count, $"extractvalue %smalllang.file_count_result {readResult}, 0");
+        var readOk = NextTemp("file_scalar_read_ok");
+        EmitAssign(readOk, $"extractvalue %smalllang.file_count_result {readResult}, 1");
+
+        var ioLabel = NextLabel("file_scalar_io");
+        var countLabel = NextLabel("file_scalar_count");
+        var eofLabel = NextLabel("file_scalar_eof");
+        var nonEofLabel = NextLabel("file_scalar_non_eof");
+        var fullLabel = NextLabel("file_scalar_full");
+        var truncatedLabel = NextLabel("file_scalar_truncated");
+        var invalidLabel = NextLabel("file_scalar_invalid");
+        var validLabel = NextLabel("file_scalar_valid");
+        var endLabel = NextLabel("file_scalar_end");
+        var incoming = new List<(RuntimeValue Value, string Label)>();
+        var isReadOk = NextTemp("file_scalar_is_read_ok");
+        EmitCompare(isReadOk, "ne", "i32", readOk, "0");
+        EmitConditionalBranch(isReadOk, countLabel, ioLabel);
+
+        EmitLabel(ioLabel);
+        _currentBlockLabel = ioLabel;
+        var ioError = EmitRuntimeErrorText("io");
+        incoming.Add((EmitEnumValue(function.ReturnType, errVariant, ioError), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(countLabel);
+        _currentBlockLabel = countLabel;
+        var isEof = NextTemp("file_scalar_is_eof");
+        EmitCompare(isEof, "eq", "i64", count, "0");
+        EmitConditionalBranch(isEof, eofLabel, nonEofLabel);
+
+        EmitLabel(eofLabel);
+        _currentBlockLabel = eofLabel;
+        var none = EmitEnumValue(resultTypes.Ok, noneVariant, null);
+        incoming.Add((EmitEnumValue(function.ReturnType, okVariant, none), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(nonEofLabel);
+        _currentBlockLabel = nonEofLabel;
+        var isFull = NextTemp("file_scalar_is_full");
+        EmitCompare(isFull, "eq", "i64", count, byteSize.ToString(CultureInfo.InvariantCulture));
+        EmitConditionalBranch(isFull, fullLabel, truncatedLabel);
+
+        EmitLabel(truncatedLabel);
+        _currentBlockLabel = truncatedLabel;
+        var truncatedError = EmitRuntimeErrorText("truncated");
+        incoming.Add((EmitEnumValue(function.ReturnType, errVariant, truncatedError), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(fullLabel);
+        _currentBlockLabel = fullLabel;
+        var loaded = NextTemp("file_scalar_loaded");
+        EmitLoad(loaded, storageType, slot, RuntimeAlignment(scalarType));
+        string? encodingValid = null;
+        if (scalarType == BoundType.Bool)
+        {
+            encodingValid = NextTemp("file_bool_valid");
+            EmitCompare(encodingValid, "ule", "i8", loaded, "1");
+        }
+        else if (scalarType == BoundType.CodePoint)
+        {
+            var withinRange = NextTemp("file_codepoint_range");
+            EmitCompare(withinRange, "ule", "i32", loaded, "1114111");
+            var belowSurrogate = NextTemp("file_codepoint_below_surrogate");
+            EmitCompare(belowSurrogate, "ult", "i32", loaded, "55296");
+            var aboveSurrogate = NextTemp("file_codepoint_above_surrogate");
+            EmitCompare(aboveSurrogate, "ugt", "i32", loaded, "57343");
+            var outsideSurrogate = NextTemp("file_codepoint_outside_surrogate");
+            EmitAssign(outsideSurrogate, $"or i1 {belowSurrogate}, {aboveSurrogate}");
+            encodingValid = NextTemp("file_codepoint_valid");
+            EmitAssign(encodingValid, $"and i1 {withinRange}, {outsideSurrogate}");
+        }
+        if (encodingValid is not null)
+        {
+            EmitConditionalBranch(encodingValid, validLabel, invalidLabel);
+        }
+        else
+        {
+            EmitBranch(validLabel);
+        }
+
+        EmitLabel(invalidLabel);
+        _currentBlockLabel = invalidLabel;
+        var invalidError = EmitRuntimeErrorText("invalid");
+        incoming.Add((EmitEnumValue(function.ReturnType, errVariant, invalidError), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(validLabel);
+        _currentBlockLabel = validLabel;
+        RuntimeValue scalar = scalarType switch
+        {
+            BoundType.Bool => new RuntimeBool(EmitBoolFromByte(loaded)),
+            BoundType.Float32 or BoundType.Float64 => new RuntimeFloat(scalarType, loaded),
+            _ => new RuntimeInt(scalarType, loaded)
+        };
+        var some = EmitEnumValue(resultTypes.Ok, someVariant, scalar);
+        incoming.Add((EmitEnumValue(function.ReturnType, okVariant, some), _currentBlockLabel));
+        EmitBranch(endLabel);
+
+        EmitLabel(endLabel);
+        _currentBlockLabel = endLabel;
+        return EmitEnumPhi("file_scalar_result", function.ReturnType, incoming);
+    }
+
+    private string EmitBoolFromByte(string value)
+    {
+        var result = NextTemp("file_bool");
+        EmitCompare(result, "ne", "i8", value, "0");
+        return result;
+    }
+
+    private RuntimeText EmitRuntimeErrorText(string text)
+    {
+        var global = AddGlobalString(text);
+        return new RuntimeText(global.Name, global.Length.ToString(CultureInfo.InvariantCulture));
+    }
+
     private int RuntimeScalarByteSize(BoundType type) => type switch
     {
         BoundType.Bool or BoundType.Int8 or BoundType.UInt8 => 1,
