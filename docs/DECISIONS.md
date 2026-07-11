@@ -2366,4 +2366,33 @@ literals, enum constructors, and qualified trait calls. Cross-module use
 requires `public`; examples 53 and the internal-type/internal-trait diagnostics
 exercise both the exported and rejected paths.
 
+## D073 - Static Associated Types And Equality Constraints
+
+Status: implemented
+Date: 2026-07-11
+
+Traits may declare compile-time type members and each implementation must bind
+them explicitly:
+
+```smalllang
+trait Source {
+    type Item
+    read: self -> Item
+}
+
+impl Source for NumberSource {
+    type Item = Int
+    read: self -> Int { self.value }
+}
+```
+
+An associated type is part of the static conformance contract; it does not add
+a runtime field, metadata pointer, or vtable. Trait method signatures may name
+the associated type, and implementation validation substitutes the concrete
+binding before comparing the method signature. Generic bounds can require an
+equality such as `[T: Source[Item = Int]]`. Monomorphization checks the selected
+concrete implementation and rejects a different or missing binding before LLVM
+emission. Example 54 verifies static dispatch through the constrained generic;
+the associated-type diagnostics verify missing bindings and equality failure.
+
 

@@ -53,6 +53,9 @@ internal sealed class SemanticCompiler
             }
 
             var methods = new List<BoundTraitMethod>(declaration.Methods.Count);
+            var associatedTypes = declaration.AssociatedTypes
+                .Select(type => new BoundTraitAssociatedType(type.Name, type.Line, type.Column))
+                .ToArray();
             var methodNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var method in declaration.Methods)
             {
@@ -64,6 +67,8 @@ internal sealed class SemanticCompiler
                         $"trait method '{declaration.Name}.{method.Name}' already exists");
                 }
 
+                var returnAssociatedType = declaration.AssociatedTypes
+                    .FirstOrDefault(type => type.Name == method.ReturnType);
                 methods.Add(new BoundTraitMethod(
                     method.Name,
                     method.SelfOwnership switch
@@ -73,7 +78,10 @@ internal sealed class SemanticCompiler
                         FunctionInputOwnership.MutableBorrow => BoundFunctionInputOwnership.MutableBorrow,
                         _ => throw new InvalidOperationException("unsupported trait receiver ownership")
                     },
-                    ParseType(method.ReturnType, method.Line, method.Column),
+                    returnAssociatedType is null
+                        ? ParseType(method.ReturnType, method.Line, method.Column)
+                        : null,
+                    returnAssociatedType?.Name,
                     method.Line,
                     method.Column));
             }
@@ -82,6 +90,7 @@ internal sealed class SemanticCompiler
                 declaration.Name,
                 new BoundTraitDefinition(
                     declaration.Name,
+                    associatedTypes,
                     methods,
                     declaration.Line,
                     declaration.Column,
@@ -114,14 +123,37 @@ internal sealed class SemanticCompiler
                 throw Error(function.Line, function.Column, "trait methods require a user type self receiver");
             }
 
+            var associatedBindings = function.ImplAssociatedTypes
+                ?? new Dictionary<string, TypeId>(StringComparer.Ordinal);
+            var unknownAssociatedType = associatedBindings.Keys
+                .FirstOrDefault(name => !trait.AssociatedTypes.Any(type => type.Name == name));
+            if (unknownAssociatedType is not null)
+            {
+                throw Error(
+                    function.Line,
+                    function.Column,
+                    $"trait '{trait.Name}' has no associated type '{unknownAssociatedType}'");
+            }
+            var missingAssociatedType = trait.AssociatedTypes
+                .FirstOrDefault(type => !associatedBindings.ContainsKey(type.Name));
+            if (missingAssociatedType is not null)
+            {
+                throw Error(
+                    function.Line,
+                    function.Column,
+                    $"impl {trait.Name} requires associated type '{missingAssociatedType.Name}'");
+            }
+
             var methodName = function.Name[(function.Name.LastIndexOf('.') + 1)..];
             var requirement = trait.Methods.FirstOrDefault(method => method.Name == methodName)
                 ?? throw Error(
                     function.Line,
                     function.Column,
                     $"trait '{trait.Name}' has no method '{methodName}'");
+            var requiredReturnType = requirement.ReturnType
+                ?? associatedBindings[requirement.ReturnAssociatedTypeName!];
             if (function.InputOwnership != requirement.SelfOwnership
-                || function.ReturnType != requirement.ReturnType)
+                || function.ReturnType != requiredReturnType)
             {
                 throw Error(
                     function.Line,
@@ -235,6 +267,24 @@ internal sealed class SemanticCompiler
             throw Error(function.Line, function.Column, $"unknown trait bound '{function.GenericTraitBound}'");
         }
 
+        if (function.GenericAssociatedTypeName is not null && function.GenericTraitBound is null)
+        {
+            throw Error(function.Line, function.Column, "associated type equality requires a trait bound");
+        }
+        if (function.GenericTraitBound is { } constrainedTraitName
+            && function.GenericAssociatedTypeName is { } constrainedAssociatedTypeName)
+        {
+            var constrainedTrait = _traits[constrainedTraitName];
+            EnsureTraitVisible(constrainedTrait, function.Line, function.Column);
+            if (!constrainedTrait.AssociatedTypes.Any(type => type.Name == constrainedAssociatedTypeName))
+            {
+                throw Error(
+                    function.Line,
+                    function.Column,
+                    $"trait '{constrainedTrait.Name}' has no associated type '{constrainedAssociatedTypeName}'");
+            }
+        }
+
         var inputType = function.InputType is null
             ? (BoundType?)null
             : ParseFunctionType(function.InputType, function.GenericParameterName, function.Line, function.Column);
@@ -257,6 +307,19 @@ internal sealed class SemanticCompiler
         var blockInputType = function.BlockInputType is null
             ? (BoundType?)null
             : ParseType(function.BlockInputType, function.Line, function.Column);
+        var genericAssociatedTypeConstraint = function.GenericAssociatedTypeConstraint is null
+            ? (TypeId?)null
+            : ParseType(function.GenericAssociatedTypeConstraint, function.Line, function.Column);
+        IReadOnlyDictionary<string, TypeId>? implAssociatedTypes = function.ImplAssociatedTypes is null
+            ? null
+            : function.ImplAssociatedTypes.ToDictionary(
+                static pair => pair.Key,
+                pair => (TypeId)ParseType(pair.Value, function.Line, function.Column),
+                StringComparer.Ordinal);
+        if (function.TraitName is null && implAssociatedTypes is { Count: > 0 })
+        {
+            throw Error(function.Line, function.Column, "associated type bindings require a trait impl");
+        }
         var inputOwnership = BindFunctionInputOwnership(function, inputType);
         var kind = BindFunctionKind(function, inputType, returnType, isLocal);
         var localFunctions = BindLocalFunctions(function);
@@ -280,6 +343,9 @@ internal sealed class SemanticCompiler
             function.TraitName,
             function.GenericParameterName,
             function.GenericTraitBound,
+            function.GenericAssociatedTypeName,
+            genericAssociatedTypeConstraint,
+            implAssociatedTypes,
             IsValueGeneric: function.IsValueGeneric,
             HasValueGenericFixedArrayInput: function.HasValueGenericFixedArrayInput,
             ModuleName: function.ModuleName,
@@ -2887,12 +2953,26 @@ internal sealed class SemanticCompiler
                 $"generic function '{template.Name}' does not yet support {FormatType(actualType)} specialization");
         }
 
+        BoundFunction? traitImplementation = null;
         if (template.GenericTraitBound is { } traitBound
-            && !functions.Values.Any(candidate => candidate.TraitName == traitBound
-                && candidate.InputType == actualType))
+            && !TryFindTraitImplementation(functions, traitBound, actualType, out traitImplementation))
         {
             throw new SmallLangException(
                 $"type {FormatType(actualType)} does not implement trait '{traitBound}' required by '{template.Name}'");
+        }
+        if (template.GenericTraitBound is { } constrainedTrait
+            && template.GenericAssociatedTypeName is { } associatedTypeName
+            && template.GenericAssociatedTypeConstraint is { } associatedTypeConstraint)
+        {
+            var satisfiesConstraint = traitImplementation?.ImplAssociatedTypes is { } associatedTypes
+                && associatedTypes.TryGetValue(associatedTypeName, out var actualAssociatedType)
+                && actualAssociatedType == associatedTypeConstraint;
+            if (!satisfiesConstraint)
+            {
+                throw new SmallLangException(
+                    $"type {FormatType(actualType)} does not satisfy associated type constraint "
+                    + $"'{constrainedTrait}[{associatedTypeName} = {FormatType(associatedTypeConstraint)}]' required by '{template.Name}'");
+            }
         }
 
         var specializedName = template.Name + "$" + ((int)actualType).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -3135,6 +3215,20 @@ internal sealed class SemanticCompiler
         }
 
         return false;
+    }
+
+    private static bool TryFindTraitImplementation(
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        string traitName,
+        BoundType receiverType,
+        out BoundFunction? implementation)
+    {
+        implementation = functions.Values
+            .Where(candidate => candidate.TraitName == traitName
+                && candidate.InputType == receiverType)
+            .Distinct()
+            .FirstOrDefault();
+        return implementation is not null;
     }
 
     private BoundType InferUserCallExpression(

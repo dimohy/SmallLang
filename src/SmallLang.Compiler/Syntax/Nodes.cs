@@ -35,11 +35,14 @@ internal sealed record EnumVariantDeclaration(string Name, string? PayloadType, 
 
 internal sealed record TraitDeclaration(
     string Name,
+    IReadOnlyList<TraitAssociatedTypeDeclaration> AssociatedTypes,
     IReadOnlyList<TraitMethodDeclaration> Methods,
     int Line,
     int Column,
     string ModuleName = "",
     bool IsPublic = false);
+
+internal sealed record TraitAssociatedTypeDeclaration(string Name, int Line, int Column);
 
 internal sealed record TraitMethodDeclaration(
     string Name,
@@ -66,6 +69,9 @@ internal sealed record FunctionDeclaration(
     string? TraitName = null,
     string? GenericParameterName = null,
     string? GenericTraitBound = null,
+    string? GenericAssociatedTypeName = null,
+    string? GenericAssociatedTypeConstraint = null,
+    IReadOnlyDictionary<string, string>? ImplAssociatedTypes = null,
     bool IsValueGeneric = false,
     bool HasValueGenericFixedArrayInput = false,
     string ModuleName = "",

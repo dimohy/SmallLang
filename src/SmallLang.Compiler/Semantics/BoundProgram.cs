@@ -31,6 +31,9 @@ internal sealed record BoundFunction(
     string? TraitName = null,
     string? GenericParameterName = null,
     string? GenericTraitBound = null,
+    string? GenericAssociatedTypeName = null,
+    TypeId? GenericAssociatedTypeConstraint = null,
+    IReadOnlyDictionary<string, TypeId>? ImplAssociatedTypes = null,
     TypeId? SpecializedType = null,
     bool IsValueGeneric = false,
     int? SpecializedValue = null,
@@ -41,12 +44,16 @@ internal sealed record BoundFunction(
 internal sealed record BoundTraitMethod(
     string Name,
     BoundFunctionInputOwnership SelfOwnership,
-    TypeId ReturnType,
+    TypeId? ReturnType,
+    string? ReturnAssociatedTypeName,
     int Line,
     int Column);
 
+internal sealed record BoundTraitAssociatedType(string Name, int Line, int Column);
+
 internal sealed record BoundTraitDefinition(
     string Name,
+    IReadOnlyList<BoundTraitAssociatedType> AssociatedTypes,
     IReadOnlyList<BoundTraitMethod> Methods,
     int Line,
     int Column,

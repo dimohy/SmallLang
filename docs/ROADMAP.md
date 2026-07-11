@@ -42,7 +42,7 @@ ownership behavior is part of the feature.
 - [x] Checked type generics with trait bounds
 - [x] Compile-time `Int` value generics, `[Int; N]` parameters, and specialization
 - [x] Monomorphization with deterministic ownership/drop behavior for inline values
-- [ ] Associated types for container and iterator contracts
+- [x] Associated types and equality constraints for container and iterator contracts
 - [x] Explicit `box T` for stable identity or recursive-size breaks
 - [ ] Explicit `dyn Trait` and vtables for runtime polymorphism
 

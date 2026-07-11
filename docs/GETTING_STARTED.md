@@ -470,6 +470,8 @@ approved syntax.
   its containing function's entry slot across loop iterations
 - `examples/42-fixed-array-placement.sl`: small fixed-array entry placement and
   oversized fixed-array heap placement with deterministic cleanup
+- `examples/54-associated-types.sl`: static trait associated-type binding and
+  a generic equality constraint specialized to `Item = Int`
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
 - `examples/expected`: expected stdout/stdin fixtures for executable samples
 - `stdlib/sys/runtime.sl`: standard library intrinsic boundary declarations

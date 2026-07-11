@@ -1318,7 +1318,8 @@ Current backend:
   `when` patterns, nominal traits with explicit implementations, checked
   single-type generics with trait bounds and monomorphization, compile-time
   `Int` value generics with explicit fluent specialization such as
-  `value -> fill[4]`, receiver-argument
+  `value -> fill[4]`, trait associated types with static `impl` bindings and
+  equality constraints such as `[T: Source[Item = Int]]`, receiver-argument
   flow targets, explicit `box T` owners, recursively sized user types through
   boxed fields or enum payloads, readonly owned-value borrows, static recursive
   drop glue, and expression-first bindings are type-checked for the current slice
