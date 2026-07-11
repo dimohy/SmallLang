@@ -97,9 +97,10 @@ formatter and language server, avoiding a second editor-only grammar.
    and line comments; the parser ignores them for grammar matching while
    retaining them in CST events. Unknown bytes receive a generated `Invalid`
    token id, remain in CST spans, and force a rejected parse. Add structured
-   recovery and richer expected-token diagnostics for malformed sequences.
-   `selfhost/syntax/diagnostics.sl` already reports invalid bytes and the
-   furthest unexpected token with stable UTF-8 spans.
+   recovery for malformed sequences. `selfhost/syntax/diagnostics.sl` reports
+   invalid bytes and the furthest unexpected token with stable UTF-8 spans. It
+   also exposes the deduplicated set of token kinds and grammar keywords
+   expected by every alternative at that furthest position.
 5. Write CST-to-AST lowering in ordinary SL modules.
 6. Reimplement `grammar build` itself in SL and require byte-identical output.
 7. Remove the C# source generators only after the SL compiler reproduces all

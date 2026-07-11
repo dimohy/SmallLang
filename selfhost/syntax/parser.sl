@@ -27,6 +27,7 @@ public parseEvents source: Text -> [ParseEvent; ~] {
     [Int; ~] => choiceCallDepths!
     [Int; ~] => choiceEventDepths!
     [Int; ~] => activeRules!
+    [Int; ~] => expectedCodes!
     [ParseEvent; ~] => events!
     0 => callDepth!
     0 => choiceDepth!
@@ -39,6 +40,8 @@ public parseEvents source: Text -> [ParseEvent; ~] {
     false => invalidSeen!
     -1 => firstInvalidToken!
     0 => furthestToken!
+    -1 => expectedAtToken!
+    0 => expectedCount!
 
     ParseEvent { kind: 0, value: startRule, tokenIndex: tokenIndex! } => startEvent
     events! -> push(startEvent)
@@ -101,6 +104,28 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                     tokenIndex! + 1 => tokenIndex!
                     pc! + 2 => pc!
                 } else {
+                    tokenIndex! > expectedAtToken! -> if {
+                        tokenIndex! => expectedAtToken!
+                        0 => expectedCount!
+                    }
+                    tokenIndex! == expectedAtToken! -> if {
+                        false => tokenExpectedExists!
+                        0 => tokenExpectedIndex!
+                        tokenExpectedIndex! < expectedCount! -> while {
+                            expectedCodes![tokenExpectedIndex!] == expectedKind -> if {
+                                true => tokenExpectedExists!
+                            }
+                            tokenExpectedIndex! + 1 => tokenExpectedIndex!
+                        }
+                        not tokenExpectedExists! -> if {
+                            expectedCount! < (expectedCodes! -> len) -> if {
+                                expectedKind => expectedCodes![expectedCount!]
+                            } else {
+                                expectedCodes! -> push(expectedKind)
+                            }
+                            expectedCount! + 1 => expectedCount!
+                        }
+                    }
                     choiceDepth! > 0 -> if {
                         choiceDepth! - 1 => choiceDepth!
                         choicePcs![choiceDepth!] => pc!
@@ -141,6 +166,29 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                         tokenIndex! + 1 => tokenIndex!
                         pc! + 3 => pc!
                     } else {
+                        0 - keywordIndex - 1 => expectedKeywordCode
+                        tokenIndex! > expectedAtToken! -> if {
+                            tokenIndex! => expectedAtToken!
+                            0 => expectedCount!
+                        }
+                        tokenIndex! == expectedAtToken! -> if {
+                            false => keywordExpectedExists!
+                            0 => keywordExpectedIndex!
+                            keywordExpectedIndex! < expectedCount! -> while {
+                                expectedCodes![keywordExpectedIndex!] == expectedKeywordCode -> if {
+                                    true => keywordExpectedExists!
+                                }
+                                keywordExpectedIndex! + 1 => keywordExpectedIndex!
+                            }
+                            not keywordExpectedExists! -> if {
+                                expectedCount! < (expectedCodes! -> len) -> if {
+                                    expectedKeywordCode => expectedCodes![expectedCount!]
+                                } else {
+                                    expectedCodes! -> push(expectedKeywordCode)
+                                }
+                                expectedCount! + 1 => expectedCount!
+                            }
+                        }
                         choiceDepth! > 0 -> if {
                             choiceDepth! - 1 => choiceDepth!
                             choicePcs![choiceDepth!] => pc!
@@ -204,6 +252,28 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                                         tokens![tokenIndex!].kind == expectedKind -> if {
                                             pc! + 2 => pc!
                                         } else {
+                                            tokenIndex! > expectedAtToken! -> if {
+                                                tokenIndex! => expectedAtToken!
+                                                0 => expectedCount!
+                                            }
+                                            tokenIndex! == expectedAtToken! -> if {
+                                                false => lookaheadExpectedExists!
+                                                0 => lookaheadExpectedIndex!
+                                                lookaheadExpectedIndex! < expectedCount! -> while {
+                                                    expectedCodes![lookaheadExpectedIndex!] == expectedKind -> if {
+                                                        true => lookaheadExpectedExists!
+                                                    }
+                                                    lookaheadExpectedIndex! + 1 => lookaheadExpectedIndex!
+                                                }
+                                                not lookaheadExpectedExists! -> if {
+                                                    expectedCount! < (expectedCodes! -> len) -> if {
+                                                        expectedKind => expectedCodes![expectedCount!]
+                                                    } else {
+                                                        expectedCodes! -> push(expectedKind)
+                                                    }
+                                                    expectedCount! + 1 => expectedCount!
+                                                }
+                                            }
                                             choiceDepth! > 0 -> if {
                                                 choiceDepth! - 1 => choiceDepth!
                                                 choicePcs![choiceDepth!] => pc!
@@ -223,6 +293,24 @@ public parseEvents source: Text -> [ParseEvent; ~] {
                     }
                 }
             }
+        }
+    }
+
+    (not accepted! and not invalidSeen!) -> if {
+        0 => expectedEventIndex!
+        expectedEventIndex! < expectedCount! -> while {
+            ParseEvent {
+                kind: 4
+                value: expectedCodes![expectedEventIndex!]
+                tokenIndex: expectedAtToken!
+            } => expectedEvent
+            eventDepth! < (events! -> len) -> if {
+                expectedEvent => events![eventDepth!]
+            } else {
+                events! -> push(expectedEvent)
+            }
+            eventDepth! + 1 => eventDepth!
+            expectedEventIndex! + 1 => expectedEventIndex!
         }
     }
 

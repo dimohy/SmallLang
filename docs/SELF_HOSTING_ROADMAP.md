@@ -183,10 +183,10 @@ tables, emits compact backtracking-aware CST events, and materializes flat green
 nodes with parent/token/span metadata. Valid-source whitespace and comment
 trivia are retained without affecting grammar matching. Unknown bytes are
 preserved as invalid CST tokens and force rejection. Structured recovery,
-richer expected-token diagnostics, and CST-to-AST lowering remain as
+CST-to-AST lowering, and semantic diagnostics remain as
 described in [GRAMMAR_BOOTSTRAP.md](GRAMMAR_BOOTSTRAP.md). These additions
 complete the reusable source-span/diagnostic gate. The formal count is now
-**47.0 / 60 (78.3%)**; recovery and richer expected-token sets remain.
+**47.0 / 60 (78.3%)**; parser recovery remains.
 
 ## Immediate Implementation Order
 

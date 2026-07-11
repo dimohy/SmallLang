@@ -44,3 +44,16 @@ public analyze source: Text -> [SyntaxDiagnostic; ~] {
 
     diagnostics!
 }
+
+# Non-negative values are token kinds. Negative values encode grammar keywords
+# as -(keywordIndex + 1), keeping the representation compact and deterministic.
+public expectedCodes source: Text -> [Int; ~] {
+    source -> parser.parseEvents => events!
+    [Int; ~] => expected!
+    events! -> each event {
+        event.kind == 4 -> if {
+            expected! -> push(event.value)
+        }
+    }
+    expected!
+}
