@@ -184,3 +184,7 @@ carry their declared nominal type into the same return check.
 over the flat AST. It seeds literals and resolved names, propagates Int through
 arithmetic operators, and produces Bool for compatible equality/comparison and
 logical operators. Return checking consumes the outermost inferred expression.
+`selfhost/semantic/calls.sl` resolves local call targets to function symbols.
+Resolved calls inherit the function's nominal return type, while type checking
+compares the outermost argument expression with the declared input type and
+emits code 6 on mismatch.

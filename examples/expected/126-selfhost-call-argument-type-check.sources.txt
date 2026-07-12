@@ -1,4 +1,5 @@
-examples/123-selfhost-expression-type-inference.sl
+examples/126-selfhost-call-argument-type-check.sl
+selfhost/semantic/type_check.sl
 selfhost/semantic/expression_types.sl
 selfhost/semantic/calls.sl
 selfhost/semantic/nominal_types.sl

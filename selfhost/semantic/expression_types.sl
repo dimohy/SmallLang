@@ -1,6 +1,7 @@
 namespace smalllang.compiler.semantic.expression_types
 
 import smalllang.compiler.ast as ast
+import smalllang.compiler.semantic.calls as calls
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.resolve as resolution
 import smalllang.compiler.semantic.symbols as symbols
@@ -24,6 +25,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
         source -> ast.lower => nodes!
         source -> symbols.collect => table!
         source -> resolution.resolve => resolvedNames!
+        source -> calls.resolve => resolvedCalls!
         0 => astIndex!
         astIndex! < (nodes! -> len) -> while {
             nodes![astIndex!] => node
@@ -64,6 +66,35 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                 }
             }
             astIndex! + 1 => astIndex!
+        }
+
+        0 => callIndex!
+        callIndex! < (resolvedCalls! -> len) -> while {
+            resolvedCalls![callIndex!] => call
+            call.status == 0 -> if {
+                table![call.functionSymbol] => function
+                function.secondaryTypeNode >= 0 -> if { function.secondaryTypeNode } else { function.typeNode } => returnTypeAst
+                -1 => returnNominalIndex!
+                0 => returnSearch!
+                returnSearch! < (nominal! -> len) -> while {
+                    nominal![returnSearch!] => candidateReturn
+                    (candidateReturn.sourceModule == sourceIndex! and candidateReturn.typeAst == returnTypeAst) -> if {
+                        returnSearch! => returnNominalIndex!
+                    }
+                    returnSearch! + 1 => returnSearch!
+                }
+                returnNominalIndex! >= 0 -> if {
+                    nominal![returnNominalIndex!] => returnType
+                    inferred! -> push(ExpressionType {
+                        sourceModule: sourceIndex!
+                        astNode: call.callAst
+                        origin: returnType.origin
+                        targetModule: returnType.targetModule
+                        targetSymbol: returnType.targetSymbol
+                    })
+                }
+            }
+            callIndex! + 1 => callIndex!
         }
 
         true => changed!

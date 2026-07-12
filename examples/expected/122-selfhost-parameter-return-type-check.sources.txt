@@ -1,6 +1,7 @@
 examples/122-selfhost-parameter-return-type-check.sl
 selfhost/semantic/type_check.sl
 selfhost/semantic/expression_types.sl
+selfhost/semantic/calls.sl
 selfhost/semantic/nominal_types.sl
 selfhost/semantic/type_resolve.sl
 selfhost/semantic/qualified.sl
