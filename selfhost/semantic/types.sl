@@ -9,6 +9,10 @@ public struct TypeUse {
     canonical: Int
     kind: Int
     flags: Int
+    elementCanonical: Int
+    keyCanonical: Int
+    valueCanonical: Int
+    lengthToken: Int
 }
 
 # Kinds: 1 named, 2 slice, 3 dynamic array, 4 fixed array,
@@ -39,6 +43,10 @@ public canonicalize source: Text -> [TypeUse; ~] {
             }
 
             1 => typeKind!
+            -1 => elementToken!
+            -1 => keyToken!
+            -1 => valueToken!
+            -1 => lengthToken!
             tokens![firstSignificant!].kind == grammar.tokenIdLeftBracket -> if {
                 2 => typeKind!
                 false => hasSemicolon!
@@ -47,6 +55,14 @@ public canonicalize source: Text -> [TypeUse; ~] {
                 shapeToken! < node.firstToken + node.tokenCount -> while {
                     tokens![shapeToken!].kind == grammar.tokenIdSemicolon -> if { true => hasSemicolon! }
                     tokens![shapeToken!].kind == grammar.tokenIdTilde -> if { true => hasTilde! }
+                    (elementToken! < 0 and tokens![shapeToken!].kind == grammar.tokenIdIdentifier) -> if {
+                        shapeToken! => elementToken!
+                    }
+                    hasSemicolon! -> if {
+                        (tokens![shapeToken!].kind == grammar.tokenIdIdentifier or tokens![shapeToken!].kind == grammar.tokenIdNumber) -> if {
+                            shapeToken! != elementToken! -> if { shapeToken! => lengthToken! }
+                        }
+                    }
                     shapeToken! + 1 => shapeToken!
                 }
                 hasSemicolon! -> if {
@@ -55,6 +71,22 @@ public canonicalize source: Text -> [TypeUse; ~] {
             } else {
                 tokens![firstSignificant!].kind == grammar.tokenIdLeftBrace -> if {
                     5 => typeKind!
+                    false => afterTypeColon!
+                    firstSignificant! => dictionaryToken!
+                    dictionaryToken! < node.firstToken + node.tokenCount -> while {
+                        tokens![dictionaryToken!].kind == grammar.tokenIdColon -> if {
+                            true => afterTypeColon!
+                        } else {
+                            tokens![dictionaryToken!].kind == grammar.tokenIdIdentifier -> if {
+                                afterTypeColon! -> if {
+                                    valueToken! < 0 -> if { dictionaryToken! => valueToken! }
+                                } else {
+                                    keyToken! < 0 -> if { dictionaryToken! => keyToken! }
+                                }
+                            }
+                        }
+                        dictionaryToken! + 1 => dictionaryToken!
+                    }
                 } else {
                     tokens![firstSignificant!] => firstTypeToken
                     firstTypeToken.kind == grammar.tokenIdIdentifier -> if {
@@ -64,6 +96,16 @@ public canonicalize source: Text -> [TypeUse; ~] {
                             source -> byte(firstTypeToken.span.start + UIntSize(2)) => boxByte2
                             (boxByte0 == UInt8(98) and boxByte1 == UInt8(111) and boxByte2 == UInt8(120)) -> if {
                                 6 => typeKind!
+                                firstSignificant! + 1 => boxElementToken!
+                                true => findingBoxElement!
+                                (boxElementToken! < node.firstToken + node.tokenCount and findingBoxElement!) -> while {
+                                    tokens![boxElementToken!].kind == grammar.tokenIdIdentifier -> if {
+                                        boxElementToken! => elementToken!
+                                        false => findingBoxElement!
+                                    } else {
+                                        boxElementToken! + 1 => boxElementToken!
+                                    }
+                                }
                             }
                         }
                     }
@@ -138,10 +180,88 @@ public canonicalize source: Text -> [TypeUse; ~] {
                 representatives! -> len => canonical!
                 representatives! -> push(astIndex!)
             }
-            TypeUse { astNode: astIndex!, canonical: canonical!, kind: typeKind!, flags: 0 } => use
+            TypeUse {
+                astNode: astIndex!
+                canonical: canonical!
+                kind: typeKind!
+                flags: 0
+                elementCanonical: elementToken!
+                keyCanonical: keyToken!
+                valueCanonical: valueToken!
+                lengthToken: lengthToken!
+            } => use
             uses! -> push(use)
         }
         astIndex! + 1 => astIndex!
+    }
+
+    # Intern nominal component names and replace temporary token indexes in
+    # element/key/value fields with canonical type ids.
+    [Int; ~] => componentTokens!
+    [Int; ~] => componentCanonicals!
+    uses! -> len => useCount
+    0 => seedUseIndex!
+    seedUseIndex! < useCount -> while {
+        uses![seedUseIndex!] => seedUse
+        seedUse.kind == 1 -> if {
+            nodes![seedUse.astNode] => seedAst
+            seedAst.firstToken => seedToken!
+            true => findingSeed!
+            (seedToken! < seedAst.firstToken + seedAst.tokenCount and findingSeed!) -> while {
+                tokens![seedToken!].kind == grammar.tokenIdIdentifier -> if {
+                    componentTokens! -> push(seedToken!)
+                    componentCanonicals! -> push(seedUse.canonical)
+                    false => findingSeed!
+                } else {
+                    seedToken! + 1 => seedToken!
+                }
+            }
+        }
+        seedUseIndex! + 1 => seedUseIndex!
+    }
+    representatives! -> len => nextCanonical!
+    0 => linkUseIndex!
+    linkUseIndex! < useCount -> while {
+        uses![linkUseIndex!] => linkedUse!
+        0 => componentSlot!
+        componentSlot! < 3 -> while {
+            -1 => componentToken!
+            componentSlot! == 0 -> if { linkedUse!.elementCanonical => componentToken! }
+            componentSlot! == 1 -> if { linkedUse!.keyCanonical => componentToken! }
+            componentSlot! == 2 -> if { linkedUse!.valueCanonical => componentToken! }
+            componentToken! >= 0 -> if {
+                -1 => componentCanonical!
+                0 => knownComponentIndex!
+                (knownComponentIndex! < (componentTokens! -> len) and componentCanonical! < 0) -> while {
+                    tokens![componentToken!] => componentName
+                    tokens![componentTokens![knownComponentIndex!]] => knownName
+                    componentName.span.length == knownName.span.length => componentEqual!
+                    UIntSize(0) => componentByte!
+                    (componentEqual! and componentByte! < componentName.span.length) -> while {
+                        source -> byte(componentName.span.start + componentByte!) => componentLeftByte
+                        source -> byte(knownName.span.start + componentByte!) => componentRightByte
+                        componentLeftByte != componentRightByte -> if { false => componentEqual! }
+                        componentByte! + UIntSize(1) => componentByte!
+                    }
+                    componentEqual! -> if {
+                        componentCanonicals![knownComponentIndex!] => componentCanonical!
+                    }
+                    knownComponentIndex! + 1 => knownComponentIndex!
+                }
+                componentCanonical! < 0 -> if {
+                    nextCanonical! => componentCanonical!
+                    nextCanonical! + 1 => nextCanonical!
+                    componentTokens! -> push(componentToken!)
+                    componentCanonicals! -> push(componentCanonical!)
+                }
+                componentSlot! == 0 -> if { componentCanonical! => linkedUse!.elementCanonical }
+                componentSlot! == 1 -> if { componentCanonical! => linkedUse!.keyCanonical }
+                componentSlot! == 2 -> if { componentCanonical! => linkedUse!.valueCanonical }
+            }
+            componentSlot! + 1 => componentSlot!
+        }
+        linkedUse! => uses![linkUseIndex!]
+        linkUseIndex! + 1 => linkUseIndex!
     }
 
     uses!

@@ -141,7 +141,9 @@ declaration; unresolved names become code-2 semantic diagnostics.
 `selfhost/semantic/types.sl` canonicalizes type annotations without allocating
 normalized strings: it skips trivia, compares token kinds and UTF-8 payload
 bytes, assigns stable canonical ids, and classifies named, slice, dynamic/fixed
-array, dictionary, and box layouts.
+array, dictionary, and box layouts. Array/box element and dictionary key/value
+names are interned as canonical nominal ids; fixed arrays retain their value-
+generic length token.
 
 The generated module is bootstrap data, not the final parser implementation.
 It deliberately makes the transition incremental and auditable.

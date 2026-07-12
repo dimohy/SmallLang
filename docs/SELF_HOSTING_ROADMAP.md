@@ -221,7 +221,9 @@ Imported/module-qualified lookup remains on the critical path.
 Self-hosted type canonicalization now deduplicates semantically identical type
 token sequences while ignoring whitespace/comment trivia and classifies named,
 slice, dynamic/fixed array, dictionary, and box shapes. Recursive element/key/
-value links and nominal module identity remain before type-system parity.
+value links now point to interned nominal canonical ids, and fixed arrays retain
+their value-generic length token. Qualified nominal module identity remains
+before type-system parity.
 
 ## Immediate Implementation Order
 

@@ -1,0 +1,6 @@
+component = 0,6,1,-1,-1,-1
+component = 0,6,1,-1,-1,-1
+component = 0,5,-1,1,2,-1
+component = 0,5,-1,1,2,-1
+component = 0,4,1,-1,-1,15
+component = 0,4,1,-1,-1,23
