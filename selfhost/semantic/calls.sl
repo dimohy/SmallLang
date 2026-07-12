@@ -122,21 +122,35 @@ public resolveModules sources: [Text; ~] -> [ModuleCallResolution; ~] {
         0 => localIndex!
         localIndex! < (localCalls! -> len) -> while {
             localCalls![localIndex!] => local
+            nodes![local.callAst] => localCallNode
+            localCallNode.firstToken + localCallNode.tokenCount => callLeftParenToken!
+            localCallNode.firstToken => callScanToken!
+            callScanToken! < localCallNode.firstToken + localCallNode.tokenCount -> while {
+                tokens![callScanToken!].kind == grammar.tokenIdLeftParen -> if {
+                    callScanToken! => callLeftParenToken!
+                    localCallNode.firstToken + localCallNode.tokenCount => callScanToken!
+                } else {
+                    callScanToken! + 1 => callScanToken!
+                }
+            }
             -1 => importedIndex!
             0 => qualifiedIndex!
             qualifiedIndex! < (qualifiedResults! -> len) -> while {
                 qualifiedResults![qualifiedIndex!] => candidate
                 candidate.sourceModule == sourceIndex! -> if {
                     candidate.pathAst => ancestor!
+                    0 => callPathDistance!
                     false => belongsToCall!
                     (ancestor! >= 0 and not belongsToCall!) -> while {
                         ancestor! == local.callAst -> if {
                             true => belongsToCall!
                         } else {
                             nodes![ancestor!].parent => ancestor!
+                            callPathDistance! + 1 => callPathDistance!
                         }
                     }
-                    belongsToCall! -> if { qualifiedIndex! => importedIndex! }
+                    nodes![candidate.pathAst] => candidatePath
+                    (belongsToCall! and candidatePath.firstToken + candidatePath.tokenCount <= callLeftParenToken!) -> if { qualifiedIndex! => importedIndex! }
                 }
                 qualifiedIndex! + 1 => qualifiedIndex!
             }

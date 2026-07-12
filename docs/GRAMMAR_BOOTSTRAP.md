@@ -236,6 +236,11 @@ The `box` keyword now survives unary lowering as AST kind 23. Operand identity
 is wrapped as structural origin 16, `box T -> box T` substitutes the call-site
 element, and concrete boxed-element mismatches reuse codes 6 and 5. Duplicate
 unary/box wrapper spans are inferred once.
+Struct literals now lower as AST kind 39 and resolve to local or public imported
+nominal symbols. Arrays and dictionaries can therefore carry user-defined
+component ids. Imported call classification is restricted to qualified paths
+before the call's left parenthesis, so qualified literals inside arguments are
+not mistaken for the callee.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9

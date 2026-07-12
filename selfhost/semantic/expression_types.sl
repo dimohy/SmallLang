@@ -5,6 +5,7 @@ import smalllang.compiler.lexer as lexer
 import smalllang.compiler.semantic.calls as calls
 import smalllang.compiler.semantic.composite_types as compositeTypes
 import smalllang.compiler.semantic.nominal_types as nominalTypes
+import smalllang.compiler.semantic.qualified as qualified
 import smalllang.compiler.semantic.resolve as resolution
 import smalllang.compiler.semantic.symbols as symbols
 import syntax.generated.smalllang as grammar
@@ -22,6 +23,7 @@ public struct ExpressionType {
 public infer sources: [Text; ~] -> [ExpressionType; ~] {
     sources -> nominalTypes.resolve => nominal!
     sources -> compositeTypes.resolve => composite!
+    sources -> qualified.resolve => qualifiedResults!
     sources -> calls.resolveModules => moduleCalls!
     [ExpressionType; ~] => inferred!
     0 => sourceIndex!
@@ -86,6 +88,69 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                             origin: valueType.origin
                             targetModule: valueType.targetModule
                             targetSymbol: valueType.targetSymbol
+                        })
+                    }
+                }
+            }
+            node.kind == 39 -> if {
+                -1 => typeNameToken!
+                node.firstToken => structTokenIndex!
+                (structTokenIndex! < node.firstToken + node.tokenCount and typeNameToken! < 0) -> while {
+                    tokens![structTokenIndex!].kind == grammar.tokenIdIdentifier -> if { structTokenIndex! => typeNameToken! }
+                    structTokenIndex! + 1 => structTokenIndex!
+                }
+                -1 => structSymbol!
+                0 => structSearch!
+                (structSearch! < (table! -> len) and structSymbol! < 0) -> while {
+                    table![structSearch!] => candidateStruct
+                    (candidateStruct.kind == 3 and candidateStruct.parent < 0) -> if {
+                        tokens![typeNameToken!] => literalName
+                        tokens![candidateStruct.nameToken] => declarationName
+                        literalName.span.length == declarationName.span.length => equal!
+                        UIntSize(0) => nameByte!
+                        (equal! and nameByte! < literalName.span.length) -> while {
+                            source -> byte(literalName.span.start + nameByte!) => leftByte
+                            source -> byte(declarationName.span.start + nameByte!) => rightByte
+                            leftByte != rightByte -> if { false => equal! }
+                            nameByte! + UIntSize(1) => nameByte!
+                        }
+                        equal! -> if { structSearch! => structSymbol! }
+                    }
+                    structSearch! + 1 => structSearch!
+                }
+                structSymbol! >= 0 -> if {
+                    inferred! -> push(ExpressionType {
+                        sourceModule: sourceIndex!
+                        astNode: astIndex!
+                        origin: 0
+                        targetModule: sourceIndex!
+                        targetSymbol: structSymbol!
+                    })
+                } else {
+                    -1 => importedStructIndex!
+                    0 => qualifiedSearch!
+                    qualifiedSearch! < (qualifiedResults! -> len) -> while {
+                        qualifiedResults![qualifiedSearch!] => importedCandidate
+                        importedCandidate.sourceModule == sourceIndex! -> if {
+                            importedCandidate.pathAst => importedAncestor!
+                            false => belongsToStructLiteral!
+                            (importedAncestor! >= 0 and not belongsToStructLiteral!) -> while {
+                                importedAncestor! == astIndex! -> if { true => belongsToStructLiteral! } else {
+                                    nodes![importedAncestor!].parent => importedAncestor!
+                                }
+                            }
+                            (belongsToStructLiteral! and importedCandidate.status == 0) -> if { qualifiedSearch! => importedStructIndex! }
+                        }
+                        qualifiedSearch! + 1 => qualifiedSearch!
+                    }
+                    importedStructIndex! >= 0 -> if {
+                        qualifiedResults![importedStructIndex!] => importedStruct
+                        inferred! -> push(ExpressionType {
+                            sourceModule: sourceIndex!
+                            astNode: astIndex!
+                            origin: 2
+                            targetModule: importedStruct.targetModule
+                            targetSymbol: importedStruct.targetSymbol
                         })
                     }
                 }
@@ -529,7 +594,6 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                     }
                                 }
                                 (belongsToDictionary! and distance! == entryDistance!) -> if {
-                                    entryType.origin != 1 -> if { false => homogeneousDictionary! }
                                     entryPosition! % 2 == 0 -> if {
                                         keySymbol! < 0 -> if { entryType.targetSymbol => keySymbol! } else {
                                             entryType.targetSymbol != keySymbol! -> if { false => homogeneousDictionary! }

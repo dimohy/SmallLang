@@ -1,10 +1,15 @@
-examples/147-selfhost-generic-composite-types.sl
+examples/162-selfhost-imported-struct-array-type.sl
+selfhost/semantic/type_check.sl
+selfhost/semantic/expression_types.sl
 selfhost/semantic/composite_types.sl
+selfhost/semantic/calls.sl
+selfhost/semantic/nominal_types.sl
 selfhost/semantic/type_resolve.sl
 selfhost/semantic/qualified.sl
+selfhost/semantic/types.sl
+selfhost/semantic/resolve.sl
 selfhost/semantic/module_resolve.sl
 selfhost/semantic/modules.sl
-selfhost/semantic/types.sl
 selfhost/semantic/symbols.sl
 selfhost/syntax/ast.sl
 selfhost/syntax/cst.sl

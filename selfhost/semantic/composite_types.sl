@@ -3,6 +3,7 @@ namespace smalllang.compiler.semantic.composite_types
 import smalllang.compiler.ast as ast
 import smalllang.compiler.lexer as lexer
 import smalllang.compiler.semantic.symbols as symbols
+import smalllang.compiler.semantic.type_resolve as typeResolve
 import smalllang.compiler.semantic.types as types
 import syntax.generated.smalllang as grammar
 
@@ -28,6 +29,7 @@ public struct CompositeType {
 public resolve sources: [Text; ~] -> [CompositeType; ~] {
     ["Unit", "Text", "Int", "Int8", "Int16", "Int32", "Int64", "Long", "UInt8", "UInt16", "UInt32", "UInt64", "Size", "UIntSize", "CodePoint", "Arena", "Arguments", "MappedBytes", "MutableMappedBytes", "Float", "Float32", "Float64", "Double", "Bool", ~] => builtinNames!
     [CompositeType; ~] => results!
+    sources -> typeResolve.resolve => importedTypes!
     0 => sourceIndex!
     sourceIndex! < (sources -> len) -> while {
         sources[sourceIndex!] => source
@@ -129,6 +131,19 @@ public resolve sources: [Text; ~] -> [CompositeType; ~] {
                         }
                     }
                     componentSlot! + 1 => componentSlot!
+                }
+                (typeUse.kind != 5 and componentOrigins![0] < 0) -> if {
+                    0 => importedTypeIndex!
+                    importedTypeIndex! < (importedTypes! -> len) -> while {
+                        importedTypes![importedTypeIndex!] => importedType
+                        (importedType.sourceModule == sourceIndex! and importedType.typeAst == typeUse.astNode and importedType.status == 0) -> if {
+                            2 => componentOrigins![0]
+                            importedType.targetModule => componentModules![0]
+                            importedType.targetSymbol => componentSymbols![0]
+                            0 => status!
+                        }
+                        importedTypeIndex! + 1 => importedTypeIndex!
+                    }
                 }
                 results! -> push(CompositeType {
                     sourceModule: sourceIndex!

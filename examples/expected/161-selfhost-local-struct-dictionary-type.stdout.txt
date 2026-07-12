@@ -1,0 +1,2 @@
+local dictionary = 15,0,0
+local dictionary errors = 0

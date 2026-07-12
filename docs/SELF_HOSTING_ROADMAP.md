@@ -339,6 +339,12 @@ Generic `box T -> box T` calls specialize the boxed element, while concrete
 boxed input/return mismatches use codes 6 and 5. The AST also preserves `box` as
 kind 23 instead of dropping it as an unrecognized unary wrapper.
 
+Struct literals now infer local or imported nominal identities (AST kind 39),
+allowing `[Point; ~]`, `{Point: Point}`, and `[shapes.Point; ~]` literals to
+match their composite signatures. Imported call resolution now uses the callee
+token boundary, preventing qualified struct literals inside arguments from
+being misclassified as the call target.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce
