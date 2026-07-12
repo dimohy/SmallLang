@@ -6,6 +6,7 @@ import smalllang.compiler.semantic.calls as calls
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.resolve as resolution
 import smalllang.compiler.semantic.symbols as symbols
+import syntax.generated.smalllang as grammar
 
 public struct ExpressionType {
     sourceModule: Int
@@ -284,6 +285,19 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 inferred![firstChild!] => left
                                 inferred![secondChild!] => right
                                 (left.origin == 1 and left.targetSymbol == 2 and right.origin == 1 and right.targetSymbol == 2) -> if {
+                                    true => canInfer!
+                                    2 => resultBuiltin!
+                                }
+                            }
+                        }
+                        operator.kind == 22 -> if {
+                            firstChild! >= 0 -> if {
+                                inferred![firstChild!] => operand
+                                (operator.operatorKind == -26 and operand.origin == 1 and operand.targetSymbol == 23) -> if {
+                                    true => canInfer!
+                                    23 => resultBuiltin!
+                                }
+                                (operator.operatorKind == grammar.tokenIdMinus and operand.origin == 1 and operand.targetSymbol == 2) -> if {
                                     true => canInfer!
                                     2 => resultBuiltin!
                                 }

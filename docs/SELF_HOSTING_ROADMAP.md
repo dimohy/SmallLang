@@ -312,6 +312,10 @@ analysis rather than unresolved names. They seed logical-expression inference
 and pass Bool return checking, removing a pervasive false diagnostic from the
 compiler's own SL sources.
 
+Unary expression typing now covers `not Bool -> Bool` and `-Int -> Int`.
+Invalid `not Int` and `-Bool` expressions produce structured code-8 diagnostics
+with exact unary spans.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce

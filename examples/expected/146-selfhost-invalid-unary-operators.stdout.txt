@@ -1,0 +1,2 @@
+unary error = 8,23,2,not 1,7,5
+unary error = 8,2,23,-true,13,5

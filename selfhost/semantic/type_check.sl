@@ -251,7 +251,7 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
         0 => operatorIndex!
         operatorIndex! < (nodes! -> len) -> while {
             nodes![operatorIndex!] => operator
-            ((operator.kind >= 18 and operator.kind <= 21) or operator.kind == 24 or operator.kind == 25) -> if {
+            ((operator.kind >= 18 and operator.kind <= 22) or operator.kind == 24 or operator.kind == 25) -> if {
                 false => operatorInferred!
                 -1 => leftTypeIndex!
                 -1 => rightTypeIndex!
@@ -292,7 +292,24 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                     }
                     inferredIndex! + 1 => inferredIndex!
                 }
-                (not operatorInferred! and leftTypeIndex! >= 0 and rightTypeIndex! >= 0) -> if {
+                (operator.kind == 22 and not operatorInferred! and leftTypeIndex! >= 0) -> if {
+                    expressionTypeTable![leftTypeIndex!] => operandType
+                    operator.operatorKind == -26 -> if { 23 } else { 2 } => expectedUnaryBuiltin
+                    diagnostics! -> push(TypeCheckDiagnostic {
+                        code: 8
+                        sourceModule: sourceIndex!
+                        functionSymbol: -1
+                        expectedOrigin: 1
+                        expectedModule: -1
+                        expectedSymbol: expectedUnaryBuiltin
+                        actualOrigin: operandType.origin
+                        actualModule: operandType.targetModule
+                        actualSymbol: operandType.targetSymbol
+                        actualBuiltin: operandType.origin == 1 -> if { operandType.targetSymbol } else { -1 }
+                        span: syntax.SourceSpan { fileId: sourceIndex!, start: operator.start, length: operator.length }
+                    })
+                }
+                (operator.kind != 22 and not operatorInferred! and leftTypeIndex! >= 0 and rightTypeIndex! >= 0) -> if {
                     expressionTypeTable![leftTypeIndex!] => leftType
                     expressionTypeTable![rightTypeIndex!] => rightType
                     false => duplicateOperatorDiagnostic!

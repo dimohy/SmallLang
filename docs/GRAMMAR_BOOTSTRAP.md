@@ -217,6 +217,9 @@ The identifier-shaped language literals `true` and `false` now seed stable Bool
 type id 23 and are excluded from unresolved-name diagnostics. Logical operators
 can therefore infer Bool and satisfy declared Bool return annotations in the
 self-hosted checker.
+Unary inference recognizes operator code -26 as `not` over Bool and token id 15
+as numeric negation over Int. Incompatible operands emit code 8 with the unary
+operator's complete span and expected/actual builtin identities.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9
