@@ -331,6 +331,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     existingIndex! < (inferred! -> len) -> while {
                         inferred![existingIndex!] => existing
                         (existing.sourceModule == sourceIndex! and existing.astNode == operatorIndex!) -> if { true => alreadyInferred! }
+                        (existing.sourceModule == sourceIndex! and nodes![existing.astNode].start == operator.start and nodes![existing.astNode].length == operator.length) -> if { true => alreadyInferred! }
                         existingIndex! + 1 => existingIndex!
                     }
                     not alreadyInferred! -> if {
@@ -345,14 +346,16 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                             childSearch! + 1 => childSearch!
                         }
                         false => canInfer!
-                        -1 => resultBuiltin!
+                        1 => resultOrigin!
+                        -1 => resultModule!
+                        -1 => resultSymbol!
                         (operator.kind == 18 or operator.kind == 19) -> if {
                             (firstChild! >= 0 and secondChild! >= 0) -> if {
                                 inferred![firstChild!] => left
                                 inferred![secondChild!] => right
                                 (left.origin == right.origin and left.targetModule == right.targetModule and left.targetSymbol == right.targetSymbol) -> if {
                                     true => canInfer!
-                                    23 => resultBuiltin!
+                                    23 => resultSymbol!
                                 }
                             }
                         }
@@ -362,7 +365,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 inferred![secondChild!] => right
                                 (left.origin == 1 and left.targetSymbol == 2 and right.origin == 1 and right.targetSymbol == 2) -> if {
                                     true => canInfer!
-                                    2 => resultBuiltin!
+                                    2 => resultSymbol!
                                 }
                             }
                         }
@@ -371,12 +374,21 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 inferred![firstChild!] => operand
                                 (operator.operatorKind == -26 and operand.origin == 1 and operand.targetSymbol == 23) -> if {
                                     true => canInfer!
-                                    23 => resultBuiltin!
+                                    23 => resultSymbol!
                                 }
                                 (operator.operatorKind == grammar.tokenIdMinus and operand.origin == 1 and operand.targetSymbol == 2) -> if {
                                     true => canInfer!
-                                    2 => resultBuiltin!
+                                    2 => resultSymbol!
                                 }
+                            }
+                        }
+                        operator.kind == 23 -> if {
+                            firstChild! >= 0 -> if {
+                                inferred![firstChild!] => operand
+                                true => canInfer!
+                                16 => resultOrigin!
+                                operand.targetModule => resultModule!
+                                operand.targetSymbol => resultSymbol!
                             }
                         }
                         (operator.kind == 24 or operator.kind == 25) -> if {
@@ -385,7 +397,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 inferred![secondChild!] => right
                                 (left.origin == 1 and left.targetSymbol == 23 and right.origin == 1 and right.targetSymbol == 23) -> if {
                                     true => canInfer!
-                                    23 => resultBuiltin!
+                                    23 => resultSymbol!
                                 }
                             }
                         }
@@ -393,9 +405,9 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                             inferred! -> push(ExpressionType {
                                 sourceModule: sourceIndex!
                                 astNode: operatorIndex!
-                                origin: 1
-                                targetModule: -1
-                                targetSymbol: resultBuiltin!
+                                origin: resultOrigin!
+                                targetModule: resultModule!
+                                targetSymbol: resultSymbol!
                             })
                             true => changed!
                         }

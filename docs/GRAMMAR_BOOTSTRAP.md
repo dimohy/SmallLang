@@ -232,6 +232,10 @@ Dictionary expressions now lower as AST kind 38. Homogeneous builtin entries
 infer structural origin 15 with key/value ids, `{K: V} -> {K: V}` substitutes
 both call-site identities, and concrete key/value mismatches participate in the
 same argument and return diagnostics.
+The `box` keyword now survives unary lowering as AST kind 23. Operand identity
+is wrapped as structural origin 16, `box T -> box T` substitutes the call-site
+element, and concrete boxed-element mismatches reuse codes 6 and 5. Duplicate
+unary/box wrapper spans are inferred once.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9

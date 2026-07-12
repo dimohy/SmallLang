@@ -137,6 +137,11 @@ public lower source: Text -> [AstNode; ~] {
                     -26 => operatorKind!
                     operatorTokenIndex! => operatorPayloadToken!
                 }
+                (astKind! == 22 and longKeywordByte0 == UInt8(98) and longKeywordByte1 == UInt8(111) and longKeywordByte2 == UInt8(120)) -> if {
+                    23 => astKind!
+                    -27 => operatorKind!
+                    operatorTokenIndex! => operatorPayloadToken!
+                }
             }
             operatorTokenIndex! + 1 => operatorTokenIndex!
         }
