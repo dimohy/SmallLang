@@ -131,6 +131,9 @@ symbol table. It collects nominal declarations, functions, fields, variants,
 trait/impl members, methods, associated types, and generic clauses; connects
 each entry to its nearest lexical owner; and stores name tokens, input/output
 type AST indexes, and ownership flags without per-symbol heap allocation.
+`selfhost/semantic/diagnostics.sl` performs UTF-8 byte-exact name comparison
+inside each lexical owner and reports duplicate symbols with both symbol indexes
+and the duplicate declaration's precise source span.
 
 The generated module is bootstrap data, not the final parser implementation.
 It deliberately makes the transition incremental and auditable.

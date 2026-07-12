@@ -208,8 +208,10 @@ ownership analysis.
 The semantic bootstrap has begun in a separate SL module. Its flat symbol table
 collects declarations and members, resolves nearest lexical owner symbols, and
 attaches concrete name tokens, primary/secondary type AST indexes, and
-move/mutable-borrow flags. Name resolution, duplicate checking, and type
-canonicalization remain before semantic parity.
+move/mutable-borrow flags. Duplicate checking is implemented for declarations
+sharing a lexical owner, using byte-exact UTF-8 name comparison and structured
+source-span diagnostics. Cross-module name resolution and type canonicalization
+remain before semantic parity.
 
 ## Immediate Implementation Order
 
