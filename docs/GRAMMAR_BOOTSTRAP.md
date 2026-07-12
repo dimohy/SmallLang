@@ -305,6 +305,13 @@ stdout IR, links it with pinned Clang, executes the resulting `.exe`, and
 requires exit code zero with no unexpected output. Main statements and runtime
 calls still need full lowering.
 
+The backend now defines Text as `%sl.text = { ptr, i64 }`. Plain UTF-8
+literals become immutable byte globals and are assembled into aggregate return
+values; Text parameters and direct calls pass the same aggregate by value.
+Non-ASCII, quote, backslash, and control bytes use LLVM `\XX` escaping, with
+the byte length retained independently from Unicode scalar count. ASCII and
+Korean snapshots both assemble, link, and execute.
+
 User-function ABI lowering now threads a hidden runtime I/O context containing
 stdin/stdout handles, read/write slots, and the cumulative ok state. This fixes
 function-local `print`/`println` and supplies the context that later file-backed

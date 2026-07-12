@@ -8,11 +8,65 @@ import syntax.generated.smalllang as grammar
 # symbol indexes; SSA registers are derived from typed-IR indexes.
 public emit sources: [Text; ~] -> Unit {
     llvmType symbol: Int -> Text => when {
+        symbol == 1 => "%sl.text"
         symbol == 2 => "i32"
         symbol == 23 => "i1"
         else => "void"
     }
+    hexDigit value: Int -> Text => when {
+        value == 0 => "0"
+        value == 1 => "1"
+        value == 2 => "2"
+        value == 3 => "3"
+        value == 4 => "4"
+        value == 5 => "5"
+        value == 6 => "6"
+        value == 7 => "7"
+        value == 8 => "8"
+        value == 9 => "9"
+        value == 10 => "A"
+        value == 11 => "B"
+        value == 12 => "C"
+        value == 13 => "D"
+        value == 14 => "E"
+        else => "F"
+    }
     sources -> typedIr.lower => ir!
+    false => usesText!
+    0 => textTypeSearch!
+    textTypeSearch! < (ir! -> len) -> while {
+        ir![textTypeSearch!].typeSymbol == 1 -> if { true => usesText! }
+        textTypeSearch! + 1 => textTypeSearch!
+    }
+    usesText! -> if {
+        "%sl.text = type { ptr, i64 }" -> println
+        0 => textGlobalIndex!
+        textGlobalIndex! < (ir! -> len) -> while {
+            ir![textGlobalIndex!] => textConstant
+            textConstant.kind == 2 -> if {
+                sources[textConstant.sourceModule] -> lexer.lex => textTokens!
+                textTokens![textConstant.payloadToken] => textToken
+                textToken.span.length - UIntSize(2) => textLength
+                "@sl_str_$(textGlobalIndex!) = private unnamed_addr constant [$textLength x i8] c" -> print
+                sources[textConstant.sourceModule] -> slice(textToken.span.start, UIntSize(1)) -> print
+                textToken.span.start + UIntSize(1) => textByteIndex!
+                textToken.span.start + textToken.span.length - UIntSize(1) => textByteEnd
+                textByteIndex! < textByteEnd -> while {
+                    sources[textConstant.sourceModule] -> byte(textByteIndex!) => textByte
+                    (textByte >= UInt8(32) and textByte <= UInt8(126) and textByte != UInt8(34) and textByte != UInt8(92)) -> if {
+                        sources[textConstant.sourceModule] -> slice(textByteIndex!, UIntSize(1)) -> print
+                    } else {
+                        "\\" -> print
+                        Int(textByte) / 16 -> hexDigit -> print
+                        Int(textByte) % 16 -> hexDigit -> print
+                    }
+                    textByteIndex! + UIntSize(1) => textByteIndex!
+                }
+                sources[textConstant.sourceModule] -> slice(textByteEnd, UIntSize(1)) -> println
+            }
+            textGlobalIndex! + 1 => textGlobalIndex!
+        }
+    }
     0 => functionIndex!
     functionIndex! < (ir! -> len) -> while {
         ir![functionIndex!] => function
@@ -34,6 +88,13 @@ public emit sources: [Text; ~] -> Unit {
             function.operand0 + 1 => expressionStart
             expressionIndex! >= expressionStart -> while {
                 ir![expressionIndex!] => expression
+                expression.kind == 2 -> if {
+                    sources[expression.sourceModule] -> lexer.lex => expressionTokens!
+                    expressionTokens![expression.payloadToken] => expressionToken
+                    expressionToken.span.length - UIntSize(2) => expressionLength
+                    "  %v$(expressionIndex!)_ptr = insertvalue %sl.text poison, ptr @sl_str_$(expressionIndex!), 0" -> println
+                    "  %v$(expressionIndex!) = insertvalue %sl.text %v$(expressionIndex!)_ptr, i64 $expressionLength, 1" -> println
+                }
                 (expression.kind == 7 or expression.kind == 8) -> if {
                     ir![expression.operand0] => leftOperand
                     leftOperand.typeSymbol -> llvmType => operandType

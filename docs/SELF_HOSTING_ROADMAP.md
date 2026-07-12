@@ -402,6 +402,12 @@ SL-source -> SL semantic/typed IR -> SL LLVM text -> native linker -> process
 execution path. Main statements, observable program behavior, Text/aggregate
 ABI, ownership/drop, runtime declarations, and direct file output remain.
 
+Text now crosses the self-hosted LLVM boundary as `{ ptr, i64 }`. UTF-8
+literals become immutable globals with byte-accurate lengths and LLVM `\XX`
+escaping, and Text parameters, returns, and imported calls share that ABI.
+ASCII and Korean examples both pass assembly, link, and execution validation.
+Interpolated/dynamic Text construction and lifetime ownership remain.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce

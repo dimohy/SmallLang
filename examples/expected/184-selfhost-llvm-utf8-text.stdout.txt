@@ -1,0 +1,12 @@
+%sl.text = type { ptr, i64 }
+@sl_str_2 = private unnamed_addr constant [6 x i8] c"\ED\95\9C\EA\B8\80"
+define %sl.text @sl_m0_s0() {
+entry:
+  %v2_ptr = insertvalue %sl.text poison, ptr @sl_str_2, 0
+  %v2 = insertvalue %sl.text %v2_ptr, i64 6, 1
+  ret %sl.text %v2
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

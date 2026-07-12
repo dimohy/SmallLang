@@ -1,0 +1,17 @@
+%sl.text = type { ptr, i64 }
+@sl_str_7 = private unnamed_addr constant [5 x i8] c"hello"
+define %sl.text @sl_m0_s0(%sl.text %arg) {
+entry:
+  ret %sl.text %arg
+}
+define %sl.text @sl_m1_s0() {
+entry:
+  %v7_ptr = insertvalue %sl.text poison, ptr @sl_str_7, 0
+  %v7 = insertvalue %sl.text %v7_ptr, i64 5, 1
+  %v6 = call %sl.text @sl_m0_s0(%sl.text %v7)
+  ret %sl.text %v6
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}
