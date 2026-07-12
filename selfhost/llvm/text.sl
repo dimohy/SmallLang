@@ -1,7 +1,9 @@
 namespace smalllang.compiler.llvm.text
 
+import smalllang.compiler.ast as ast
 import smalllang.compiler.ir.typed as typedIr
 import smalllang.compiler.lexer as lexer
+import smalllang.compiler.semantic.modules as modules
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.symbols as symbols
 import syntax.generated.smalllang as grammar
@@ -42,6 +44,7 @@ public emit sources: [Text; ~] -> Unit {
     }
     sources -> typedIr.lower => ir!
     sources -> nominalTypes.resolve => nominal!
+    sources -> modules.identities => moduleIdentities!
     0 => structSourceIndex!
     structSourceIndex! < (sources -> len) -> while {
         sources[structSourceIndex!] -> symbols.collect => structTable!
@@ -174,6 +177,48 @@ public emit sources: [Text; ~] -> Unit {
                         fieldValue.nextOperand => fieldValueIndex!
                         fieldPosition! + 1 => fieldPosition!
                     }
+                }
+                expression.kind == 13 -> if {
+                    ir![expression.operand0] => memberBase
+                    memberBase.typeModule => ownerSourceModule!
+                    memberBase.typeOrigin == 2 -> if { moduleIdentities![memberBase.typeModule].sourceIndex => ownerSourceModule! }
+                    sources[ownerSourceModule!] -> symbols.collect => ownerTable!
+                    sources[ownerSourceModule!] -> lexer.lex => ownerTokens!
+                    sources[expression.sourceModule] -> ast.lower => memberNodes!
+                    sources[expression.sourceModule] -> lexer.lex => memberTokens!
+                    memberNodes![expression.astNode] => memberAst
+                    -1 => memberNameToken!
+                    memberAst.firstToken => memberTokenIndex!
+                    memberTokenIndex! < memberAst.firstToken + memberAst.tokenCount -> while {
+                        memberTokens![memberTokenIndex!].kind == grammar.tokenIdIdentifier -> if { memberTokenIndex! => memberNameToken! }
+                        memberTokenIndex! + 1 => memberTokenIndex!
+                    }
+                    -1 => fieldOrdinal!
+                    0 => candidateFieldOrdinal!
+                    0 => memberFieldSearch!
+                    memberFieldSearch! < (ownerTable! -> len) -> while {
+                        ownerTable![memberFieldSearch!] => memberField
+                        (memberField.kind == 26 and memberField.parent == memberBase.typeSymbol) -> if {
+                            memberTokens![memberNameToken!] => memberName
+                            ownerTokens![memberField.nameToken] => fieldName
+                            memberName.span.length == fieldName.span.length => equal!
+                            UIntSize(0) => fieldNameByte!
+                            (equal! and fieldNameByte! < memberName.span.length) -> while {
+                                sources[expression.sourceModule] -> byte(memberName.span.start + fieldNameByte!) => memberByte
+                                sources[ownerSourceModule!] -> byte(fieldName.span.start + fieldNameByte!) => fieldByte
+                                memberByte != fieldByte -> if { false => equal! }
+                                fieldNameByte! + UIntSize(1) => fieldNameByte!
+                            }
+                            equal! -> if { candidateFieldOrdinal! => fieldOrdinal! }
+                            candidateFieldOrdinal! + 1 => candidateFieldOrdinal!
+                        }
+                        memberFieldSearch! + 1 => memberFieldSearch!
+                    }
+                    "  %v$(expressionIndex!) = extractvalue " -> print
+                    memberBase -> writeType
+                    " " -> print
+                    memberBase.kind == 5 -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
+                    ", $(fieldOrdinal!)" -> println
                 }
                 (expression.kind == 7 or expression.kind == 8) -> if {
                     ir![expression.operand0] => leftOperand

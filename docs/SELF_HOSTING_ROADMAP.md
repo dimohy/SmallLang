@@ -415,6 +415,12 @@ the aggregate by value without losing its declaring-module identity. Local and
 cross-file struct executables assemble, link, and run. Nested owned fields,
 member extraction, moves, and drop glue remain.
 
+Struct member reads now lower through typed IR to LLVM `extractvalue`. Field
+ordinals come from the declaring module's symbol order rather than caller-local
+layout guesses, so imported member access retains the same ABI. Local/imported
+member executables pass assembly, link, and execution validation. Moves,
+mutable field updates, nested owned fields, and drop glue remain.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce

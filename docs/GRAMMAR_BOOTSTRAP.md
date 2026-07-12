@@ -320,6 +320,12 @@ imported struct snapshots share the declaring module's LLVM identity and pass
 assembly, link, and execution validation. Nested/owned fields and drop glue
 remain.
 
+Member access has its own typed-IR kind and a linked base operand. LLVM lowering
+resolves the field name against the declaring module's symbol table, computes
+the declaration-order field ordinal, and emits `extractvalue` from a local or
+imported nominal aggregate. Local and cross-module member snapshots assemble,
+link, and run. Nested member chains are represented by the same operand graph.
+
 User-function ABI lowering now threads a hidden runtime I/O context containing
 stdin/stdout handles, read/write slots, and the cumulative ok state. This fixes
 function-local `print`/`println` and supplies the context that later file-backed

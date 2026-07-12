@@ -10,7 +10,7 @@ import smalllang.compiler.semantic.symbols as symbols
 # lowering can consume the table without allocating an object graph.
 # Kinds: 0 function, 1 return, 2 Text constant, 3 Int constant,
 # 4 Bool constant, 5 name, 6 call, 7 unary, 8 binary, 9 other expression,
-# 10 parameter, 11 entry point, 12 struct literal.
+# 10 parameter, 11 entry point, 12 struct literal, 13 member access.
 public struct TypedIrNode {
     kind: Int
     parent: Int
@@ -188,6 +188,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 (expression.kind >= 18 and expression.kind <= 21) -> if { 8 => expressionKind! }
                                 (expression.kind == 24 or expression.kind == 25) -> if { 8 => expressionKind! }
                                 expression.kind == 39 -> if { 12 => expressionKind! }
+                                expression.kind == 36 -> if { 13 => expressionKind! }
                                 results! -> len => expressionIr
                                 expressionIr => astToIr![expressionAstIndex!]
                                 -1 => expressionSymbol!
@@ -252,7 +253,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     expressionIrStart => operandIrIndex!
                     operandIrIndex! < expressionIrEnd -> while {
                         results![operandIrIndex!] => operatorIr!
-                        (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8) -> if {
+                        (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or operatorIr!.kind == 13) -> if {
                             -1 => firstOperand!
                             -1 => secondOperand!
                             UIntSize(0) => firstStart!
