@@ -14,3 +14,7 @@ entry:
   %v14 = xor i1 0, true
   ret i1 %v14
 }
+define i32 @main() {
+entry:
+  ret i32 0
+}

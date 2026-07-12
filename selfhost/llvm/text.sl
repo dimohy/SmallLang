@@ -13,13 +13,12 @@ public emit sources: [Text; ~] -> Unit {
         else => "void"
     }
     sources -> typedIr.lower => ir!
-
     0 => functionIndex!
     functionIndex! < (ir! -> len) -> while {
         ir![functionIndex!] => function
         function.kind == 0 -> if {
             functionIndex! + 1 => functionEnd!
-            (functionEnd! < (ir! -> len) and ir![functionEnd!].kind != 0) -> while {
+            (functionEnd! < (ir! -> len) and ir![functionEnd!].kind != 0 and ir![functionEnd!].kind != 11) -> while {
                 functionEnd! + 1 => functionEnd!
             }
             function.typeSymbol -> llvmType => returnType
@@ -131,6 +130,12 @@ public emit sources: [Text; ~] -> Unit {
             "}" -> println
             functionEnd! => functionIndex!
         } else {
+            function.kind == 11 -> if {
+                "define i32 @main() {" -> println
+                "entry:" -> println
+                "  ret i32 0" -> println
+                "}" -> println
+            }
             functionIndex! + 1 => functionIndex!
         }
     }

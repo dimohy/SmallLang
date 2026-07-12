@@ -93,6 +93,7 @@ foreach (var expectedFile in expectedFiles)
     var wasmLlvmContainsPath = Path.Combine(expectedDir, name + ".wasm32.llvm.contains.txt");
     var sourcesPath = Path.Combine(expectedDir, name + ".sources.txt");
     var stdoutLlvmValidationPath = Path.Combine(expectedDir, name + ".stdout.llvm.validate.txt");
+    var stdoutLlvmExecutionPath = Path.Combine(expectedDir, name + ".stdout.llvm.execute.txt");
     var verifyLlvm = File.Exists(llvmContainsPath) || File.Exists(llvmNotContainsPath);
 
     if (!File.Exists(sourcePath))
@@ -231,6 +232,30 @@ foreach (var expectedFile in expectedFiles)
             Console.Error.WriteLine(llvmAs.Stderr);
             failures++;
             continue;
+        }
+
+        if (File.Exists(stdoutLlvmExecutionPath))
+        {
+            var linkedPath = Path.Combine(artifactsDir, name + ".stdout.exe");
+            var link = Run(clangPath, ["-Wno-override-module", stdoutLlvmPath, "-o", linkedPath], input: null, repoRoot);
+            if (link.ExitCode != 0)
+            {
+                Console.Error.WriteLine($"FAIL {name}: stdout LLVM could not be linked");
+                Console.Error.WriteLine(link.Stdout);
+                Console.Error.WriteLine(link.Stderr);
+                failures++;
+                continue;
+            }
+
+            var linkedRun = Run(linkedPath, [], input: null, repoRoot);
+            if (linkedRun.ExitCode != 0 || Normalize(linkedRun.Stdout).Length != 0)
+            {
+                Console.Error.WriteLine($"FAIL {name}: linked stdout LLVM executable failed");
+                Console.Error.WriteLine(linkedRun.Stdout);
+                Console.Error.WriteLine(linkedRun.Stderr);
+                failures++;
+                continue;
+            }
         }
     }
 

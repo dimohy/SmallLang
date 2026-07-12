@@ -10,7 +10,7 @@ import smalllang.compiler.semantic.symbols as symbols
 # lowering can consume the table without allocating an object graph.
 # Kinds: 0 function, 1 return, 2 Text constant, 3 Int constant,
 # 4 Bool constant, 5 name, 6 call, 7 unary, 8 binary, 9 other expression,
-# 10 parameter.
+# 10 parameter, 11 entry point.
 public struct TypedIrNode {
     kind: Int
     parent: Int
@@ -283,6 +283,29 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                 }
             }
             symbolIndex! + 1 => symbolIndex!
+        }
+        0 => entryAstIndex!
+        entryAstIndex! < (nodes! -> len) -> while {
+            nodes![entryAstIndex!] => entryAst
+            entryAst.kind == 8 -> if {
+                results! -> push(TypedIrNode {
+                    kind: 11
+                    parent: -1
+                    sourceModule: sourceIndex!
+                    astNode: entryAstIndex!
+                    symbol: -1
+                    targetModule: sourceIndex!
+                    typeOrigin: 1
+                    typeModule: -1
+                    typeSymbol: 2
+                    payloadToken: -1
+                    opcode: -1
+                    operand0: -1
+                    operand1: -1
+                    flags: 0
+                })
+            }
+            entryAstIndex! + 1 => entryAstIndex!
         }
         sourceIndex! + 1 => sourceIndex!
     }

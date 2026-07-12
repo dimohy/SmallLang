@@ -298,6 +298,13 @@ module-qualified calls such as `@sl_m0_s0`, including a typed literal,
 parameter, or SSA argument. A two-source snapshot is assembled by `llvm-as`,
 proving that file-module identities survive through executable LLVM linkage.
 
+An AST main block now lowers to a distinct typed-IR entry node. The LLVM backend
+emits it as a Windows x64 `i32 @main()` returning a process exit code. The
+multi-module backend test is no longer assembly-only: the runner assembles the
+stdout IR, links it with pinned Clang, executes the resulting `.exe`, and
+requires exit code zero with no unexpected output. Main statements and runtime
+calls still need full lowering.
+
 User-function ABI lowering now threads a hidden runtime I/O context containing
 stdin/stdout handles, read/write slots, and the cumulative ok state. This fixes
 function-local `print`/`println` and supplies the context that later file-backed
