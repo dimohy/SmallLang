@@ -274,8 +274,14 @@ relocatable node table whose initial stable kinds are function, return, and
 typed Int/Text/Bool constants. Every node retains its source-module index, AST
 index, owning symbol, complete result identity, payload token, and operand
 indexes. Multi-file snapshots prove that node indexes are compilation-unit
-global while source-module identities remain distinct. Operator, call,
-ownership, and storage payloads remain the next lowering slices.
+global while source-module identities remain distinct. Ownership and storage
+payloads remain later lowering slices.
+Unary and binary expressions now lower every inferred descendant in stable AST
+order, then connect semantic parents and ordered operand indexes in a second
+pass. Nested precedence therefore becomes an explicit IR graph rather than an
+AST convention. Resolved calls retain their target source module and function
+symbol, with argument expressions linked as operands. Operator codes are stored
+directly for LLVM opcode selection.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9

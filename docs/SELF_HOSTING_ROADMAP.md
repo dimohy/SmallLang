@@ -372,8 +372,13 @@ node table lowers each inferred function result as `function -> return ->
 expression`, with stable kinds for Int, Text, and Bool constants and explicit
 source-module, AST, symbol, type-identity, payload-token, and operand indexes.
 Single- and multi-module snapshots fix this layout before LLVM text lowering is
-added. Operators, calls, ownership, and storage placement are not yet lowered,
-so this starts rather than completes critical-path step 5.
+added. Ownership and storage placement are not yet lowered, so this starts
+rather than completes critical-path step 5.
+The next typed-IR slice now flattens every inferred expression in AST order and
+connects nested unary/binary operands by IR index. Calls carry the resolved
+target source-module/function-symbol pair and their argument operand, while
+operators retain stable opcode ids. Ownership and storage placement remain
+before step 5 can be considered complete.
 
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
