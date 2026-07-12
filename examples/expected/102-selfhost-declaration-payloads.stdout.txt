@@ -1,0 +1,10 @@
+declaration = 3,0,Point
+declaration = 26,1,x
+declaration = 26,1,y
+declaration = 4,0,Maybe
+declaration = 27,8,None
+declaration = 27,8,Some
+declaration = 5,0,Show
+declaration = 29,13,show
+declaration = 6,0,Show
+declaration = 31,17,show

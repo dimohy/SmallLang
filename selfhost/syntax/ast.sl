@@ -23,7 +23,10 @@ public struct AstNode {
 # 6 impl, 7 function, 8 main, 9 binding, 10 flow, 11 call, 12 type,
 # 13 string, 14 number, 15 name, 16 path, 17 function signature,
 # 18 equality, 19 comparison, 20 additive, 21 multiplicative, 22 unary,
-# 23 box, 24 logical-or, 25 logical-and. Keyword operator codes use the same
+# 23 box, 24 logical-or, 25 logical-and, 26 struct field, 27 enum variant,
+# 28 trait associated type, 29 trait method, 30 impl associated type,
+# 31 method, 32 generic parameter, 33 generic where constraint,
+# 34 associated-type equality. Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
 public lower source: Text -> [AstNode; ~] {
     classify rule: Int -> Int => when {
@@ -54,6 +57,15 @@ public lower source: Text -> [AstNode; ~] {
         rule == grammar.ruleIdBoxExpression => 23
         rule == grammar.ruleIdLogicalOrExpression => 24
         rule == grammar.ruleIdLogicalAndExpression => 25
+        rule == grammar.ruleIdStructFieldDeclaration => 26
+        rule == grammar.ruleIdEnumVariantDeclaration => 27
+        rule == grammar.ruleIdTraitAssociatedTypeDeclaration => 28
+        rule == grammar.ruleIdTraitMethodDeclaration => 29
+        rule == grammar.ruleIdImplAssociatedTypeBinding => 30
+        rule == grammar.ruleIdMethodDeclaration => 31
+        rule == grammar.ruleIdGenericParameterClause => 32
+        rule == grammar.ruleIdGenericWhereClause => 33
+        rule == grammar.ruleIdAssociatedTypeEqualityConstraint => 34
         else => -1
     }
     source -> cst.build => green!
@@ -182,6 +194,59 @@ public lower source: Text -> [AstNode; ~] {
             astIndex => cstToAst![cstIndex!]
         }
         cstIndex! + 1 => cstIndex!
+    }
+
+    # Resolve declaration payloads after every semantic parent/child index is
+    # known. Path children provide qualified names; direct declarations scan
+    # only their header token range.
+    ast! -> len => astCount
+    0 => declarationIndex!
+    declarationIndex! < astCount -> while {
+        ast![declarationIndex!] => declaration!
+        (declaration!.kind == 1 or declaration!.kind == 2 or declaration!.kind == 6 or declaration!.kind == 7) -> if {
+            false => pathPayloadFound!
+            0 => childIndex!
+            childIndex! < astCount -> while {
+                ast![childIndex!] => child
+                not pathPayloadFound! -> if {
+                    (child.parent == declarationIndex! and child.kind == 16) -> if {
+                        child.payloadToken => declaration!.payloadToken
+                        true => pathPayloadFound!
+                    }
+                }
+                childIndex! + 1 => childIndex!
+            }
+        }
+        (declaration!.kind == 3 or declaration!.kind == 4 or declaration!.kind == 5) -> if {
+            declaration!.firstToken => headerToken!
+            declaration!.firstToken + declaration!.tokenCount => headerEnd
+            headerToken! < headerEnd -> while {
+                tokens![headerToken!].kind == grammar.tokenIdLeftBrace -> if {
+                    headerEnd => headerToken!
+                } else {
+                    tokens![headerToken!].kind == grammar.tokenIdIdentifier -> if {
+                        headerToken! => declaration!.payloadToken
+                    }
+                    headerToken! + 1 => headerToken!
+                }
+            }
+        }
+        (declaration!.kind == 28 or declaration!.kind == 30) -> if {
+            declaration!.firstToken => associatedToken!
+            declaration!.firstToken + declaration!.tokenCount => associatedEnd!
+            associatedToken! < associatedEnd! -> while {
+                tokens![associatedToken!].kind == grammar.tokenIdEqual -> if {
+                    associatedEnd! => associatedToken!
+                } else {
+                    tokens![associatedToken!].kind == grammar.tokenIdIdentifier -> if {
+                        associatedToken! => declaration!.payloadToken
+                    }
+                    associatedToken! + 1 => associatedToken!
+                }
+            }
+        }
+        declaration! => ast![declarationIndex!]
+        declarationIndex! + 1 => declarationIndex!
     }
 
     ast!

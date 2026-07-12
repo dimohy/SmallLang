@@ -114,7 +114,10 @@ formatter and language server, avoiding a second editor-only grammar.
    AST parent links. Logical `or`, `and`, and `not` plus `box` use the same
    negative keyword-code convention as syntax diagnostics, with exact payload
    token indexes. Expand this ordinary SL lowering to declaration
-   names/parameters and every remaining rule.
+   parameters and every remaining rule. A second lowering pass now resolves
+   namespace/import/impl/function names from their nearest path child and
+   extracts nominal type names, struct fields, enum variants, trait members,
+   associated types, methods, and generic clauses directly from header tokens.
 6. Reimplement `grammar build` itself in SL and require byte-identical output.
 7. Remove the C# source generators only after the SL compiler reproduces all
    parser behavior and diagnostics.

@@ -197,9 +197,11 @@ across skipped CST wrappers, and removes trivia from payload token ranges and
 spans. Equality/comparison/arithmetic/unary/box wrappers are filtered by actual
 operator presence and carry exact operator-token payloads, preserving grammar
 precedence in AST parent links. Logical keyword operators use the same stable
-negative keyword codes as parser diagnostics. Declaration payloads and full
-language coverage are still required before this can replace the bootstrap AST
-builder.
+negative keyword codes as parser diagnostics. Parameter and expression payload
+coverage is still required before this can replace the bootstrap AST builder.
+Nominal declarations, fields, variants, trait members, impl targets,
+methods, associated types, and generic clauses now carry concrete identifier
+token payloads resolved in a second lowering pass.
 
 ## Immediate Implementation Order
 
