@@ -111,8 +111,10 @@ formatter and language server, avoiding a second editor-only grammar.
    and trims trivia from payload spans. Equality, comparison, additive,
    multiplicative, unary, and box nodes are emitted only when their operator is
    present; each records the exact operator token and preserves precedence in
-   AST parent links. Expand this ordinary SL lowering to logical keyword
-   operators, declaration names/parameters, and every remaining rule.
+   AST parent links. Logical `or`, `and`, and `not` plus `box` use the same
+   negative keyword-code convention as syntax diagnostics, with exact payload
+   token indexes. Expand this ordinary SL lowering to declaration
+   names/parameters and every remaining rule.
 6. Reimplement `grammar build` itself in SL and require byte-identical output.
 7. Remove the C# source generators only after the SL compiler reproduces all
    parser behavior and diagnostics.

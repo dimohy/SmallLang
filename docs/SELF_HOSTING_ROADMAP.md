@@ -196,9 +196,10 @@ call/type/literal/name/path nodes from the green CST, reconnects AST parents
 across skipped CST wrappers, and removes trivia from payload token ranges and
 spans. Equality/comparison/arithmetic/unary/box wrappers are filtered by actual
 operator presence and carry exact operator-token payloads, preserving grammar
-precedence in AST parent links. Logical keyword operators, declaration payloads,
-and full language coverage are still required before this can replace the
-bootstrap AST builder.
+precedence in AST parent links. Logical keyword operators use the same stable
+negative keyword codes as parser diagnostics. Declaration payloads and full
+language coverage are still required before this can replace the bootstrap AST
+builder.
 
 ## Immediate Implementation Order
 

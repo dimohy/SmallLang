@@ -23,7 +23,8 @@ public struct AstNode {
 # 6 impl, 7 function, 8 main, 9 binding, 10 flow, 11 call, 12 type,
 # 13 string, 14 number, 15 name, 16 path, 17 function signature,
 # 18 equality, 19 comparison, 20 additive, 21 multiplicative, 22 unary,
-# 23 box.
+# 23 box, 24 logical-or, 25 logical-and. Keyword operator codes use the same
+# -(keywordIndex + 1) representation as syntax diagnostics.
 public lower source: Text -> [AstNode; ~] {
     classify rule: Int -> Int => when {
         rule == grammar.ruleIdSourceFile => 0
@@ -51,6 +52,8 @@ public lower source: Text -> [AstNode; ~] {
         rule == grammar.ruleIdMultiplicativeExpression => 21
         rule == grammar.ruleIdUnaryExpression => 22
         rule == grammar.ruleIdBoxExpression => 23
+        rule == grammar.ruleIdLogicalOrExpression => 24
+        rule == grammar.ruleIdLogicalAndExpression => 25
         else => -1
     }
     source -> cst.build => green!
@@ -70,6 +73,7 @@ public lower source: Text -> [AstNode; ~] {
         node.firstToken + node.tokenCount => operatorTokenEnd
         operatorTokenIndex! < operatorTokenEnd -> while {
             tokens![operatorTokenIndex!].kind => candidateOperator
+            tokens![operatorTokenIndex!] => candidateToken
             astKind! == 18 and (candidateOperator == grammar.tokenIdEqualEqual or candidateOperator == grammar.tokenIdBangEqual) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
@@ -90,13 +94,44 @@ public lower source: Text -> [AstNode; ~] {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
+            (candidateOperator == grammar.tokenIdIdentifier and candidateToken.span.length == UIntSize(2)) -> if {
+                source -> byte(candidateToken.span.start) => shortKeywordByte0
+                source -> byte(candidateToken.span.start + UIntSize(1)) => shortKeywordByte1
+                (astKind! == 24 and shortKeywordByte0 == UInt8(111) and shortKeywordByte1 == UInt8(114)) -> if {
+                    -24 => operatorKind!
+                    operatorTokenIndex! => operatorPayloadToken!
+                }
+            }
+            (candidateOperator == grammar.tokenIdIdentifier and candidateToken.span.length == UIntSize(3)) -> if {
+                source -> byte(candidateToken.span.start) => longKeywordByte0
+                source -> byte(candidateToken.span.start + UIntSize(1)) => longKeywordByte1
+                source -> byte(candidateToken.span.start + UIntSize(2)) => longKeywordByte2
+                (astKind! == 25 and longKeywordByte0 == UInt8(97) and longKeywordByte1 == UInt8(110) and longKeywordByte2 == UInt8(100)) -> if {
+                    -25 => operatorKind!
+                    operatorTokenIndex! => operatorPayloadToken!
+                }
+                (astKind! == 22 and longKeywordByte0 == UInt8(110) and longKeywordByte1 == UInt8(111) and longKeywordByte2 == UInt8(116)) -> if {
+                    -26 => operatorKind!
+                    operatorTokenIndex! => operatorPayloadToken!
+                }
+            }
             operatorTokenIndex! + 1 => operatorTokenIndex!
         }
-        (astKind! >= 18 and astKind! <= 22 and operatorKind! < 0) -> if {
-            -1 => astKind!
+        operatorPayloadToken! < 0 -> if {
+            astKind! >= 18 -> if {
+                astKind! <= 22 -> if {
+                    -1 => astKind!
+                }
+            }
+            astKind! == 24 -> if {
+                -1 => astKind!
+            }
+            astKind! == 25 -> if {
+                -1 => astKind!
+            }
         }
         astKind! == 23 -> if {
-            grammar.tokenIdIdentifier => operatorKind!
+            -27 => operatorKind!
             node.firstToken => operatorPayloadToken!
         }
         cstToAst! -> push(missingNode)
