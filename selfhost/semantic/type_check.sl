@@ -23,7 +23,8 @@ public struct TypeCheckDiagnostic {
 
 # Code 5 identifies a mismatching function return expression. Code 6 identifies
 # a call argument that does not match the local function input type. Code 7
-# identifies an unresolved local call target.
+# identifies an unresolved local call target. Code 8 identifies a binary
+# operator whose typed operands are incompatible.
 public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
     sources -> nominalTypes.resolve => nominal!
     sources -> expressionTypes.infer => expressionTypeTable!
@@ -192,6 +193,85 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                 })
             }
             callIndex! + 1 => callIndex!
+        }
+
+        0 => operatorIndex!
+        operatorIndex! < (nodes! -> len) -> while {
+            nodes![operatorIndex!] => operator
+            ((operator.kind >= 18 and operator.kind <= 21) or operator.kind == 24 or operator.kind == 25) -> if {
+                false => operatorInferred!
+                -1 => leftTypeIndex!
+                -1 => rightTypeIndex!
+                1000000 => leftDistance!
+                1000000 => rightDistance!
+                0 => inferredIndex!
+                inferredIndex! < (expressionTypeTable! -> len) -> while {
+                    expressionTypeTable![inferredIndex!] => inferredType
+                    inferredType.sourceModule == sourceIndex! -> if {
+                        inferredType.astNode == operatorIndex! -> if { true => operatorInferred! }
+                        inferredType.astNode != operatorIndex! -> if {
+                            nodes![inferredType.astNode].parent => operandAncestor!
+                            1 => operandDistance!
+                            false => belongsToOperator!
+                            (operandAncestor! >= 0 and not belongsToOperator!) -> while {
+                                operandAncestor! == operatorIndex! -> if {
+                                    true => belongsToOperator!
+                                } else {
+                                    nodes![operandAncestor!].parent => operandAncestor!
+                                    operandDistance! + 1 => operandDistance!
+                                }
+                            }
+                            belongsToOperator! -> if {
+                                operandDistance! < leftDistance! -> if {
+                                    leftTypeIndex! => rightTypeIndex!
+                                    leftDistance! => rightDistance!
+                                    inferredIndex! => leftTypeIndex!
+                                    operandDistance! => leftDistance!
+                                } else {
+                                    operandDistance! < rightDistance! -> if {
+                                        inferredIndex! => rightTypeIndex!
+                                        operandDistance! => rightDistance!
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    inferredIndex! + 1 => inferredIndex!
+                }
+                (not operatorInferred! and leftTypeIndex! >= 0 and rightTypeIndex! >= 0) -> if {
+                    expressionTypeTable![leftTypeIndex!] => leftType
+                    expressionTypeTable![rightTypeIndex!] => rightType
+                    false => duplicateOperatorDiagnostic!
+                    0 => diagnosticIndex!
+                    diagnosticIndex! < (diagnostics! -> len) -> while {
+                        diagnostics![diagnosticIndex!] => existingDiagnostic
+                        (existingDiagnostic.code == 8 and existingDiagnostic.span.fileId == sourceIndex! and existingDiagnostic.span.start == operator.start and existingDiagnostic.span.length == operator.length) -> if {
+                            true => duplicateOperatorDiagnostic!
+                        }
+                        diagnosticIndex! + 1 => diagnosticIndex!
+                    }
+                    not duplicateOperatorDiagnostic! -> if {
+                        diagnostics! -> push(TypeCheckDiagnostic {
+                        code: 8
+                        sourceModule: sourceIndex!
+                        functionSymbol: -1
+                        expectedOrigin: leftType.origin
+                        expectedModule: leftType.targetModule
+                        expectedSymbol: leftType.targetSymbol
+                        actualOrigin: rightType.origin
+                        actualModule: rightType.targetModule
+                        actualSymbol: rightType.targetSymbol
+                        actualBuiltin: rightType.origin == 1 -> if { rightType.targetSymbol } else { -1 }
+                        span: syntax.SourceSpan {
+                            fileId: sourceIndex!
+                            start: operator.start
+                            length: operator.length
+                        }
+                        })
+                    }
+                }
+            }
+            operatorIndex! + 1 => operatorIndex!
         }
         sourceIndex! + 1 => sourceIndex!
     }

@@ -195,3 +195,6 @@ Binding symbols now acquire the inferred type of their value expression during
 the same fixed-point pass. Every lexically resolved reference to the binding is
 seeded with that identity, allowing later operators and calls to continue type
 inference across local definitions.
+Binary operators with two inferred but incompatible operand types now emit code
+8 over the complete operator span. Nested parenthesized operands are selected
+by nearest typed ancestry, and equivalent wrapper nodes are deduplicated.

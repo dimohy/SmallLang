@@ -284,6 +284,10 @@ Local bindings now inherit literal, operator, or call-result types and propagate
 them through lexical references. The fixed-point engine can therefore infer
 later expressions such as `result + 1` after `double(2) => result`.
 
+Incompatible typed binary operands no longer disappear as uninferred nodes.
+They produce deduplicated code-8 diagnostics over the complete expression,
+including parenthesized cases such as `Int + Bool`.
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).
