@@ -5,6 +5,7 @@ import smalllang.compiler.lexer as lexer
 import smalllang.compiler.semantic.calls as calls
 import smalllang.compiler.semantic.composite_types as compositeTypes
 import smalllang.compiler.semantic.expression_types as expressionTypes
+import smalllang.compiler.semantic.modules as modules
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.symbols as symbols
 import smalllang.compiler.syntax as syntax
@@ -29,12 +30,14 @@ public struct TypeCheckDiagnostic {
 # identifies an unresolved local call target. Code 8 identifies a binary
 # operator whose typed operands are incompatible. Code 9 identifies a
 # non-public imported call target. Code 10 identifies missing or extra call
-# arguments for the current zero-or-one-input function surface.
+# arguments for the current zero-or-one-input function surface. Code 11 is an
+# unknown struct initializer field and code 12 is a field value type mismatch.
 public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
     sources -> nominalTypes.resolve => nominal!
     sources -> compositeTypes.resolve => composite!
     sources -> expressionTypes.infer => expressionTypeTable!
     sources -> calls.resolveModules => moduleCalls!
+    sources -> modules.identities => moduleIdentities!
     [TypeCheckDiagnostic; ~] => diagnostics!
     0 => sourceIndex!
     sourceIndex! < (sources -> len) -> while {
@@ -332,6 +335,124 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                 }
             }
             callIndex! + 1 => callIndex!
+        }
+
+        0 => initializerIndex!
+        initializerIndex! < (nodes! -> len) -> while {
+            nodes![initializerIndex!] => initializer
+            initializer.kind == 40 -> if {
+                initializer.parent => literalAst!
+                (literalAst! >= 0 and nodes![literalAst!].kind != 39) -> while {
+                    nodes![literalAst!].parent => literalAst!
+                }
+                -1 => literalTypeIndex!
+                0 => literalTypeSearch!
+                literalTypeSearch! < (expressionTypeTable! -> len) -> while {
+                    expressionTypeTable![literalTypeSearch!] => literalTypeCandidate
+                    (literalTypeCandidate.sourceModule == sourceIndex! and literalTypeCandidate.astNode == literalAst!) -> if {
+                        literalTypeSearch! => literalTypeIndex!
+                    }
+                    literalTypeSearch! + 1 => literalTypeSearch!
+                }
+                literalTypeIndex! >= 0 -> if {
+                    expressionTypeTable![literalTypeIndex!] => literalType
+                    sourceIndex! => targetSourceModule!
+                    literalType.origin == 2 -> if {
+                        moduleIdentities![literalType.targetModule].sourceIndex => targetSourceModule!
+                    }
+                    sources[targetSourceModule!] -> symbols.collect => targetTable!
+                    sources[targetSourceModule!] -> lexer.lex => targetTokens!
+                    -1 => fieldSymbol!
+                    0 => fieldSearch!
+                    (fieldSearch! < (targetTable! -> len) and fieldSymbol! < 0) -> while {
+                        targetTable![fieldSearch!] => fieldCandidate
+                        (fieldCandidate.kind == 26 and fieldCandidate.parent == literalType.targetSymbol) -> if {
+                            tokens![initializer.payloadToken] => initializerName
+                            targetTokens![fieldCandidate.nameToken] => fieldName
+                            initializerName.span.length == fieldName.span.length => equal!
+                            UIntSize(0) => fieldByte!
+                            (equal! and fieldByte! < initializerName.span.length) -> while {
+                                source -> byte(initializerName.span.start + fieldByte!) => leftByte
+                                sources[targetSourceModule!] -> byte(fieldName.span.start + fieldByte!) => rightByte
+                                leftByte != rightByte -> if { false => equal! }
+                                fieldByte! + UIntSize(1) => fieldByte!
+                            }
+                            equal! -> if { fieldSearch! => fieldSymbol! }
+                        }
+                        fieldSearch! + 1 => fieldSearch!
+                    }
+                    fieldSymbol! < 0 -> if {
+                        tokens![initializer.payloadToken] => unknownField
+                        diagnostics! -> push(TypeCheckDiagnostic {
+                            code: 11
+                            sourceModule: sourceIndex!
+                            functionSymbol: -1
+                            expectedOrigin: -1
+                            expectedModule: literalType.targetModule
+                            expectedSymbol: -1
+                            actualOrigin: -1
+                            actualModule: -1
+                            actualSymbol: -1
+                            actualBuiltin: -1
+                            span: syntax.SourceSpan { fileId: sourceIndex!, start: unknownField.span.start, length: unknownField.span.length }
+                        })
+                    } else {
+                        -1 => initializerValueType!
+                        1000000 => initializerValueDistance!
+                        0 => valueTypeSearch!
+                        valueTypeSearch! < (expressionTypeTable! -> len) -> while {
+                            expressionTypeTable![valueTypeSearch!] => valueType
+                            valueType.sourceModule == sourceIndex! -> if {
+                                nodes![valueType.astNode].parent => valueAncestor!
+                                1 => distance!
+                                false => belongsToInitializer!
+                                (valueAncestor! >= 0 and not belongsToInitializer!) -> while {
+                                    valueAncestor! == initializerIndex! -> if { true => belongsToInitializer! } else {
+                                        nodes![valueAncestor!].parent => valueAncestor!
+                                        distance! + 1 => distance!
+                                    }
+                                }
+                                (belongsToInitializer! and distance! < initializerValueDistance!) -> if {
+                                    valueTypeSearch! => initializerValueType!
+                                    distance! => initializerValueDistance!
+                                }
+                            }
+                            valueTypeSearch! + 1 => valueTypeSearch!
+                        }
+                        initializerValueType! >= 0 -> if {
+                            targetTable![fieldSymbol!] => field
+                            -1 => fieldNominalIndex!
+                            0 => fieldTypeSearch!
+                            fieldTypeSearch! < (nominal! -> len) -> while {
+                                nominal![fieldTypeSearch!] => fieldTypeCandidate
+                                (fieldTypeCandidate.sourceModule == targetSourceModule! and fieldTypeCandidate.typeAst == field.typeNode) -> if { fieldTypeSearch! => fieldNominalIndex! }
+                                fieldTypeSearch! + 1 => fieldTypeSearch!
+                            }
+                            fieldNominalIndex! >= 0 -> if {
+                                nominal![fieldNominalIndex!] => expectedFieldType
+                                expressionTypeTable![initializerValueType!] => actualFieldType
+                                (expectedFieldType.origin != actualFieldType.origin or expectedFieldType.targetModule != actualFieldType.targetModule or expectedFieldType.targetSymbol != actualFieldType.targetSymbol) -> if {
+                                    nodes![actualFieldType.astNode] => fieldValue
+                                    diagnostics! -> push(TypeCheckDiagnostic {
+                                        code: 12
+                                        sourceModule: sourceIndex!
+                                        functionSymbol: fieldSymbol!
+                                        expectedOrigin: expectedFieldType.origin
+                                        expectedModule: expectedFieldType.targetModule
+                                        expectedSymbol: expectedFieldType.targetSymbol
+                                        actualOrigin: actualFieldType.origin
+                                        actualModule: actualFieldType.targetModule
+                                        actualSymbol: actualFieldType.targetSymbol
+                                        actualBuiltin: actualFieldType.origin == 1 -> if { actualFieldType.targetSymbol } else { -1 }
+                                        span: syntax.SourceSpan { fileId: sourceIndex!, start: fieldValue.start, length: fieldValue.length }
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            initializerIndex! + 1 => initializerIndex!
         }
 
         0 => operatorIndex!

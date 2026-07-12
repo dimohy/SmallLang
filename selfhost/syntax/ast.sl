@@ -29,7 +29,7 @@ public struct AstNode {
 # 28 trait associated type, 29 trait method, 30 impl associated type,
 # 31 method, 32 generic parameter, 33 generic where constraint,
 # 34 associated-type equality, 36 member access, 37 array expression,
-# 38 dictionary expression, 39 struct literal.
+# 38 dictionary expression, 39 struct literal, 40 struct field initializer.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
 public lower source: Text -> [AstNode; ~] {
@@ -74,6 +74,7 @@ public lower source: Text -> [AstNode; ~] {
         rule == grammar.ruleIdArrayExpression => 37
         rule == grammar.ruleIdDictionaryExpression => 38
         rule == grammar.ruleIdStructLiteralExpression => 39
+        rule == grammar.ruleIdStructFieldInitializer => 40
         else => -1
     }
     source -> cst.build => green!

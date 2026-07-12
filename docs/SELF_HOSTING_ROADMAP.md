@@ -345,6 +345,10 @@ match their composite signatures. Imported call resolution now uses the callee
 token boundary, preventing qualified struct literals inside arguments from
 being misclassified as the call target.
 
+Struct initializer checking now resolves local and imported field symbols.
+Unknown fields produce code 11 at the field name, and nominal value mismatches
+produce code 12 at the initializer expression with the caller source file id.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce

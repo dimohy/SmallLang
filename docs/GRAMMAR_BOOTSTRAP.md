@@ -241,6 +241,10 @@ nominal symbols. Arrays and dictionaries can therefore carry user-defined
 component ids. Imported call classification is restricted to qualified paths
 before the call's left parenthesis, so qualified literals inside arguments are
 not mistaken for the callee.
+Struct field initializers now lower as AST kind 40. The checker resolves fields
+through the local or imported owner symbol table, emits code 11 for an unknown
+field, and code 12 when the inferred value identity differs from the declared
+field type, preserving multi-source spans.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9
