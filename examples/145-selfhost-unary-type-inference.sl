@@ -3,7 +3,14 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["negate: -> Int => -1\ninvert: -> Bool => not false\nmain { }", ~] => sources!
+    [
+        """
+        negate: -> Int => -1
+        invert: -> Bool => not false
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

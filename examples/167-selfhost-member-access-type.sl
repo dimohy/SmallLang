@@ -3,7 +3,16 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["struct Point {\nx: Int\n}\nget point: Point -> Int => point.x\nmain { }", ~] => sources!
+    [
+        """
+        struct Point {
+            x: Int
+        }
+        get point: Point -> Int => point.x
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

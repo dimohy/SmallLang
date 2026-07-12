@@ -1,7 +1,13 @@
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
-    ["now: -> Int => 1\nmain { now() }", ~] => sources!
+    [
+        """
+        now: -> Int => 1
+        main { now() }
+        """,
+        ~
+    ] => sources!
     sources! -> typeCheck.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => call

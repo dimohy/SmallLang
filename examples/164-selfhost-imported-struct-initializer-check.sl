@@ -1,7 +1,20 @@
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
-    ["namespace sample.shapes\npublic struct Point {\nx: Int\n}", "namespace app.main\nimport sample.shapes as shapes\nmain { shapes.Point { x: true } }", ~] => sources!
+    [
+        """
+        namespace sample.shapes
+        public struct Point {
+            x: Int
+        }
+        """,
+        """
+        namespace app.main
+        import sample.shapes as shapes
+        main { shapes.Point { x: true } }
+        """,
+        ~
+    ] => sources!
     sources! -> typeCheck.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => text

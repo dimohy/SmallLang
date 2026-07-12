@@ -5,9 +5,10 @@ import smalllang.compiler.ast as ast
 main {
     [
         """
-        identity<T> value: T -> T => value
-        use: -> Int => identity(1 + 2)
-        main { }
+        main {
+            {1: true} => flags
+            flags![1]
+        }
         """,
         ~
     ] => sources!
@@ -15,9 +16,9 @@ main {
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!
     inferred! -> each item {
-        nodes![item.astNode].kind == 11 -> if {
-            "specialized call = $(item.origin),$(item.targetModule),$(item.targetSymbol)" -> println
+        nodes![item.astNode].kind == 41 -> if {
+            "dictionary index = $(item.origin),$(item.targetModule),$(item.targetSymbol)" -> println
         }
     }
-    "specialization errors = $(errors! -> len)" -> println
+    "dictionary index errors = $(errors! -> len)" -> println
 }

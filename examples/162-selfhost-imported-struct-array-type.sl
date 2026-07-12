@@ -3,7 +3,21 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["namespace sample.shapes\npublic struct Point {\nx: Int\n}", "namespace app.main\nimport sample.shapes as shapes\ntake values: [shapes.Point; ~] -> Int => 1\nmain { take([shapes.Point { x: 1 }, ~]) }", ~] => sources!
+    [
+        """
+        namespace sample.shapes
+        public struct Point {
+            x: Int
+        }
+        """,
+        """
+        namespace app.main
+        import sample.shapes as shapes
+        take values: [shapes.Point; ~] -> Int => 1
+        main { take([shapes.Point { x: 1 }, ~]) }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![1] -> ast.lower => nodes!

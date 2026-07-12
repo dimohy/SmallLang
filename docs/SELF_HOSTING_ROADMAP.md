@@ -362,6 +362,10 @@ Structured codes 15 and 16 distinguish a non-array-like indexed target from a
 non-`Int` index. The SL lexer now tokenizes raw multiline strings with matching
 three-or-more-quote delimiters, keeping its source envelope aligned with the
 bootstrap lexer.
+Dictionary expressions now preserve full key/value identities instead of
+packing only their symbol ids. That metadata survives bindings, generic calls,
+and composite fields, allowing dictionary indexing to check its key and infer
+its value without confusing local, imported, generic, or builtin identities.
 
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its

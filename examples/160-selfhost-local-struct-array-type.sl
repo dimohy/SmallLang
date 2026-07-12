@@ -3,7 +3,16 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["struct Point {\nx: Int\n}\ntake values: [Point; ~] -> Int => 1\nmain { take([Point { x: 1 }, Point { x: 2 }, ~]) }", ~] => sources!
+    [
+        """
+        struct Point {
+            x: Int
+        }
+        take values: [Point; ~] -> Int => 1
+        main { take([Point { x: 1 }, Point { x: 2 }, ~]) }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

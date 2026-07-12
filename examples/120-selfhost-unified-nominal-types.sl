@@ -1,7 +1,25 @@
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 
 main {
-    ["namespace sample.math\npublic struct Number { }", "namespace app.main\nimport sample.math as math\nstruct Local {\ncount: Int\n}\nstruct Uses {\nlocal: Local\nremote: math.Number\nmissing: Unknown\n}", ~] => sources!
+    [
+        """
+        namespace sample.math
+        public struct Number { }
+        """,
+        """
+        namespace app.main
+        import sample.math as math
+        struct Local {
+            count: Int
+        }
+        struct Uses {
+            local: Local
+            remote: math.Number
+            missing: Unknown
+        }
+        """,
+        ~
+    ] => sources!
     sources! -> nominalTypes.resolve => resolved!
     resolved! -> each item {
         item.sourceModule == 1 -> if {

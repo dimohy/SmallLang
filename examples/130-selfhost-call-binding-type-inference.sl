@@ -2,7 +2,16 @@ import smalllang.compiler.semantic.expression_types as expressionTypes
 import smalllang.compiler.ast as ast
 
 main {
-    ["double value: Int -> Int => value + value\nmain {\ndouble(2) => result\nresult + 1\n}", ~] => sources!
+    [
+        """
+        double value: Int -> Int => value + value
+        main {
+            double(2) => result
+            result + 1
+        }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources![0] -> ast.lower => nodes!
     inferred! -> each item {

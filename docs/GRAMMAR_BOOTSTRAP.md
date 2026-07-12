@@ -259,6 +259,15 @@ array-like value propagates its element identity to the index expression.
 Index checking emits code 15 for a non-array-like target and code 16 for a
 non-`Int` index. The self-hosted lexer recognizes raw string delimiters of three
 or more quotes, including embedded newlines and shorter quote runs.
+Dictionary expression types now retain complete key and value
+origin/module/symbol identities through bindings, generic calls, and member
+access. Dictionary indexing validates the inferred key identity and propagates
+the value identity as the result expression type; code 16 reports a mismatched
+dictionary key as well as a non-`Int` array index.
+Self-hosted compiler examples embed their input modules as raw multiline
+strings. This keeps tested SL source readable as source, removes duplicated
+newline escaping, and continuously exercises raw-string lexing in the bootstrap
+compiler while the embedded text is consumed by the SL lexer and parser.
 Expression inference loads a resolved imported function's return annotation
 from the target source module. Call checking loads its input annotation from the
 same target symbol, emits code 6 for cross-module argument mismatch, and code 9

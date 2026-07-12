@@ -99,7 +99,13 @@ internal static class StringLiteralParser
             throw ErrorAt(token, "only indentation may precede a multiline raw string closing delimiter");
         }
 
-        var body = text[contentStart..closingLineStart];
+        var bodyEnd = closingLineStart;
+        if (bodyEnd > contentStart && text[bodyEnd - 1] == '\r')
+        {
+            bodyEnd--;
+        }
+
+        var body = text[contentStart..bodyEnd];
         var lines = body.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {

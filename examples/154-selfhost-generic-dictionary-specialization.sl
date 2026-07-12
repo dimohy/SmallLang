@@ -3,7 +3,14 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["copy<K, V> value: {K: V} -> {K: V} => value\nuse: -> {Int: Int} => copy({1: 2, 3: 4})\nmain { }", ~] => sources!
+    [
+        """
+        copy<K, V> value: {K: V} -> {K: V} => value
+        use: -> {Int: Int} => copy({1: 2, 3: 4})
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

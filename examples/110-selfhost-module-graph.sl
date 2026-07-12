@@ -3,7 +3,18 @@ import smalllang.compiler.semantic.module_resolve as moduleResolve
 import smalllang.compiler.semantic.modules as modules
 
 main {
-    ["namespace sample.math", "import sample.math as math", "import missing.pkg as missing", ~] => sources!
+    [
+        """
+        namespace sample.math
+        """,
+        """
+        import sample.math as math
+        """,
+        """
+        import missing.pkg as missing
+        """,
+        ~
+    ] => sources!
     sources! -> modules.identities => identities!
     sources! -> modules.imports => imports!
     sources! -> moduleResolve.resolve => resolved!

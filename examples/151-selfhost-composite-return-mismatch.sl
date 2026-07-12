@@ -1,7 +1,14 @@
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
-    ["copy<T> values: [T; ~] -> [T; ~] => values\nbad: -> [Text; ~] => copy([1, 2, ~])\nmain { }", ~] => sources!
+    [
+        """
+        copy<T> values: [T; ~] -> [T; ~] => values
+        bad: -> [Text; ~] => copy([1, 2, ~])
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> typeCheck.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => expression

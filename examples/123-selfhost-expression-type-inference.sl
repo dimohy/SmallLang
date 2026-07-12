@@ -2,7 +2,14 @@ import smalllang.compiler.semantic.expression_types as expressionTypes
 import smalllang.compiler.ast as ast
 
 main {
-    ["sum: -> Int => 1 + 2\nless: -> Bool => 1 < 2\nmain { }", ~] => sources!
+    [
+        """
+        sum: -> Int => 1 + 2
+        less: -> Bool => 1 < 2
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources![0] -> ast.lower => nodes!
     inferred! -> each item {

@@ -1,7 +1,14 @@
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
-    ["identity value: Int -> Int => value\nwrong value: Text -> Int => value\nmain { }", ~] => sources!
+    [
+        """
+        identity value: Int -> Int => value
+        wrong value: Text -> Int => value
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> typeCheck.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => expression

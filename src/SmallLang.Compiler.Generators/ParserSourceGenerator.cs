@@ -1571,8 +1571,9 @@ internal static class ParserEmitter
         builder.AppendLine();
         builder.AppendLine("    private Expression ParseArrayExpression()");
         builder.AppendLine("    {");
-        builder.AppendLine("        // ArrayExpression = '[' (TypedEmptyArray | ArrayItems) ']'");
+        builder.AppendLine("        // ArrayExpression = '[' NewLine* (TypedEmptyArray | ArrayItems) NewLine* ']'");
         builder.AppendLine("        var start = Expect(TokenKind.LeftBracket);");
+        builder.AppendLine("        SkipNewLines();");
         builder.AppendLine("        if (Check(TokenKind.Range))");
         builder.AppendLine("        {");
         builder.AppendLine("            throw Error(Peek(), \"empty growable arrays now require an element type, for example '[Int; ~]'\");");
@@ -1605,6 +1606,7 @@ internal static class ParserEmitter
         builder.AppendLine("            }");
         builder.AppendLine();
         builder.AppendLine("            Expect(TokenKind.Tilde);");
+        builder.AppendLine("            SkipNewLines();");
         builder.AppendLine("            Expect(TokenKind.RightBracket);");
         builder.AppendLine("            return new TypedEmptyArrayExpression(resolvedElementType, capacityHint, start.Line, start.Column);");
         builder.AppendLine("        }");
@@ -1641,6 +1643,7 @@ internal static class ParserEmitter
         builder.AppendLine("            {");
         builder.AppendLine("                throw Error(count, \"array repeat count must be a non-negative integer literal or value parameter\");");
         builder.AppendLine("            }");
+        builder.AppendLine("            SkipNewLines();");
         builder.AppendLine("            Expect(TokenKind.RightBracket);");
         builder.AppendLine("            var parsedCount = 0;");
         builder.AppendLine("            if (count.Kind == TokenKind.Number && (!int.TryParse(count.Text, out parsedCount) || parsedCount < 0))");
@@ -1658,9 +1661,11 @@ internal static class ParserEmitter
         builder.AppendLine("        var isDynamic = false;");
         builder.AppendLine("        while (Match(TokenKind.Comma, out _))");
         builder.AppendLine("        {");
+        builder.AppendLine("            SkipNewLines();");
         builder.AppendLine("            if (Match(TokenKind.Tilde, out _))");
         builder.AppendLine("            {");
         builder.AppendLine("                isDynamic = true;");
+        builder.AppendLine("                SkipNewLines();");
         builder.AppendLine("                break;");
         builder.AppendLine("            }");
         builder.AppendLine();
@@ -1677,6 +1682,7 @@ internal static class ParserEmitter
         builder.AppendLine("            AddCompileTimeArrayElements(elements, ParseExpression(), start);");
         builder.AppendLine("        }");
         builder.AppendLine();
+        builder.AppendLine("        SkipNewLines();");
         builder.AppendLine("        Expect(TokenKind.RightBracket);");
         builder.AppendLine("        return new ArrayLiteralExpression(elements, isDynamic, start.Line, start.Column);");
         builder.AppendLine("    }");

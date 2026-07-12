@@ -1,7 +1,14 @@
 import smalllang.compiler.semantic.type_diagnostics as typeDiagnostics
 
 main {
-    ["struct Holder {\nvalue: Unknown\n}", ~] => sources!
+    [
+        """
+        struct Holder {
+            value: Unknown
+        }
+        """,
+        ~
+    ] => sources!
     sources! -> typeDiagnostics.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => typeName

@@ -2,7 +2,18 @@ import smalllang.compiler.semantic.expression_types as expressionTypes
 import smalllang.compiler.ast as ast
 
 main {
-    ["namespace sample.math\npublic double value: Int -> Int => value + value", "namespace app.main\nimport sample.math as math\nmain { math.double(2) }", ~] => sources!
+    [
+        """
+        namespace sample.math
+        public double value: Int -> Int => value + value
+        """,
+        """
+        namespace app.main
+        import sample.math as math
+        main { math.double(2) }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources![1] -> ast.lower => nodes!
     inferred! -> each item {

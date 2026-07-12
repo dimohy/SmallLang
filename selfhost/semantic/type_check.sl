@@ -156,8 +156,8 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                     true => compositeReturnMatches!
                     expectedComposite.kind == 5 -> if {
                         actualType.origin != expectedShape -> if { false => compositeReturnMatches! }
-                        (expectedComposite.keyOrigin != 3 and actualType.targetModule != expectedComposite.keySymbol) -> if { false => compositeReturnMatches! }
-                        (expectedComposite.valueOrigin != 3 and actualType.targetSymbol != expectedComposite.valueSymbol) -> if { false => compositeReturnMatches! }
+                        (expectedComposite.keyOrigin != 3 and (actualType.keyOrigin != expectedComposite.keyOrigin or actualType.keyModule != expectedComposite.keyModule or actualType.targetModule != expectedComposite.keySymbol)) -> if { false => compositeReturnMatches! }
+                        (expectedComposite.valueOrigin != 3 and (actualType.valueOrigin != expectedComposite.valueOrigin or actualType.valueModule != expectedComposite.valueModule or actualType.targetSymbol != expectedComposite.valueSymbol)) -> if { false => compositeReturnMatches! }
                     } else {
                         expectedComposite.elementOrigin != 3 -> if {
                             (actualType.origin != expectedShape or actualType.targetModule != expectedComposite.elementModule or actualType.targetSymbol != expectedComposite.elementSymbol) -> if { false => compositeReturnMatches! }
@@ -279,8 +279,8 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                         actual.origin == expectedShape -> if {
                             expectedComposite.kind == 5 -> if {
                                 true => compositeMatches!
-                                (expectedComposite.keyOrigin != 3 and actual.targetModule != expectedComposite.keySymbol) -> if { false => compositeMatches! }
-                                (expectedComposite.valueOrigin != 3 and actual.targetSymbol != expectedComposite.valueSymbol) -> if { false => compositeMatches! }
+                                (expectedComposite.keyOrigin != 3 and (actual.keyOrigin != expectedComposite.keyOrigin or actual.keyModule != expectedComposite.keyModule or actual.targetModule != expectedComposite.keySymbol)) -> if { false => compositeMatches! }
+                                (expectedComposite.valueOrigin != 3 and (actual.valueOrigin != expectedComposite.valueOrigin or actual.valueModule != expectedComposite.valueModule or actual.targetSymbol != expectedComposite.valueSymbol)) -> if { false => compositeMatches! }
                             } else {
                                 expectedComposite.elementOrigin == 3 -> if {
                                     true => compositeMatches!
@@ -660,9 +660,17 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                     }
                     indexTypeSearch! + 1 => indexTypeSearch!
                 }
+                1 => expectedIndexOrigin!
+                -1 => expectedIndexModule!
+                2 => expectedIndexSymbol!
                 indexedValueTypeIndex! >= 0 -> if {
                     expressionTypeTable![indexedValueTypeIndex!] => indexedValueType
-                    (indexedValueType.origin < 12 or indexedValueType.origin > 14) -> if {
+                    indexedValueType.origin == 15 -> if {
+                        indexedValueType.keyOrigin => expectedIndexOrigin!
+                        indexedValueType.keyModule => expectedIndexModule!
+                        indexedValueType.targetModule => expectedIndexSymbol!
+                    }
+                    (indexedValueType.origin < 12 or indexedValueType.origin > 15) -> if {
                         nodes![indexedValueType.astNode] => indexedValueNode
                         diagnostics! -> push(TypeCheckDiagnostic {
                             code: 15
@@ -681,15 +689,15 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                 }
                 indexValueTypeIndex! >= 0 -> if {
                     expressionTypeTable![indexValueTypeIndex!] => indexValueType
-                    (indexValueType.origin != 1 or indexValueType.targetSymbol != 2) -> if {
+                    (indexValueType.origin != expectedIndexOrigin! or indexValueType.targetModule != expectedIndexModule! or indexValueType.targetSymbol != expectedIndexSymbol!) -> if {
                         nodes![indexValueType.astNode] => indexValueNode
                         diagnostics! -> push(TypeCheckDiagnostic {
                             code: 16
                             sourceModule: sourceIndex!
                             functionSymbol: -1
-                            expectedOrigin: 1
-                            expectedModule: -1
-                            expectedSymbol: 2
+                            expectedOrigin: expectedIndexOrigin!
+                            expectedModule: expectedIndexModule!
+                            expectedSymbol: expectedIndexSymbol!
                             actualOrigin: indexValueType.origin
                             actualModule: indexValueType.targetModule
                             actualSymbol: indexValueType.targetSymbol

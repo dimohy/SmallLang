@@ -17,6 +17,10 @@ public struct ExpressionType {
     origin: Int
     targetModule: Int
     targetSymbol: Int
+    keyOrigin: Int
+    keyModule: Int
+    valueOrigin: Int
+    valueModule: Int
 }
 
 # Bottom-up expression inference over the flat AST. Builtin ids use the stable
@@ -39,10 +43,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
         astIndex! < (nodes! -> len) -> while {
             nodes![astIndex!] => node
             node.kind == 13 -> if {
-                inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 1 })
+                inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 1, keyOrigin: -1, keyModule: -1, valueOrigin: -1, valueModule: -1 })
             }
             node.kind == 14 -> if {
-                inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 2 })
+                inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 2, keyOrigin: -1, keyModule: -1, valueOrigin: -1, valueModule: -1 })
             }
             node.kind == 15 -> if {
                 tokens![node.payloadToken] => nameToken
@@ -63,7 +67,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     (falseByte0 == UInt8(102) and falseByte1 == UInt8(97) and falseByte2 == UInt8(108) and falseByte3 == UInt8(115) and falseByte4 == UInt8(101)) -> if { true => booleanLiteral! }
                 }
                 booleanLiteral! -> if {
-                    inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 23 })
+                    inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 23, keyOrigin: -1, keyModule: -1, valueOrigin: -1, valueModule: -1 })
                 }
                 -1 => resolvedNameIndex!
                 0 => nameSearch!
@@ -90,6 +94,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                             origin: valueType.origin
                             targetModule: valueType.targetModule
                             targetSymbol: valueType.targetSymbol
+                            keyOrigin: -1
+                            keyModule: -1
+                            valueOrigin: -1
+                            valueModule: -1
                         })
                     }
                 }
@@ -127,6 +135,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                         origin: 0
                         targetModule: sourceIndex!
                         targetSymbol: structSymbol!
+                        keyOrigin: -1
+                        keyModule: -1
+                        valueOrigin: -1
+                        valueModule: -1
                     })
                 } else {
                     -1 => importedStructIndex!
@@ -153,6 +165,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                             origin: 2
                             targetModule: importedStruct.targetModule
                             targetSymbol: importedStruct.targetSymbol
+                            keyOrigin: -1
+                            keyModule: -1
+                            valueOrigin: -1
+                            valueModule: -1
                         })
                     }
                 }
@@ -247,6 +263,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                     origin: resultOrigin!
                                     targetModule: resultModule!
                                     targetSymbol: resultSymbol!
+                                    keyOrigin: -1
+                                    keyModule: -1
+                                    valueOrigin: -1
+                                    valueModule: -1
                                 })
                                 true => changed!
                             }
@@ -307,6 +327,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                                 origin: specializedComposite.origin
                                                 targetModule: specializedComposite.targetModule
                                                 targetSymbol: specializedComposite.targetSymbol
+                                                keyOrigin: specializedComposite.keyOrigin
+                                                keyModule: specializedComposite.keyModule
+                                                valueOrigin: specializedComposite.valueOrigin
+                                                valueModule: specializedComposite.valueModule
                                             })
                                             true => changed!
                                         }
@@ -370,14 +394,22 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                         origin: bindingType.origin
                                         targetModule: bindingType.targetModule
                                         targetSymbol: bindingType.targetSymbol
+                                        keyOrigin: bindingType.keyOrigin
+                                        keyModule: bindingType.keyModule
+                                        valueOrigin: bindingType.valueOrigin
+                                        valueModule: bindingType.valueModule
                                     })
                                     true => changed!
                                 } else {
                                     inferred![referenceInferredIndex!] => existingReference!
-                                    (existingReference!.origin != bindingType.origin or existingReference!.targetModule != bindingType.targetModule or existingReference!.targetSymbol != bindingType.targetSymbol) -> if {
+                                    (existingReference!.origin != bindingType.origin or existingReference!.targetModule != bindingType.targetModule or existingReference!.targetSymbol != bindingType.targetSymbol or existingReference!.keyOrigin != bindingType.keyOrigin or existingReference!.keyModule != bindingType.keyModule or existingReference!.valueOrigin != bindingType.valueOrigin or existingReference!.valueModule != bindingType.valueModule) -> if {
                                         bindingType.origin => existingReference!.origin
                                         bindingType.targetModule => existingReference!.targetModule
                                         bindingType.targetSymbol => existingReference!.targetSymbol
+                                        bindingType.keyOrigin => existingReference!.keyOrigin
+                                        bindingType.keyModule => existingReference!.keyModule
+                                        bindingType.valueOrigin => existingReference!.valueOrigin
+                                        bindingType.valueModule => existingReference!.valueModule
                                         existingReference! => inferred![referenceInferredIndex!]
                                         true => changed!
                                     }
@@ -479,6 +511,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                             origin: fieldType.origin
                                             targetModule: fieldType.targetModule
                                             targetSymbol: fieldType.targetSymbol
+                                            keyOrigin: -1
+                                            keyModule: -1
+                                            valueOrigin: -1
+                                            valueModule: -1
                                         })
                                         true => changed!
                                     }
@@ -490,6 +526,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                             origin: 10 + fieldType.kind
                                             targetModule: fieldType.kind == 5 -> if { fieldType.keySymbol } else { fieldType.elementModule }
                                             targetSymbol: fieldType.kind == 5 -> if { fieldType.valueSymbol } else { fieldType.elementSymbol }
+                                            keyOrigin: fieldType.kind == 5 -> if { fieldType.keyOrigin } else { -1 }
+                                            keyModule: fieldType.kind == 5 -> if { fieldType.keyModule } else { -1 }
+                                            valueOrigin: fieldType.kind == 5 -> if { fieldType.valueOrigin } else { -1 }
+                                            valueModule: fieldType.kind == 5 -> if { fieldType.valueModule } else { -1 }
                                         })
                                         true => changed!
                                     }
@@ -512,7 +552,7 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     indexTypeSearch! < (inferred! -> len) -> while {
                         inferred![indexTypeSearch!] => indexType
                         (indexType.sourceModule == sourceIndex! and indexType.astNode == indexIndex!) -> if { true => indexInferred! }
-                        (indexType.sourceModule == sourceIndex! and indexType.origin >= 12 and indexType.origin <= 14) -> if {
+                        (indexType.sourceModule == sourceIndex! and indexType.origin >= 12 and indexType.origin <= 15) -> if {
                             nodes![indexType.astNode].parent => indexAncestor!
                             1 => indexDistance!
                             false => belongsToIndex!
@@ -532,15 +572,25 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     (not indexInferred! and indexedTypeIndex! >= 0) -> if {
                         inferred![indexedTypeIndex!] => indexedType
                         0 => elementOrigin!
-                        indexedType.targetModule == -1 -> if { 1 => elementOrigin! } else {
-                            indexedType.targetModule == sourceIndex! -> if { 0 => elementOrigin! } else { 2 => elementOrigin! }
+                        indexedType.targetModule => elementModule!
+                        indexedType.origin == 15 -> if {
+                            indexedType.valueOrigin => elementOrigin!
+                            indexedType.valueModule => elementModule!
+                        } else {
+                            indexedType.targetModule == -1 -> if { 1 => elementOrigin! } else {
+                                indexedType.targetModule == sourceIndex! -> if { 0 => elementOrigin! } else { 2 => elementOrigin! }
+                            }
                         }
                         inferred! -> push(ExpressionType {
                             sourceModule: sourceIndex!
                             astNode: indexIndex!
                             origin: elementOrigin!
-                            targetModule: indexedType.targetModule
+                            targetModule: elementModule!
                             targetSymbol: indexedType.targetSymbol
+                            keyOrigin: -1
+                            keyModule: -1
+                            valueOrigin: -1
+                            valueModule: -1
                         })
                         true => changed!
                     }
@@ -634,6 +684,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 origin: resultOrigin!
                                 targetModule: resultModule!
                                 targetSymbol: resultSymbol!
+                                keyOrigin: -1
+                                keyModule: -1
+                                valueOrigin: -1
+                                valueModule: -1
                             })
                             true => changed!
                         }
@@ -700,6 +754,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 origin: dynamicArray! -> if { 13 } else { 14 }
                                 targetModule: elementModule!
                                 targetSymbol: elementSymbol!
+                                keyOrigin: -1
+                                keyModule: -1
+                                valueOrigin: -1
+                                valueModule: -1
                             })
                             true => changed!
                         }
@@ -739,6 +797,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                         }
                         -1 => keySymbol!
                         -1 => valueSymbol!
+                        -1 => keyOrigin!
+                        -1 => keyModule!
+                        -1 => valueOrigin!
+                        -1 => valueModule!
                         0 => entryPosition!
                         true => homogeneousDictionary!
                         0 => entryTypeSearch!
@@ -756,12 +818,20 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 }
                                 (belongsToDictionary! and distance! == entryDistance!) -> if {
                                     entryPosition! % 2 == 0 -> if {
-                                        keySymbol! < 0 -> if { entryType.targetSymbol => keySymbol! } else {
-                                            entryType.targetSymbol != keySymbol! -> if { false => homogeneousDictionary! }
+                                        keySymbol! < 0 -> if {
+                                            entryType.targetSymbol => keySymbol!
+                                            entryType.origin => keyOrigin!
+                                            entryType.targetModule => keyModule!
+                                        } else {
+                                            (entryType.origin != keyOrigin! or entryType.targetModule != keyModule! or entryType.targetSymbol != keySymbol!) -> if { false => homogeneousDictionary! }
                                         }
                                     } else {
-                                        valueSymbol! < 0 -> if { entryType.targetSymbol => valueSymbol! } else {
-                                            entryType.targetSymbol != valueSymbol! -> if { false => homogeneousDictionary! }
+                                        valueSymbol! < 0 -> if {
+                                            entryType.targetSymbol => valueSymbol!
+                                            entryType.origin => valueOrigin!
+                                            entryType.targetModule => valueModule!
+                                        } else {
+                                            (entryType.origin != valueOrigin! or entryType.targetModule != valueModule! or entryType.targetSymbol != valueSymbol!) -> if { false => homogeneousDictionary! }
                                         }
                                     }
                                     entryPosition! + 1 => entryPosition!
@@ -776,6 +846,10 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                                 origin: 15
                                 targetModule: keySymbol!
                                 targetSymbol: valueSymbol!
+                                keyOrigin: keyOrigin!
+                                keyModule: keyModule!
+                                valueOrigin: valueOrigin!
+                                valueModule: valueModule!
                             })
                             true => changed!
                         }

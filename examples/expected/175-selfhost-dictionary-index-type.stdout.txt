@@ -1,0 +1,2 @@
+dictionary index = 1,-1,23
+dictionary index errors = 0

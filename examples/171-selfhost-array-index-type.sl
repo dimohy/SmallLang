@@ -3,7 +3,15 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["main {\n[1, 2, ~] => values\nvalues![0]\n}", ~] => sources!
+    [
+        """
+        main {
+            [1, 2, ~] => values
+            values![0]
+        }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

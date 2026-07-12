@@ -1,1 +1,1 @@
-local type diagnostic = 3,Unknown,0,23,7
+local type diagnostic = 3,Unknown,0,27,7

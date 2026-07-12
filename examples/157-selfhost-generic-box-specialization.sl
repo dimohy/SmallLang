@@ -3,7 +3,14 @@ import smalllang.compiler.semantic.type_check as typeCheck
 import smalllang.compiler.ast as ast
 
 main {
-    ["wrap<T> value: box T -> box T => value\nuse: -> box Int => wrap(box 1)\nmain { }", ~] => sources!
+    [
+        """
+        wrap<T> value: box T -> box T => value
+        use: -> box Int => wrap(box 1)
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> expressionTypes.infer => inferred!
     sources! -> typeCheck.analyze => errors!
     sources![0] -> ast.lower => nodes!

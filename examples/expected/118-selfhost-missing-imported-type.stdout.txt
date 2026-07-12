@@ -1,1 +1,1 @@
-type diagnostic = 3,math.Missing,1,69,12,-1
+type diagnostic = 3,math.Missing,1,73,12,-1

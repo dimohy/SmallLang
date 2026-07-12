@@ -395,6 +395,9 @@ interpolation := "$" identifier | "$(" expression ")"
 Notes:
 
 - Newline is a statement separator, not an indentation rule.
+- Array literals may place their opening item, comma-separated items, trailing
+  `~`, and closing bracket on separate lines. This keeps raw multiline strings
+  and other structured values readable without changing their element order.
 - Semicolons are not statement separators. The current surface uses `;` only in
   repeated fixed-array literals such as `[0; 8]`.
 - Braces are the only block delimiters.

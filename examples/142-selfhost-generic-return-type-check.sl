@@ -1,7 +1,13 @@
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
-    ["wrong<T, E> value: T -> E => value\nmain { }", ~] => sources!
+    [
+        """
+        wrong<T, E> value: T -> E => value
+        main { }
+        """,
+        ~
+    ] => sources!
     sources! -> typeCheck.analyze => errors!
     errors! -> each error {
         sources![error.sourceModule] -> slice(error.span.start, error.span.length) => expression
