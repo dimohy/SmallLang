@@ -408,6 +408,13 @@ escaping, and Text parameters, returns, and imported calls share that ABI.
 ASCII and Korean examples both pass assembly, link, and execution validation.
 Interpolated/dynamic Text construction and lifetime ownership remain.
 
+Nominal struct ABI now uses deterministic module/symbol LLVM type names.
+Struct-literal fields form a general typed-IR sibling chain and lower through
+ordered `insertvalue` operations; parameters, returns, and imported calls pass
+the aggregate by value without losing its declaring-module identity. Local and
+cross-file struct executables assemble, link, and run. Nested owned fields,
+member extraction, moves, and drop glue remain.
+
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
 input type validates the caller argument, and non-public imported calls produce

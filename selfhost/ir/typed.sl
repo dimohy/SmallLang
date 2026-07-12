@@ -10,7 +10,7 @@ import smalllang.compiler.semantic.symbols as symbols
 # lowering can consume the table without allocating an object graph.
 # Kinds: 0 function, 1 return, 2 Text constant, 3 Int constant,
 # 4 Bool constant, 5 name, 6 call, 7 unary, 8 binary, 9 other expression,
-# 10 parameter, 11 entry point.
+# 10 parameter, 11 entry point, 12 struct literal.
 public struct TypedIrNode {
     kind: Int
     parent: Int
@@ -25,6 +25,7 @@ public struct TypedIrNode {
     opcode: Int
     operand0: Int
     operand1: Int
+    nextOperand: Int
     flags: Int
 }
 
@@ -107,6 +108,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         opcode: -1
                         operand0: returnIr
                         operand1: parameterIr!
+                        nextOperand: -1
                         flags: function.flags
                     })
                     results! -> push(TypedIrNode {
@@ -123,6 +125,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         opcode: -1
                         operand0: -1
                         operand1: -1
+                        nextOperand: -1
                         flags: 0
                     })
                     parameterIr! >= 0 -> if {
@@ -142,6 +145,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             opcode: -1
                             operand0: -1
                             operand1: -1
+                            nextOperand: -1
                             flags: parameter.flags
                         })
                     }
@@ -183,6 +187,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 expression.kind == 22 -> if { 7 => expressionKind! }
                                 (expression.kind >= 18 and expression.kind <= 21) -> if { 8 => expressionKind! }
                                 (expression.kind == 24 or expression.kind == 25) -> if { 8 => expressionKind! }
+                                expression.kind == 39 -> if { 12 => expressionKind! }
                                 results! -> len => expressionIr
                                 expressionIr => astToIr![expressionAstIndex!]
                                 -1 => expressionSymbol!
@@ -220,6 +225,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     opcode: expression.operatorKind
                                     operand0: -1
                                     operand1: -1
+                                    nextOperand: -1
                                     flags: expression.flags
                                 })
                             }
@@ -277,6 +283,46 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         operandIrIndex! + 1 => operandIrIndex!
                     }
 
+                    expressionIrStart => siblingIrIndex!
+                    siblingIrIndex! < expressionIrEnd -> while {
+                        results![siblingIrIndex!] => sibling!
+                        -1 => nextSibling!
+                        UIntSize(0) => nextSiblingStart!
+                        expressionIrStart => siblingSearch!
+                        siblingSearch! < expressionIrEnd -> while {
+                            results![siblingSearch!] => siblingCandidate
+                            (siblingCandidate.parent == sibling!.parent and nodes![siblingCandidate.astNode].start > nodes![sibling!.astNode].start) -> if {
+                                nodes![siblingCandidate.astNode].start => siblingCandidateStart
+                                (nextSibling! < 0 or siblingCandidateStart < nextSiblingStart!) -> if {
+                                    siblingSearch! => nextSibling!
+                                    siblingCandidateStart => nextSiblingStart!
+                                }
+                            }
+                            siblingSearch! + 1 => siblingSearch!
+                        }
+                        nextSibling! => sibling!.nextOperand
+                        sibling! => results![siblingIrIndex!]
+                        siblingIrIndex! + 1 => siblingIrIndex!
+                    }
+
+                    expressionIrStart => aggregateIrIndex!
+                    aggregateIrIndex! < expressionIrEnd -> while {
+                        results![aggregateIrIndex!] => aggregate!
+                        aggregate!.kind == 12 -> if {
+                            -1 => firstFieldOperand!
+                            expressionIrStart => fieldOperandSearch!
+                            fieldOperandSearch! < expressionIrEnd -> while {
+                                results![fieldOperandSearch!].parent == aggregateIrIndex! -> if {
+                                    (firstFieldOperand! < 0 or nodes![results![fieldOperandSearch!].astNode].start < nodes![results![firstFieldOperand!].astNode].start) -> if { fieldOperandSearch! => firstFieldOperand! }
+                                }
+                                fieldOperandSearch! + 1 => fieldOperandSearch!
+                            }
+                            firstFieldOperand! => aggregate!.operand0
+                            aggregate! => results![aggregateIrIndex!]
+                        }
+                        aggregateIrIndex! + 1 => aggregateIrIndex!
+                    }
+
                     results![returnIr] => returnNode!
                     astToIr![resultType.astNode] => returnNode!.operand0
                     returnNode! => results![returnIr]
@@ -302,6 +348,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     opcode: -1
                     operand0: -1
                     operand1: -1
+                    nextOperand: -1
                     flags: 0
                 })
             }

@@ -1,0 +1,20 @@
+%sl.struct.m0_s0 = type { i32, i32 }
+define %sl.struct.m0_s0 @sl_m0_s3(i32 %arg) {
+entry:
+  %v3_f0 = insertvalue %sl.struct.m0_s0 poison, i32 %arg, 0
+  %v3 = insertvalue %sl.struct.m0_s0 %v3_f0, i32 2, 1
+  ret %sl.struct.m0_s0 %v3
+}
+define %sl.struct.m0_s0 @sl_m1_s0(%sl.struct.m0_s0 %arg) {
+entry:
+  ret %sl.struct.m0_s0 %arg
+}
+define %sl.struct.m0_s0 @sl_m1_s1(i32 %arg) {
+entry:
+  %v13 = call %sl.struct.m0_s0 @sl_m0_s3(i32 %arg)
+  ret %sl.struct.m0_s0 %v13
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

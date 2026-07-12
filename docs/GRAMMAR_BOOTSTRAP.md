@@ -312,6 +312,14 @@ Non-ASCII, quote, backslash, and control bytes use LLVM `\XX` escaping, with
 the byte length retained independently from Unicode scalar count. ASCII and
 Korean snapshots both assemble, link, and execute.
 
+Nominal structs now have deterministic `%sl.struct.m<module>_s<symbol>` LLVM
+types. Typed IR marks struct literals and links an arbitrary number of ordered
+field operands through sibling indexes. The backend emits each field with an
+`insertvalue` chain, then passes and returns the aggregate by value. Local and
+imported struct snapshots share the declaring module's LLVM identity and pass
+assembly, link, and execution validation. Nested/owned fields and drop glue
+remain.
+
 User-function ABI lowering now threads a hidden runtime I/O context containing
 stdin/stdout handles, read/write slots, and the cumulative ok state. This fixes
 function-local `print`/`println` and supplies the context that later file-backed

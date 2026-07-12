@@ -2,6 +2,8 @@ namespace smalllang.compiler.llvm.text
 
 import smalllang.compiler.ir.typed as typedIr
 import smalllang.compiler.lexer as lexer
+import smalllang.compiler.semantic.nominal_types as nominalTypes
+import smalllang.compiler.semantic.symbols as symbols
 import syntax.generated.smalllang as grammar
 
 # First LLVM text backend slice. Names are derived only from stable module and
@@ -31,7 +33,54 @@ public emit sources: [Text; ~] -> Unit {
         value == 14 => "E"
         else => "F"
     }
+    writeType node: typedIr.TypedIrNode -> Unit {
+        (node.typeOrigin == 0 or node.typeOrigin == 2) -> if {
+            "%sl.struct.m$(node.typeModule)_s$(node.typeSymbol)" -> print
+        } else {
+            node.typeSymbol -> llvmType -> print
+        }
+    }
     sources -> typedIr.lower => ir!
+    sources -> nominalTypes.resolve => nominal!
+    0 => structSourceIndex!
+    structSourceIndex! < (sources -> len) -> while {
+        sources[structSourceIndex!] -> symbols.collect => structTable!
+        0 => structSymbolIndex!
+        structSymbolIndex! < (structTable! -> len) -> while {
+            structTable![structSymbolIndex!] => structSymbol
+            (structSymbol.kind == 3 and structSymbol.parent < 0) -> if {
+                "%sl.struct.m$(structSourceIndex!)_s$(structSymbolIndex!) = type { " -> print
+                true => firstField!
+                0 => fieldSymbolIndex!
+                fieldSymbolIndex! < (structTable! -> len) -> while {
+                    structTable![fieldSymbolIndex!] => fieldSymbol
+                    (fieldSymbol.kind == 26 and fieldSymbol.parent == structSymbolIndex!) -> if {
+                        not firstField! -> if { ", " -> print }
+                        -1 => fieldTypeIndex!
+                        0 => fieldTypeSearch!
+                        fieldTypeSearch! < (nominal! -> len) -> while {
+                            nominal![fieldTypeSearch!] => fieldTypeCandidate
+                            (fieldTypeCandidate.sourceModule == structSourceIndex! and fieldTypeCandidate.typeAst == fieldSymbol.typeNode) -> if { fieldTypeSearch! => fieldTypeIndex! }
+                            fieldTypeSearch! + 1 => fieldTypeSearch!
+                        }
+                        fieldTypeIndex! >= 0 -> if {
+                            nominal![fieldTypeIndex!] => fieldType
+                            (fieldType.origin == 0 or fieldType.origin == 2) -> if {
+                                "%sl.struct.m$(fieldType.targetModule)_s$(fieldType.targetSymbol)" -> print
+                            } else {
+                                fieldType.targetSymbol -> llvmType -> print
+                            }
+                        }
+                        false => firstField!
+                    }
+                    fieldSymbolIndex! + 1 => fieldSymbolIndex!
+                }
+                " }" -> println
+            }
+            structSymbolIndex! + 1 => structSymbolIndex!
+        }
+        structSourceIndex! + 1 => structSourceIndex!
+    }
     false => usesText!
     0 => textTypeSearch!
     textTypeSearch! < (ir! -> len) -> while {
@@ -75,14 +124,15 @@ public emit sources: [Text; ~] -> Unit {
             (functionEnd! < (ir! -> len) and ir![functionEnd!].kind != 0 and ir![functionEnd!].kind != 11) -> while {
                 functionEnd! + 1 => functionEnd!
             }
-            function.typeSymbol -> llvmType => returnType
+            "define " -> print
+            function -> writeType
+            " @sl_m$(function.sourceModule)_s$(function.symbol)(" -> print
             function.operand1 >= 0 -> if {
                 ir![function.operand1] => parameter
-                parameter.typeSymbol -> llvmType => parameterType
-                "define $returnType @sl_m$(function.sourceModule)_s$(function.symbol)($parameterType %arg) {" -> println
-            } else {
-                "define $returnType @sl_m$(function.sourceModule)_s$(function.symbol)() {" -> println
+                parameter -> writeType
+                " %arg" -> print
             }
+            ") {" -> println
             "entry:" -> println
             functionEnd! - 1 => expressionIndex!
             function.operand0 + 1 => expressionStart
@@ -95,9 +145,38 @@ public emit sources: [Text; ~] -> Unit {
                     "  %v$(expressionIndex!)_ptr = insertvalue %sl.text poison, ptr @sl_str_$(expressionIndex!), 0" -> println
                     "  %v$(expressionIndex!) = insertvalue %sl.text %v$(expressionIndex!)_ptr, i64 $expressionLength, 1" -> println
                 }
+                expression.kind == 12 -> if {
+                    expression.operand0 => fieldValueIndex!
+                    0 => fieldPosition!
+                    fieldValueIndex! >= 0 -> while {
+                        ir![fieldValueIndex!] => fieldValue
+                        "  " -> print
+                        fieldValue.nextOperand < 0 -> if { "%v$(expressionIndex!)" -> print } else { "%v$(expressionIndex!)_f$(fieldPosition!)" -> print }
+                        " = insertvalue " -> print
+                        expression -> writeType
+                        " " -> print
+                        fieldPosition! == 0 -> if { "poison" -> print } else { "%v$(expressionIndex!)_f$(fieldPosition! - 1)" -> print }
+                        ", " -> print
+                        fieldValue -> writeType
+                        " " -> print
+                        (fieldValue.kind == 3 or fieldValue.kind == 4) -> if {
+                            sources[fieldValue.sourceModule] -> lexer.lex => fieldTokens!
+                            fieldTokens![fieldValue.payloadToken] => fieldToken
+                            fieldValue.kind == 3 -> if {
+                                sources[fieldValue.sourceModule] -> slice(fieldToken.span.start, fieldToken.span.length) -> print
+                            } else {
+                                ((sources[fieldValue.sourceModule] -> byte(fieldToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> print
+                            }
+                        } else {
+                            fieldValue.kind == 5 -> if { "%arg" -> print } else { "%v$(fieldValueIndex!)" -> print }
+                        }
+                        ", $(fieldPosition!)" -> println
+                        fieldValue.nextOperand => fieldValueIndex!
+                        fieldPosition! + 1 => fieldPosition!
+                    }
+                }
                 (expression.kind == 7 or expression.kind == 8) -> if {
                     ir![expression.operand0] => leftOperand
-                    leftOperand.typeSymbol -> llvmType => operandType
                     "" => operation!
                     expression.kind == 7 -> if {
                         expression.opcode == -26 -> if {
@@ -121,7 +200,9 @@ public emit sources: [Text; ~] -> Unit {
                         expression.opcode == -24 -> if { "or" => operation! }
                         expression.opcode == -25 -> if { "and" => operation! }
                     }
-                    "  %v$(expressionIndex!) = $(operation!) $operandType " -> print
+                    "  %v$(expressionIndex!) = $(operation!) " -> print
+                    leftOperand -> writeType
+                    " " -> print
                     (leftOperand.kind == 3 or leftOperand.kind == 4) -> if {
                         sources[leftOperand.sourceModule] -> lexer.lex => leftTokens!
                         leftTokens![leftOperand.payloadToken] => leftToken
@@ -152,12 +233,13 @@ public emit sources: [Text; ~] -> Unit {
                     }
                 }
                 expression.kind == 6 -> if {
-                    expression.typeSymbol -> llvmType => callType
-                    "  %v$(expressionIndex!) = call $callType @sl_m$(expression.targetModule)_s$(expression.symbol)(" -> print
+                    "  %v$(expressionIndex!) = call " -> print
+                    expression -> writeType
+                    " @sl_m$(expression.targetModule)_s$(expression.symbol)(" -> print
                     expression.operand0 >= 0 -> if {
                         ir![expression.operand0] => argument
-                        argument.typeSymbol -> llvmType => argumentType
-                        "$argumentType " -> print
+                        argument -> writeType
+                        " " -> print
                         (argument.kind == 3 or argument.kind == 4) -> if {
                             sources[argument.sourceModule] -> lexer.lex => argumentTokens!
                             argumentTokens![argument.payloadToken] => argumentToken
@@ -176,7 +258,9 @@ public emit sources: [Text; ~] -> Unit {
             }
             ir![function.operand0] => returnNode
             ir![returnNode.operand0] => returnOperand
-            "  ret $returnType " -> print
+            "  ret " -> print
+            function -> writeType
+            " " -> print
             (returnOperand.kind == 3 or returnOperand.kind == 4) -> if {
                 sources[returnOperand.sourceModule] -> lexer.lex => returnTokens!
                 returnTokens![returnOperand.payloadToken] => returnToken
