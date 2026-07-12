@@ -1,0 +1,8 @@
+examples/108-selfhost-type-canonicalization.sl
+selfhost/semantic/types.sl
+selfhost/syntax/ast.sl
+selfhost/syntax/cst.sl
+selfhost/syntax/parser.sl
+selfhost/syntax/lexer.sl
+selfhost/syntax/source.sl
+syntax/generated/smalllang_grammar.sl

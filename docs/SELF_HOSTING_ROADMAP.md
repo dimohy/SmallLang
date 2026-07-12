@@ -218,6 +218,11 @@ including synthetic function-parameter and method-`self` symbols. Unresolved
 name expressions produce structured code-2 diagnostics with exact UTF-8 spans.
 Imported/module-qualified lookup remains on the critical path.
 
+Self-hosted type canonicalization now deduplicates semantically identical type
+token sequences while ignoring whitespace/comment trivia and classifies named,
+slice, dynamic/fixed array, dictionary, and box shapes. Recursive element/key/
+value links and nominal module identity remain before type-system parity.
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).

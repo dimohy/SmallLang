@@ -138,6 +138,10 @@ and the duplicate declaration's precise source span.
 owner toward the root and resolves the first byte-equal declaration. Function
 parameters and method `self` values are synthetic kind-35 symbols owned by their
 declaration; unresolved names become code-2 semantic diagnostics.
+`selfhost/semantic/types.sl` canonicalizes type annotations without allocating
+normalized strings: it skips trivia, compares token kinds and UTF-8 payload
+bytes, assigns stable canonical ids, and classifies named, slice, dynamic/fixed
+array, dictionary, and box layouts.
 
 The generated module is bootstrap data, not the final parser implementation.
 It deliberately makes the transition incremental and auditable.
