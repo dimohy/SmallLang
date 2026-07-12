@@ -147,6 +147,9 @@ generic length token.
 `selfhost/semantic/modules.sl` accepts multiple source texts, hashes qualified
 namespace paths into deterministic 64-bit identities, and emits import edges
 with source-module indexes, target identities, path spans, and alias tokens.
+`selfhost/semantic/module_resolve.sl` resolves each edge to exactly one module
+index and distinguishes resolved, missing, and duplicate target identities.
+Declaration AST/symbol flags reserve bit 4 for explicit `public` visibility.
 
 The generated module is bootstrap data, not the final parser implementation.
 It deliberately makes the transition incremental and auditable.

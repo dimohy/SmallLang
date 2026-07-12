@@ -15,7 +15,7 @@ main {
         emit! -> if {
             tokens![node.payloadToken] => payload
             source -> slice(payload.span.start, payload.span.length) => name
-            "declaration = $(node.kind),$(node.parent),$name" -> println
+            "declaration = $(node.kind),$(node.parent),$name,$(node.flags)" -> println
         }
         index! + 1 => index!
     }

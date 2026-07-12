@@ -1,6 +1,6 @@
-examples/110-selfhost-module-graph.sl
-selfhost/semantic/modules.sl
+examples/111-selfhost-duplicate-module-target.sl
 selfhost/semantic/module_resolve.sl
+selfhost/semantic/modules.sl
 selfhost/syntax/ast.sl
 selfhost/syntax/cst.sl
 selfhost/syntax/parser.sl

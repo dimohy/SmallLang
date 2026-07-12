@@ -225,7 +225,9 @@ value links now point to interned nominal canonical ids, and fixed arrays retain
 their value-generic length token. The multi-source module graph now assigns
 deterministic 64-bit identities to qualified namespaces and links import paths
 and aliases to source modules. Import visibility and nominal type resolution
-across those edges remain before type-system parity.
+across those edges remain before type-system parity. Edge resolution now
+distinguishes unique, missing, and duplicate target modules, while declaration
+symbols preserve explicit `public` visibility in flag bit 4.
 
 ## Immediate Implementation Order
 

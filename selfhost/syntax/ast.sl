@@ -326,6 +326,33 @@ public lower source: Text -> [AstNode; ~] {
                 }
             }
         }
+        (declaration!.kind >= 3 and declaration!.kind <= 7) -> if {
+            declaration!.firstToken => visibilityToken!
+            true => findingVisibility!
+            (visibilityToken! < declaration!.firstToken + declaration!.tokenCount and findingVisibility!) -> while {
+                tokens![visibilityToken!].kind == grammar.triviaIdWhitespace -> if {
+                    visibilityToken! + 1 => visibilityToken!
+                } else {
+                    tokens![visibilityToken!].kind == grammar.triviaIdComment -> if {
+                        visibilityToken! + 1 => visibilityToken!
+                    } else {
+                        false => findingVisibility!
+                    }
+                }
+            }
+            tokens![visibilityToken!] => visibilityName
+            (visibilityName.kind == grammar.tokenIdIdentifier and visibilityName.span.length == UIntSize(6)) -> if {
+                source -> byte(visibilityName.span.start) => publicByte0
+                source -> byte(visibilityName.span.start + UIntSize(1)) => publicByte1
+                source -> byte(visibilityName.span.start + UIntSize(2)) => publicByte2
+                source -> byte(visibilityName.span.start + UIntSize(3)) => publicByte3
+                source -> byte(visibilityName.span.start + UIntSize(4)) => publicByte4
+                source -> byte(visibilityName.span.start + UIntSize(5)) => publicByte5
+                (publicByte0 == UInt8(112) and publicByte1 == UInt8(117) and publicByte2 == UInt8(98) and publicByte3 == UInt8(108) and publicByte4 == UInt8(105) and publicByte5 == UInt8(99)) -> if {
+                    declaration!.flags + 4 => declaration!.flags
+                }
+            }
+        }
         declaration! => ast![declarationIndex!]
         declarationIndex! + 1 => declarationIndex!
     }
