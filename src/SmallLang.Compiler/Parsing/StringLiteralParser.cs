@@ -99,6 +99,12 @@ internal static class StringLiteralParser
             throw ErrorAt(token, "only indentation may precede a multiline raw string closing delimiter");
         }
 
+        var openingIndentationWidth = token.Column - 1;
+        if (indentation.Length != openingIndentationWidth)
+        {
+            throw ErrorAt(token, "multiline raw string opening and closing delimiters must have matching indentation");
+        }
+
         var bodyEnd = closingLineStart;
         if (bodyEnd > contentStart && text[bodyEnd - 1] == '\r')
         {

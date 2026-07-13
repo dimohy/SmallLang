@@ -1174,7 +1174,21 @@ $(this remains text)
 """
 ```
 
-Every nonblank content line must include the closing delimiter's indentation.
+The opening and closing delimiters must have matching indentation. Every
+nonblank content line must include that indentation; embedded SmallLang source
+should then be indented normally relative to the delimiters:
+
+```smalllang
+main {
+    """
+    main {
+        7 => value
+        value![0]
+    }
+    """ => source
+}
+```
+
 Inline raw literals such as `"""a "quoted" path"""` are also supported.
 The delimiter may contain more than three quotes when the content itself must
 contain a shorter quote run; opening and closing delimiter widths must match.
