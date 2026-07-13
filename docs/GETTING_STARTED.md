@@ -408,6 +408,25 @@ aliases. Exactly one file may contain executable top-level statements:
 
 The source-list file contains one repository-relative `.sl` path per line.
 Direct compiler use accepts the same files as positional arguments.
+
+For a normal project, put the root module in a compact language-shaped
+`smalllang.project` manifest:
+
+```smalllang
+project {
+    name: "compiler"
+    root: "src/main.sl"
+}
+```
+
+Running `smalllang build` without source arguments searches the current
+directory and its ancestors for that manifest. `--project` accepts either the
+manifest or its directory. Relative roots are resolved inside the project and
+may not escape it. Without `-o`, artifacts are written as
+`build/<name>.exe`, `build/<name>`, or `build/<name>.wasm` for the selected
+target. Command-line target, optimization, LLVM, and output options remain
+explicit overrides.
+
 When only the root file is supplied, each non-`sys` import is mapped from its
 dotted module path to a `.sl` file relative to the root directory. For example,
 `import sample.math as math` discovers `sample/math.sl` recursively.

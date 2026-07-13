@@ -4083,4 +4083,43 @@ References: [Tokio OpenOptions source](https://docs.rs/tokio/latest/src/tokio/fs
 [Tokio File](https://docs.rs/tokio/latest/tokio/fs/struct.File.html),
 [.NET FileStream constructors](https://learn.microsoft.com/en-us/dotnet/api/system.io.filestream.-ctor).
 
+## D132 - Projects Name One Root Without Repeating Source Paths
+
+Status: root project manifest and source-free build implemented
+Date: 2026-07-14
+
+Small projects previously needed the root `.sl` path on every compiler
+invocation, even though import discovery already knew the complete module graph.
+The project boundary is now declared once in `smalllang.project`:
+
+```smalllang
+project {
+    name: "compiler"
+    root: "src/main.sl"
+}
+```
+
+`smalllang build` searches the current directory and its ancestors. An explicit
+`--project` accepts a manifest file or directory. The root is relative to the
+manifest, must stay inside that directory, and must name an existing `.sl`
+file. Unknown or duplicate fields are errors. With no `-o`, the compiler writes
+`build/<name>` with the platform suffix. Existing target, optimization, LLVM,
+and output flags remain command-line overrides.
+
+Swift demonstrates the value of a source-language-shaped manifest whose root
+object names products and targets. Zig demonstrates the eventual expressive
+ceiling of an executable build-language DAG. SL takes the staged middle path:
+the first manifest deliberately has a tiny deterministic data subset that the
+self-host compiler can parse without executing arbitrary host code. Its syntax
+already looks like SL, so a later compile-time `project` value can extend it
+without replacing project files or introducing TOML/JSON as a second language.
+
+Example 272 builds a two-file project through its manifest and recursive dotted
+import on Windows and Linux. The runner also verifies unknown-field and
+root-escape diagnostics. This promotes the explicit-root build gate from
+partial to complete; package dependencies and module/interface caching remain.
+
+References: [Swift packages](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/introducingpackages/),
+[Zig build system](https://ziglang.org/learn/build-system/).
+
 

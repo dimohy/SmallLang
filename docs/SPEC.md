@@ -484,6 +484,15 @@ Notes:
   qualified by the namespace.
 - Imports may alias a path, such as `import sys.runtime as rt`. A path beginning
   with the alias is resolved to the imported path before semantic analysis.
+- A `smalllang.project` manifest names the project and root source with the
+  language-shaped form `project { name: "app" root: "src/main.sl" }`.
+  `smalllang build` searches ancestor directories for it; `--project` selects
+  one explicitly. Both values are compile-time string literals. The root is
+  project-relative, must remain within that directory, and must name an `.sl`
+  file. Imported modules continue to be discovered relative to the root source.
+- A manifest build without `-o` writes to `build/<name>` with the target's
+  `.exe` or `.wasm` suffix where applicable. Explicit CLI options override only
+  build settings, not manifest identity or root ownership.
 
 ## Bindings
 

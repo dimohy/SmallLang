@@ -95,13 +95,13 @@ not lines of code.
 | Core syntax and control flow | 10 | 8 | 2 | 0 | 9.0 |
 | Types, traits, and generics | 12 | 10 | 1 | 1 | 10.5 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
-| Modules, visibility, and builds | 8 | 4 | 2 | 2 | 5.0 |
+| Modules, visibility, and builds | 8 | 5 | 1 | 2 | 5.5 |
 | Compiler-construction primitives | 12 | 10 | 2 | 0 | 11.0 |
-| Standard library and tooling | 8 | 2 | 3 | 3 | 3.5 |
-| **Total** | **60** | **41** | **12** | **7** | **47.0 / 60** |
+| Standard library and tooling | 8 | 2 | 4 | 2 | 4.0 |
+| **Total** | **60** | **42** | **12** | **6** | **48.0 / 60** |
 
-Current count-based progress: **78.3% (47.0 of 60 equivalent gates)**.
-There are **13.0 equivalent gates remaining**. Because the remaining compiler
+Current count-based progress: **80.0% (48.0 of 60 equivalent gates)**.
+There are **12.0 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -210,15 +210,16 @@ test-performance boundary.
 - Missing (1): a complete path-sensitive borrow checker for references returned
   from functions and stored in user values.
 
-### Modules, visibility, and builds — 5.0 / 8
+### Modules, visibility, and builds — 5.5 / 8
 
-- Complete (4): file namespaces/import aliases; multiple user source files in
+- Complete (5): file namespaces/import aliases; multiple user source files in
   one compilation unit; root imports recursively discover module files with
   missing, cycle, namespace-mismatch, and duplicate-module diagnostics;
   functions, structs, enums, and traits are internal by default with explicit
-  `public` exports and module-qualified nominal identity.
-- Partial (2): stdlib loading uses a fixed bootstrap list; one root file is
-  enforced by executable top-level statements rather than a module manifest.
+  `public` exports and module-qualified nominal identity; `smalllang.project`
+  names a confined root source and output identity, and source-free
+  `smalllang build` discovers it from ancestor directories.
+- Partial (1): stdlib loading uses a fixed bootstrap list.
 - Missing (2): package manifest/dependency graph; module/interface cache.
 
 ### Compiler-construction primitives — 11.0 / 12
@@ -242,10 +243,10 @@ test-performance boundary.
   and user-value payloads plus function contracts; Text now has checked UTF-8
   byte length/index/slice primitives, but broader string processing remains.
 
-### Standard library and tooling — 3.5 / 8
+### Standard library and tooling — 4.0 / 8
 
 - Complete (2): basic `sys.io` and three LLVM-backed target link paths.
-- Partial (3): file/random/time APIs are narrow compiler intrinsics; VS Code
+- Partial (4): file/random/time APIs are narrow compiler intrinsics; VS Code
   support is grammar-only; tests are example-driven without an SL unit-test
   framework. File I/O now monomorphizes canonical scalar `write<T>` and
   zero-input `read<T>` calls with explicit EOF/error results. Affine `File`
@@ -254,14 +255,17 @@ test-performance boundary.
   output path; `writeAtAsync<T>` owns copied bytes and a duplicate handle while
   it is pending, `syncAsync` provides an explicit durability barrier, and async
   open owns its path and transfers its newly opened handle on await. Explicit
-  user-value serialization remains.
-- Missing (3): portable path/filesystem library, package/build command, formatter
-  and language server based on the real parser.
+  user-value serialization remains. The package/build surface has a confined
+  root manifest, automatic discovery, recursive imports, and target output,
+  but not dependency resolution, products, tests, or a build DAG.
+- Missing (2): portable path/filesystem library; formatter and language server
+  based on the real parser.
 
 ## Critical Path To Self-Hosting
 
-1. Finish the module graph: imports discover files, visibility is enforced, and
-   a project manifest names the root module and dependencies.
+1. Finish the package graph: imports discover files, visibility is enforced,
+   and `smalllang.project` names the root; dependency products and resolution
+   remain.
 2. Finish the reusable type substrate: multi-parameter generics, associated
    types, generic `Array<T>`/`Dictionary<K, V>`, `Option`, and `Result`.
 3. Add compiler data primitives: bytes, source spans, Unicode iteration, arena
@@ -289,7 +293,7 @@ while retaining the entire source envelope. Multi-error continuation,
 full CST-to-AST lowering, and semantic diagnostics remain as
 described in [GRAMMAR_BOOTSTRAP.md](GRAMMAR_BOOTSTRAP.md). These additions
 complete the reusable source-span/diagnostic gate. The formal count is now
-**47.0 / 60 (78.3%)**; multi-error parser continuation remains.
+**48.0 / 60 (80.0%)**; multi-error parser continuation remains.
 
 The lowering path is also executable: generated stable rule ids drive an
 ordinary SL module that selects module/declaration/function/main/binding/flow/

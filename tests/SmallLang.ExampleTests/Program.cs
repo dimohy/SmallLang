@@ -112,7 +112,10 @@ var allExpectedFiles = Directory
     .ToArray();
 var diagnosticDir = Path.Combine(repoRoot, "examples", "diagnostics");
 var allDiagnosticFiles = Directory.Exists(diagnosticDir)
-    ? Directory.EnumerateFiles(diagnosticDir, "*.sl").Order(StringComparer.Ordinal).ToArray()
+    ? Directory.EnumerateFiles(diagnosticDir, "*.sl")
+        .Concat(Directory.EnumerateFiles(diagnosticDir, "*.project"))
+        .Order(StringComparer.Ordinal)
+        .ToArray()
     : [];
 var expectedFiles = allExpectedFiles
     .Where(file => MatchesFilters(Path.GetFileName(file)[..^".stdout.txt".Length], filters))
@@ -144,6 +147,7 @@ Parallel.ForEach(
     var stopwatch = Stopwatch.StartNew();
     var name = Path.GetFileName(expectedFile)[..^".stdout.txt".Length];
     var sourcePath = Path.Combine(repoRoot, "examples", name + ".sl");
+    var projectPath = Path.Combine(expectedDir, name + ".project.txt");
     var stdinPath = Path.Combine(expectedDir, name + ".stdin.txt");
     var argumentsPath = Path.Combine(expectedDir, name + ".args.txt");
     var environmentPath = Path.Combine(expectedDir, name + ".env.txt");
@@ -156,9 +160,9 @@ Parallel.ForEach(
     var stdoutLlvmExecutionPath = Path.Combine(expectedDir, name + ".stdout.llvm.execute.txt");
     var verifyLlvm = File.Exists(llvmContainsPath) || File.Exists(llvmNotContainsPath);
 
-    if (!File.Exists(sourcePath))
+    if (!File.Exists(sourcePath) && !File.Exists(projectPath))
     {
-        Console.Error.WriteLine($"FAIL {name}: source file not found");
+        Console.Error.WriteLine($"FAIL {name}: source or project manifest reference not found");
         Interlocked.Increment(ref failures);
         return;
     }
@@ -168,7 +172,17 @@ Parallel.ForEach(
         compilerDll,
         "build"
     };
-    if (File.Exists(sourcesPath))
+    if (File.Exists(projectPath))
+    {
+        var projectReference = File.ReadLines(projectPath)
+            .Single(static line => !string.IsNullOrWhiteSpace(line))
+            .Trim();
+        compilerArguments.AddRange([
+            "--project",
+            Path.GetFullPath(projectReference, repoRoot)
+        ]);
+    }
+    else if (File.Exists(sourcesPath))
     {
         compilerArguments.AddRange(File.ReadLines(sourcesPath)
             .Where(static line => !string.IsNullOrWhiteSpace(line))
@@ -359,7 +373,14 @@ Parallel.ForEach(diagnosticFiles, new ParallelOptions { MaxDegreeOfParallelism =
     }
     else
     {
-        diagnosticArguments.Add(sourcePath);
+        if (string.Equals(Path.GetExtension(sourcePath), ".project", StringComparison.OrdinalIgnoreCase))
+        {
+            diagnosticArguments.AddRange(["--project", sourcePath]);
+        }
+        else
+        {
+            diagnosticArguments.Add(sourcePath);
+        }
     }
     diagnosticArguments.AddRange([
         "-o", Path.Combine(artifactsDir, "diagnostic-" + name + ".exe"),

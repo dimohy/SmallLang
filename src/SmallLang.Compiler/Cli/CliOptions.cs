@@ -14,12 +14,13 @@ internal sealed record CliOptions(
     {
         if (args is not ["build", ..])
         {
-            throw new SmallLangException("usage: smalllang build <source.sl> [more-source.sl ...] -o <output> [--target windows-x64|linux-x64|wasm32-browser] [--llvm <dir>] [-O0|-O1|-O2|-O3] [--keep-temps]");
+            throw new SmallLangException(Usage);
         }
 
         var sources = new List<string>();
         string? output = null;
         string? llvmHome = null;
+        string? projectPath = null;
         var target = CompilationTarget.WindowsX64;
         var keepTemps = false;
         string? optimizationLevel = null;
@@ -35,6 +36,9 @@ internal sealed record CliOptions(
                     break;
                 case "--llvm":
                     llvmHome = RequireValue(args, ref i, arg);
+                    break;
+                case "--project":
+                    projectPath = RequireValue(args, ref i, arg);
                     break;
                 case "--target":
                     target = ParseTarget(RequireValue(args, ref i, arg));
@@ -59,20 +63,27 @@ internal sealed record CliOptions(
             }
         }
 
-        if (sources.Count == 0)
+        if (sources.Count > 0 && projectPath is not null)
         {
-            throw new SmallLangException("missing source file");
+            throw new SmallLangException("--project cannot be combined with explicit source files");
         }
 
-        output ??= target switch
+        ProjectManifest? project = null;
+        if (sources.Count == 0)
         {
-            CompilationTarget.WindowsX64 => Path.ChangeExtension(sources[0], ".exe"),
-            CompilationTarget.LinuxX64 => Path.Combine(
-                Path.GetDirectoryName(sources[0]) ?? Directory.GetCurrentDirectory(),
-                Path.GetFileNameWithoutExtension(sources[0])),
-            CompilationTarget.Wasm32Browser => Path.ChangeExtension(sources[0], ".wasm"),
-            _ => throw new SmallLangException($"unsupported target '{target}'")
-        };
+            projectPath ??= ProjectManifest.FindFrom(Directory.GetCurrentDirectory());
+            if (projectPath is null)
+            {
+                throw new SmallLangException(
+                    $"no source file or {ProjectManifest.FileName} was found; {Usage}");
+            }
+            project = ProjectManifest.Load(projectPath);
+            sources.Add(project.RootSource);
+        }
+
+        output ??= project is null
+            ? DefaultSourceOutput(sources[0], target)
+            : DefaultProjectOutput(project, target);
 
         return new CliOptions(
             sources.Select(Path.GetFullPath).ToArray(),
@@ -82,6 +93,34 @@ internal sealed record CliOptions(
             keepTemps,
             optimizationLevel);
     }
+
+    private static string DefaultSourceOutput(string source, CompilationTarget target) =>
+        target switch
+        {
+            CompilationTarget.WindowsX64 => Path.ChangeExtension(source, ".exe"),
+            CompilationTarget.LinuxX64 => Path.Combine(
+                Path.GetDirectoryName(source) ?? Directory.GetCurrentDirectory(),
+                Path.GetFileNameWithoutExtension(source)),
+            CompilationTarget.Wasm32Browser => Path.ChangeExtension(source, ".wasm"),
+            _ => throw new SmallLangException($"unsupported target '{target}'")
+        };
+
+    private static string DefaultProjectOutput(ProjectManifest project, CompilationTarget target) =>
+        Path.Combine(
+            project.Directory,
+            "build",
+            target switch
+            {
+                CompilationTarget.WindowsX64 => project.Name + ".exe",
+                CompilationTarget.LinuxX64 => project.Name,
+                CompilationTarget.Wasm32Browser => project.Name + ".wasm",
+                _ => throw new SmallLangException($"unsupported target '{target}'")
+            });
+
+    private const string Usage =
+        "usage: smalllang build [<source.sl> ... | --project <smalllang.project|directory>] "
+        + "[-o <output>] [--target windows-x64|linux-x64|wasm32-browser] "
+        + "[--llvm <dir>] [-O0|-O1|-O2|-O3] [--keep-temps]";
 
     private static CompilationTarget ParseTarget(string value)
     {

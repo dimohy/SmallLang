@@ -154,6 +154,19 @@ dotted-path layout: `import sample.math` discovers `sample/math.sl`.
 Module functions, structs, enums, and traits are internal by default; prefix
 declarations with `public` to make them usable from an importing module.
 
+A project root can be named without repeating its source path on every build:
+
+```smalllang
+project {
+    name: "hello"
+    root: "src/main.sl"
+}
+```
+
+Save this as `smalllang.project`, then run `smalllang build`. The compiler
+searches the current directory and its ancestors, or accepts an explicit
+`--project <file-or-directory>`. Default artifacts are written under `build/`.
+
 ## License
 
 SmallLang is licensed under the [Apache License 2.0](LICENSE).

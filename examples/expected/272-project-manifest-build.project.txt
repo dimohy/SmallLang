@@ -1,0 +1,1 @@
+examples/projects/272-project-manifest/smalllang.project
