@@ -3132,8 +3132,10 @@ Date: 2026-07-13
 
 Async syntax follows the existing left-to-right function and value-flow forms:
 `Int -> async Int` declares the effect, an async call produces `Task<Int>`, and
-`task -> await` consumes that task to produce its value. Parentheses and a
-second statement-shaped `await task` form are intentionally unnecessary.
+`task -> await` consumes that task to produce its value. A temporary task can
+also be consumed in the same flow as `6 -> square -> await => result`.
+Parentheses and a second statement-shaped `await task` form are intentionally
+unnecessary.
 
 Task lifetime follows Swift and Kotlin structured concurrency: a child cannot
 outlive its lexical owner. Scope cleanup therefore joins every unconsumed task
@@ -3143,7 +3145,9 @@ use-after-await fail during semantic analysis. The surface keeps C#'s readable
 `async`/`await` vocabulary while rejecting C#'s easy-to-ignore unobserved task
 pattern. Rust's cold futures were not selected for ordinary calls because SL
 uses a task-producing call to make parallel start order visible in straight-line
-flow code.
+flow code. Naming two task-producing calls starts concurrent children;
+immediately flowing a call into `await` expresses sequential suspension without
+a disposable task name.
 
 The initial Windows x64 lowering supports only CPU-pure zero/one-`Int` input and
 `Int` result functions. Runtime and standard-library calls are rejected inside

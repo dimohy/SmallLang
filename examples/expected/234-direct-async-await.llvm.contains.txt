@@ -1,0 +1,3 @@
+call %smalllang.task.i32 @smalllang_fn_square
+call i32 @WaitForSingleObject
+call %smalllang.task.i32 @smalllang_fn_answer

@@ -3367,10 +3367,6 @@ internal sealed class SemanticCompiler
                 {
                     throw Error(target.Line, target.Column, "await does not accept arguments");
                 }
-                if (expression.Source is not NameExpression)
-                {
-                    throw Error(target.Line, target.Column, "await consumes a named Task owner");
-                }
                 result = new FlowResult(BoundType.Int, FlowEffect.None);
                 return true;
             case "flush" when currentType == BoundType.MutableMappedBytes:

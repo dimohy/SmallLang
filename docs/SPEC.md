@@ -552,6 +552,17 @@ main {
 }
 ```
 
+When no concurrency is needed, the temporary task can be awaited directly in
+the same left-to-right flow:
+
+```smalllang
+6 -> square -> await => squared
+```
+
+Naming multiple task-producing calls starts concurrent children. Flowing a
+call immediately into `await` expresses sequential suspension without an
+otherwise unnecessary task binding.
+
 Tasks are structured resources, not detached handles. Every task must finish
 before its lexical scope exits. An explicit `await` chooses where its result is
 needed; otherwise scope cleanup joins the task and discards the result. A task
