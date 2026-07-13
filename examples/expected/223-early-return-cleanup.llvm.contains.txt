@@ -1,0 +1,4 @@
+call void @smalllang_free
+ret i32 10
+ret %smalllang.dynamic_int_array
+ret void

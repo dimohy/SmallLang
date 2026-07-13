@@ -66,6 +66,7 @@ internal sealed partial class LlvmEmitter
         BlockFunctionCallStatement value => UsesBox(value.Source) || value.Body.Any(UsesBox),
         ExpressionStatement value => UsesBox(value.Expression),
         GuardLoopControlStatement value => UsesBox(value.Condition),
+        ReturnStatement { Value: { } value } => UsesBox(value),
         _ => false
     };
 

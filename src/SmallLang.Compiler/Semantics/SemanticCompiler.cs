@@ -17,6 +17,8 @@ internal sealed class SemanticCompiler
     private string? _currentTypeScopeName;
     private BoundType? _currentFunctionReturnType;
     private string? _currentMoveInputName;
+    private IReadOnlyDictionary<string, BoundType>? _currentFunctionOuterBindings;
+    private bool _currentFunctionAllowsEarlyReturn;
     private readonly int _pointerBitWidth;
     private int _loopDepth;
 
@@ -537,6 +539,8 @@ internal sealed class SemanticCompiler
         _currentMoveInputName = FunctionMovesOwnedHeapInput(function)
             ? function.InputName ?? "it"
             : null;
+        _currentFunctionOuterBindings = returnOuterBindings;
+        _currentFunctionAllowsEarlyReturn = !function.IsLocal;
 
         var mutableBindings = new HashSet<string>(StringComparer.Ordinal);
         if (FunctionMutablyBorrowsInput(function))
@@ -917,6 +921,8 @@ internal sealed class SemanticCompiler
         _currentTypeScopeName = null;
         _currentFunctionReturnType = null;
         _currentMoveInputName = null;
+        _currentFunctionOuterBindings = null;
+        _currentFunctionAllowsEarlyReturn = false;
         var bindings = new Dictionary<string, BoundType>(StringComparer.Ordinal);
         var mutableBindings = new HashSet<string>(StringComparer.Ordinal);
         BindStatements(_program.Statements, functions, bindings, mutableBindings);
@@ -1071,6 +1077,56 @@ internal sealed class SemanticCompiler
                     }
                     ValidateOwnedParameterConsumptionExpression(guardLoopControl.Condition, functions);
                     break;
+                case ReturnStatement returnStatement:
+                    if (_currentFunctionReturnType is null)
+                    {
+                        throw Error(
+                            returnStatement.Line,
+                            returnStatement.Column,
+                            "'return' is only valid inside a value or Unit function");
+                    }
+                    if (!_currentFunctionAllowsEarlyReturn)
+                    {
+                        throw Error(
+                            returnStatement.Line,
+                            returnStatement.Column,
+                            "explicit return from an inline local or block function is not supported yet");
+                    }
+
+                    var returnType = returnStatement.Value is null
+                        ? BoundType.Unit
+                        : InferExpression(
+                            returnStatement.Value,
+                            functions,
+                            bindings,
+                            allowPrintCall: false,
+                            allowReadIntCall: true,
+                            allowFlowBindingTarget: false,
+                            yieldInputType: yieldInputType,
+                            mutableBindings: mutableBindings,
+                            allowedOwnedOuterResultName: _currentMoveInputName);
+                    if (returnType != _currentFunctionReturnType.Value)
+                    {
+                        throw Error(
+                            returnStatement.Line,
+                            returnStatement.Column,
+                            $"return requires {FormatType(_currentFunctionReturnType.Value)} but received {FormatType(returnType)}");
+                    }
+
+                    if (returnStatement.Value is not null)
+                    {
+                        ValidateOwnedParameterConsumptionExpression(returnStatement.Value, functions);
+                        if (IsContainerType(returnType))
+                        {
+                            EnsureOwnedContainerCanLeaveBlock(
+                                returnStatement.Value,
+                                _currentFunctionOuterBindings
+                                    ?? throw new SmallLangException("missing function return ownership scope"),
+                                bindings,
+                                _currentMoveInputName);
+                        }
+                    }
+                    return;
                 case ExpressionStatement expressionStatement:
                     var effect = InferExpressionStatement(expressionStatement.Expression, functions, bindings, mutableBindings, yieldInputType);
                     if (effect is FlowBindingEffect bindingEffect)
@@ -5753,6 +5809,7 @@ internal sealed class SemanticCompiler
             var expression = statement switch
             {
                 BindingStatement binding => binding.Value,
+                ReturnStatement { Value: { } value } => value,
                 ExpressionStatement expressionStatement => expressionStatement.Expression,
                 GuardLoopControlStatement guard => guard.Condition,
                 _ => null
@@ -5890,6 +5947,7 @@ internal sealed class SemanticCompiler
         return body.Statements.Any(statement => statement switch
             {
                 BindingStatement binding => ContainsOwnedParameterCall(binding.Value, functions),
+                ReturnStatement { Value: { } value } => ContainsOwnedParameterCall(value, functions),
                 IndexAssignmentStatement assignment => ContainsOwnedParameterCall(assignment.Value, functions)
                     || ContainsOwnedParameterCall(assignment.Index, functions),
                 ExpressionStatement expression => ContainsOwnedParameterCall(expression.Expression, functions),

@@ -16,7 +16,8 @@ import smalllang.compiler.semantic.symbols as symbols
 # 14 array literal, 15 index access, 16 dictionary literal, 17 binding,
 # 18 structured if, 19 control-flow region, 20 structured while,
 # 21 loop exit, 22 guarded loop exit (opcode 0 break, 1 continue;
-# operand0 targets the while, guarded operand1 is the Bool condition).
+# operand0 targets the while, guarded operand1 is the Bool condition),
+# 23 explicit return (operand0 is the optional returned value).
 public struct TypedIrNode {
     kind: Int
     parent: Int
@@ -312,7 +313,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             expressionTypeSearch! + 1 => expressionTypeSearch!
                         }
                         expressionBelongsToFunction! -> if {
-                            (expression.kind == 42 or expression.kind == 43 or expression.kind == 44 or expression.kind == 45 or expression.kind == 46) -> if {
+                            (expression.kind == 42 or expression.kind == 43 or expression.kind == 44 or expression.kind == 45 or expression.kind == 46 or expression.kind == 47) -> if {
                                 results! -> len => controlIr
                                 controlIr => astToIr![expressionAstIndex!]
                                 18 => controlKind!
@@ -320,6 +321,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 expression.kind == 44 -> if { 20 => controlKind! }
                                 expression.kind == 45 -> if { 21 => controlKind! }
                                 expression.kind == 46 -> if { 22 => controlKind! }
+                                expression.kind == 47 -> if { 23 => controlKind! }
                                 -1 => controlOpcode!
                                 expression.kind == 45 -> if {
                                     0 => controlOpcode!
@@ -450,7 +452,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     expressionIrStart => operandIrIndex!
                     operandIrIndex! < expressionIrEnd -> while {
                         results![operandIrIndex!] => operatorIr!
-                        (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22) -> if {
+                        (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22 or operatorIr!.kind == 23) -> if {
                             -1 => firstOperand!
                             -1 => secondOperand!
                             UIntSize(0) => firstStart!
@@ -775,7 +777,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             entryExpressionTypeSearch! + 1 => entryExpressionTypeSearch!
                         }
                         entryExpressionBelongs! -> if {
-                            (entryExpression.kind == 42 or entryExpression.kind == 43 or entryExpression.kind == 44 or entryExpression.kind == 45 or entryExpression.kind == 46) -> if {
+                            (entryExpression.kind == 42 or entryExpression.kind == 43 or entryExpression.kind == 44 or entryExpression.kind == 45 or entryExpression.kind == 46 or entryExpression.kind == 47) -> if {
                                 results! -> len => entryControlIr
                                 entryControlIr => entryAstToIr![entryExpressionAst!]
                                 18 => entryControlKind!
@@ -783,6 +785,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 entryExpression.kind == 44 -> if { 20 => entryControlKind! }
                                 entryExpression.kind == 45 -> if { 21 => entryControlKind! }
                                 entryExpression.kind == 46 -> if { 22 => entryControlKind! }
+                                entryExpression.kind == 47 -> if { 23 => entryControlKind! }
                                 -1 => entryControlOpcode!
                                 entryExpression.kind == 45 -> if {
                                     0 => entryControlOpcode!
@@ -909,7 +912,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     entryExpressionStart => entryOperandIr!
                     entryOperandIr! < entryExpressionEnd -> while {
                         results![entryOperandIr!] => entryOperator!
-                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or entryOperator!.kind == 17 or entryOperator!.kind == 22) -> if {
+                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or entryOperator!.kind == 17 or entryOperator!.kind == 22 or entryOperator!.kind == 23) -> if {
                             -1 => entryFirstOperand!
                             -1 => entrySecondOperand!
                             UIntSize(0) => entryFirstStart!

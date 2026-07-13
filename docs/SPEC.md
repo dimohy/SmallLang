@@ -1352,6 +1352,20 @@ dynamic arrays release their backing pointer; dictionaries release key and
 value stores in reverse declaration order. The normal back-edge invokes the
 same scope cleanup so every iteration has identical ownership semantics.
 
+An explicit early return keeps SL's left-to-right flow:
+
+```smalllang
+value -> return
+return # Unit functions only
+```
+
+The returned owner transfers to the caller. Every other active owned local is
+dropped in reverse declaration order before the LLVM `ret` terminator. The
+reference compiler supports scalar, aggregate, and Unit returns; the
+self-hosted LLVM slice proves a scalar return from a structured region while
+cleaning an owned array. Inline local-function returns and general moved-region
+paths remain part of the structured early-exit follow-up.
+
 The loop variable is immutable for the iteration and scoped to the loop body.
 Bindings introduced inside the loop body are also scoped to that body. The
 current range direction is ascending only; if the start is greater than the end,

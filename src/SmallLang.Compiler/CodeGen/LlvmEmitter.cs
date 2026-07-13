@@ -60,6 +60,7 @@ internal sealed partial class LlvmEmitter
         FieldAssignmentStatement value => UsesChildProcess(value.Value),
         BlockFunctionCallStatement value => UsesChildProcess(value.Source) || value.Body.Any(UsesChildProcess),
         GuardLoopControlStatement value => UsesChildProcess(value.Condition),
+        ReturnStatement { Value: { } value } => UsesChildProcess(value),
         _ => false
     };
 
@@ -122,6 +123,7 @@ internal sealed partial class LlvmEmitter
         BlockFunctionCallStatement block => UsesProcessArguments(block.Source)
             || block.Body.Any(UsesProcessArguments),
         GuardLoopControlStatement guard => UsesProcessArguments(guard.Condition),
+        ReturnStatement { Value: { } value } => UsesProcessArguments(value),
         _ => false
     };
 
@@ -194,6 +196,7 @@ internal sealed partial class LlvmEmitter
         BlockFunctionCallStatement value => UsesProcessEnvironment(value.Source)
             || value.Body.Any(UsesProcessEnvironment),
         GuardLoopControlStatement value => UsesProcessEnvironment(value.Condition),
+        ReturnStatement { Value: { } value } => UsesProcessEnvironment(value),
         _ => false
     };
 

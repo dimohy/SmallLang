@@ -8,6 +8,18 @@ namespace SmallLang.Compiler.CodeGen;
 
 internal sealed partial class LlvmEmitter
 {
+    private bool FinishTerminatedFunction()
+    {
+        if (!_currentBlockTerminated)
+        {
+            return false;
+        }
+
+        EmitFunctionLine("}");
+        EmitFunctionLine();
+        return true;
+    }
+
     private void EmitUserFunctions()
     {
         var emitted = new HashSet<string>(StringComparer.Ordinal);
@@ -101,6 +113,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, function.ReturnType, function.Name);
             var transferredOwnerName = IsOwnedContainerRuntimeValue(value)
@@ -134,6 +147,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             if (function.Body is not null)
             {
                 var value = EmitExpression(function.Body);
@@ -172,6 +186,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, BoundType.Text, function.Name);
             DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName: null);
@@ -211,6 +226,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitIntExpression(function.Body);
             DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName: null);
             EmitRet("i64", value.ValueName);
@@ -244,6 +260,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitBoolExpression(function.Body);
             DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName: null);
             EmitRet("i1", value.ValueName);
@@ -276,6 +293,7 @@ internal sealed partial class LlvmEmitter
             var functionLocals = CaptureLocals();
             BindFunctionParameter(function);
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, function.ReturnType, function.Name);
             DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName: null);
@@ -316,6 +334,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, BoundType.DynamicIntArray, function.Name);
             var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);
@@ -356,6 +375,7 @@ internal sealed partial class LlvmEmitter
             var functionLocals = CaptureLocals();
             BindFunctionParameter(function);
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, function.ReturnType, function.Name);
             var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);
@@ -393,6 +413,7 @@ internal sealed partial class LlvmEmitter
             BindFunctionParameter(function);
 
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, BoundType.IntDictionary, function.Name);
             var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);
@@ -433,6 +454,7 @@ internal sealed partial class LlvmEmitter
             var functionLocals = CaptureLocals();
             BindFunctionParameter(function);
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, function.ReturnType, function.Name);
             var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);

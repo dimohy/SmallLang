@@ -305,6 +305,12 @@ internal static class StoragePlacementAnalyzer
                 case ExpressionStatement expression:
                     IndexNestedScopes(expression.Expression, positions, ref next);
                     break;
+                case ReturnStatement { Value: { } value }:
+                    IndexNestedScopes(value, positions, ref next);
+                    break;
+                case GuardLoopControlStatement guard:
+                    IndexNestedScopes(guard.Condition, positions, ref next);
+                    break;
             }
 
             positions.Add(statement, next++);
@@ -503,6 +509,12 @@ internal static class StoragePlacementAnalyzer
                 break;
             case ExpressionStatement expression:
                 CollectNestedScopeCandidates(expression.Expression, functions, positions, candidates);
+                break;
+            case ReturnStatement { Value: { } value }:
+                CollectNestedScopeCandidates(value, functions, positions, candidates);
+                break;
+            case GuardLoopControlStatement guard:
+                CollectNestedScopeCandidates(guard.Condition, functions, positions, candidates);
                 break;
         }
     }
@@ -887,6 +899,7 @@ internal static class StoragePlacementAnalyzer
                 && UsesOwnerReadOnly(assignment.Value, ownerName, kind, functions),
             BlockFunctionCallStatement call => UsesOwnerReadOnly(call, ownerName, kind, functions),
             ExpressionStatement expression => UsesOwnerReadOnly(expression.Expression, ownerName, kind, functions),
+            ReturnStatement { Value: { } value } => UsesOwnerReadOnly(value, ownerName, kind, functions),
             GuardLoopControlStatement guard => UsesOwnerReadOnly(guard.Condition, ownerName, kind, functions),
             _ => false
         };
@@ -1089,6 +1102,7 @@ internal static class StoragePlacementAnalyzer
             BlockFunctionCallStatement call => ContainsOwner(call.Source, ownerName)
                 || call.Body.Any(nested => ContainsOwner(nested, ownerName)),
             ExpressionStatement expression => ContainsOwner(expression.Expression, ownerName),
+            ReturnStatement { Value: { } value } => ContainsOwner(value, ownerName),
             GuardLoopControlStatement guard => ContainsOwner(guard.Condition, ownerName),
             _ => false
         };

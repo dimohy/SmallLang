@@ -244,10 +244,15 @@ internal sealed partial class LlvmEmitter
         }
     }
 
-    private void DropOwnedLocals()
+    private void DropOwnedLocals(string? transferredOwnerName = null)
     {
         foreach (var (name, storedValue) in _locals.Reverse())
         {
+            if (string.Equals(name, transferredOwnerName, StringComparison.Ordinal))
+            {
+                EndMutableContainerSlotLifetime(name);
+                continue;
+            }
             DropOwnedLocal(name, storedValue);
         }
     }

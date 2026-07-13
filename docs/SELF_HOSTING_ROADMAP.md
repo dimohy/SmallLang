@@ -478,6 +478,15 @@ Guard-flow loop control is also cumulative: `condition -> if continue` and
 and self-hosted backends branch true through the same ownership cleanup path and
 let false fall through. Postfix `?` remains unambiguous `Result` propagation.
 
+Explicit `value -> return` and Unit `return` are now represented as terminating
+statements. The reference backend validates the enclosing function and result
+type, transfers a returned owner, and drops every other active owner before
+`ret`. The self-hosted AST and typed IR carry a dedicated return terminator;
+the LLVM slice executes an early scalar return from an `if` region and frees a
+function-local dynamic array on both the early and fallthrough paths. Inline
+local-function returns, full path-sensitive move masks, and recursively owned
+aggregate cleanup keep the structured early-exit gate partial.
+
 Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA
 values in both functions and `main`, so bound values can be returned or passed

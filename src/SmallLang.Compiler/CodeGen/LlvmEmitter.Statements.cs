@@ -126,6 +126,9 @@ internal sealed partial class LlvmEmitter
             case GuardLoopControlStatement guardLoopControl:
                 EmitGuardLoopControlStatement(guardLoopControl);
                 break;
+            case ReturnStatement returnStatement:
+                EmitReturnStatement(returnStatement);
+                return;
             case ExpressionStatement expressionStatement:
                 _mainOk = EmitExpressionStatement(expressionStatement.Expression, _mainOk);
                 break;
@@ -145,6 +148,32 @@ internal sealed partial class LlvmEmitter
 
         DropOwnedLocalsCreatedSince(loop.OuterScope, transferredOwnerName: null);
         EmitBranch(statement.Kind == LoopControlKind.Break ? loop.BreakLabel : loop.ContinueLabel);
+    }
+
+    private void EmitReturnStatement(ReturnStatement statement)
+    {
+        var function = _currentFunction
+            ?? throw new SmallLangException("'return' is only valid inside a function");
+        if (statement.Value is null)
+        {
+            if (function.ReturnType != BoundType.Unit)
+            {
+                throw new SmallLangException($"return requires {function.ReturnType} but received Unit");
+            }
+
+            DropOwnedLocals();
+            EmitInstruction("ret void");
+            return;
+        }
+
+        var value = EmitExpression(statement.Value);
+        EnsureRuntimeType(value, function.ReturnType, function.Name);
+        var transferredOwnerName = IsOwnedContainerRuntimeValue(value)
+            ? GetFunctionResultTransferredOwnerName(function, statement.Value)
+            : null;
+        DropOwnedLocals(transferredOwnerName);
+        var materialized = MaterializeAggregateValue(value);
+        EmitRet(materialized.TypeName, materialized.ValueName);
     }
 
     private void EmitGuardLoopControlStatement(GuardLoopControlStatement statement)

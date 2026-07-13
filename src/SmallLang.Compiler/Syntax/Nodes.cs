@@ -127,6 +127,8 @@ internal sealed record GuardLoopControlStatement(
     int Line,
     int Column) : Statement;
 
+internal sealed record ReturnStatement(Expression? Value, int Line, int Column) : Statement;
+
 internal abstract record Expression(int Line, int Column);
 
 internal sealed record StringExpression(IReadOnlyList<StringSegment> Segments, int Line, int Column)

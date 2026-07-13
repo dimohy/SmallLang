@@ -25,6 +25,7 @@ internal sealed partial class LlvmEmitter
             var functionLocals = CaptureLocals();
             BindFunctionParameter(function);
             EmitStatements(function.BlockBody);
+            if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
             EnsureRuntimeType(value, BoundType.Arena, function.Name);
             var transferredOwnerName = GetFunctionResultTransferredOwnerName(function, function.Body);

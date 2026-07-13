@@ -36,6 +36,7 @@ struct OwnedDropRequest {
     regionIndex: Int
     beforeAst: Int
     edgeIndex: Int
+    transferredSymbol: Int
 }
 
 emitCore sources: move [Text; ~] -> Unit {
@@ -369,17 +370,27 @@ emitCore sources: move [Text; ~] -> Unit {
             request.beforeAst >= 0 -> if {
                 dropAst![ownedDropCandidate.astNode].start >= dropBeforeStart! -> if { false => ownedDropBeforeEdge! }
             }
-            (ownedDropBeforeEdge! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 13) -> if {
+            (ownedDropBeforeEdge! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 13 and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!) = extractvalue %sl.array.i32 %v$(ownedDropCandidate.operand0), 0" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!))" -> println
             }
-            (ownedDropBeforeEdge! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 15) -> if {
+            (ownedDropBeforeEdge! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 15 and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_keys = extractvalue %sl.dict %v$(ownedDropCandidate.operand0), 0" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_keys)" -> println
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values = extractvalue %sl.dict %v$(ownedDropCandidate.operand0), 1" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values)" -> println
             }
         }
+    }
+    regionReturns regionIndex: Int -> Bool {
+        sources -> typedIr.lower => returnIr!
+        false => returns!
+        0 => returnSearch!
+        returnSearch! < (returnIr! -> len) -> while {
+            (returnIr![returnSearch!].kind == 23 and returnIr![returnSearch!].parent == regionIndex) -> if { true => returns! }
+            returnSearch! + 1 => returnSearch!
+        }
+        returns!
     }
     emitRegion regionIndex: Int -> Unit {
         sources -> typedIr.lower => regionIr!
@@ -617,6 +628,57 @@ emitCore sources: move [Text; ~] -> Unit {
             regionEventKinds![regionOrderIndex!] => regionEventKind
             regionEventKind == 1 -> if {
             not regionTerminated! -> if {
+            regionNode.kind == 23 -> if {
+                -1 => returnedSymbol!
+                regionNode.operand0 >= 0 -> if {
+                    regionIr![regionNode.operand0] => returnedNode
+                    returnedNode.kind == 5 -> if { returnedNode.symbol => returnedSymbol! }
+                }
+                regionNode.parent => returnCleanupAncestor!
+                (returnCleanupAncestor! >= 0 and returnCleanupAncestor! != ownerIndex!) -> while {
+                    (regionIr![returnCleanupAncestor!].kind == 19 or regionIr![returnCleanupAncestor!].kind == 1) -> if {
+                        OwnedDropRequest { regionIndex: returnCleanupAncestor!, beforeAst: regionNode.astNode, edgeIndex: regionNodeIndex! * 10 + 7, transferredSymbol: returnedSymbol! } -> emitOwnedDrops
+                    }
+                    regionIr![returnCleanupAncestor!].parent => returnCleanupAncestor!
+                }
+                ownerIndex! >= 0 -> if {
+                    regionIr![ownerIndex!] => returnOwner
+                    returnOwner.operand1 >= 0 -> if {
+                        regionIr![returnOwner.operand1] => returnParameter
+                        returnParameter.symbol != returnedSymbol! -> if {
+                            (returnParameter.typeOrigin == 13 and returnParameter.flags % 2 == 1) -> if {
+                                "  %return$(regionNodeIndex!)_drop_arg = extractvalue %sl.array.i32 %arg, 0" -> println
+                                "  call void @free(ptr %return$(regionNodeIndex!)_drop_arg)" -> println
+                            }
+                            (returnParameter.typeOrigin == 15 and returnParameter.flags % 2 == 1) -> if {
+                                "  %return$(regionNodeIndex!)_drop_arg_keys = extractvalue %sl.dict %arg, 0" -> println
+                                "  call void @free(ptr %return$(regionNodeIndex!)_drop_arg_keys)" -> println
+                                "  %return$(regionNodeIndex!)_drop_arg_values = extractvalue %sl.dict %arg, 1" -> println
+                                "  call void @free(ptr %return$(regionNodeIndex!)_drop_arg_values)" -> println
+                            }
+                        }
+                    }
+                    (returnOwner.typeOrigin == 1 and returnOwner.typeSymbol == 0) -> if {
+                        "  ret void" -> println
+                    } else {
+                        "  ret " -> print
+                        returnOwner -> writeType
+                        " " -> print
+                        regionIr![regionNode.operand0] => returnedValue
+                        (returnedValue.kind == 3 or returnedValue.kind == 4) -> if {
+                            sources[returnedValue.sourceModule] -> lexer.lex => returnValueTokens!
+                            returnValueTokens![returnedValue.payloadToken] => returnValueToken
+                            returnedValue.kind == 3 -> if { sources[returnedValue.sourceModule] -> slice(returnValueToken.span.start, returnValueToken.span.length) -> print } else {
+                                ((sources[returnedValue.sourceModule] -> byte(returnValueToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> print
+                            }
+                        } else {
+                            (returnOwner.operand1 >= 0 and returnedValue.kind == 5 and returnedValue.symbol == regionIr![returnOwner.operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        }
+                        "" -> println
+                    }
+                }
+                true => regionTerminated!
+            }
             regionNode.kind == 22 -> if {
                 regionIr![regionNode.operand1] => guardCondition
                 "  br i1 " -> print
@@ -632,7 +694,7 @@ emitCore sources: move [Text; ~] -> Unit {
                 regionNode.parent => guardCleanupAncestor!
                 (guardCleanupAncestor! >= 0 and guardCleanupAncestor! != regionNode.operand0) -> while {
                     regionIr![guardCleanupAncestor!].kind == 19 -> if {
-                        OwnedDropRequest { regionIndex: guardCleanupAncestor!, beforeAst: regionNode.astNode, edgeIndex: regionNodeIndex! * 10 + 8 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: guardCleanupAncestor!, beforeAst: regionNode.astNode, edgeIndex: regionNodeIndex! * 10 + 8, transferredSymbol: -1 } -> emitOwnedDrops
                     }
                     regionIr![guardCleanupAncestor!].parent => guardCleanupAncestor!
                 }
@@ -650,7 +712,7 @@ emitCore sources: move [Text; ~] -> Unit {
                 regionNode.parent => cleanupAncestor!
                 (cleanupAncestor! >= 0 and cleanupAncestor! != regionNode.operand0) -> while {
                     regionIr![cleanupAncestor!].kind == 19 -> if {
-                        OwnedDropRequest { regionIndex: cleanupAncestor!, beforeAst: regionNode.astNode, edgeIndex: regionNodeIndex! * 10 + 9 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: cleanupAncestor!, beforeAst: regionNode.astNode, edgeIndex: regionNodeIndex! * 10 + 9, transferredSymbol: -1 } -> emitOwnedDrops
                     }
                     regionIr![cleanupAncestor!].parent => cleanupAncestor!
                 }
@@ -661,7 +723,7 @@ emitCore sources: move [Text; ~] -> Unit {
                 }
                 true => regionTerminated!
             }
-            (regionNode.kind != 21 and regionNode.kind != 22) -> if {
+            (regionNode.kind != 21 and regionNode.kind != 22 and regionNode.kind != 23) -> if {
             (regionNode.kind == 5 and ownerIndex! >= 0 and not (regionIr![ownerIndex!].kind == 0 and regionIr![ownerIndex!].operand1 >= 0 and regionNode.symbol == regionIr![regionIr![ownerIndex!].operand1].symbol)) -> if {
                 -1 => regionBindingIndex!
                 0 => regionBindingSearch!
@@ -892,7 +954,7 @@ emitCore sources: move [Text; ~] -> Unit {
             regionEventKind == 3 -> if {
                 ifActive![regionNodeIndex!] -> if {
                     not regionTerminated! -> if {
-                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 1 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 1, transferredSymbol: -1 } -> emitOwnedDrops
                         "  br label %if$(regionNodeIndex!)_merge" -> println
                         true => ifThenReachesMerge![regionNodeIndex!]
                     }
@@ -905,9 +967,9 @@ emitCore sources: move [Text; ~] -> Unit {
                 regionNode.nextOperand < 0 -> if { true => ifThenReachesMerge![regionNodeIndex!] }
                 not regionTerminated! -> if {
                     regionNode.nextOperand >= 0 -> if {
-                        OwnedDropRequest { regionIndex: regionNode.nextOperand, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 2 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: regionNode.nextOperand, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 2, transferredSymbol: -1 } -> emitOwnedDrops
                     } else {
-                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 2 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 2, transferredSymbol: -1 } -> emitOwnedDrops
                     }
                     "  br label %if$(regionNodeIndex!)_merge" -> println
                     true => ifThenReachesMerge![regionNodeIndex!]
@@ -965,7 +1027,7 @@ emitCore sources: move [Text; ~] -> Unit {
             regionEventKind == 8 -> if {
                 loopActive![regionNodeIndex!] -> if {
                     not regionTerminated! -> if {
-                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 3 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: regionNode.operand1, beforeAst: -1, edgeIndex: regionNodeIndex! * 10 + 3, transferredSymbol: -1 } -> emitOwnedDrops
                         "  br label %while$(regionNodeIndex!)_header" -> println
                     }
                     "while$(regionNodeIndex!)_exit:" -> println
@@ -1869,14 +1931,17 @@ emitCore sources: move [Text; ~] -> Unit {
                         ", label %if$(expressionIndex!)_then, label %if$(expressionIndex!)_merge" -> println
                     }
                     "if$(expressionIndex!)_then:" -> println
+                    expression.operand1 -> regionReturns => thenReturns!
                     expression.operand1 -> emitRegion
-                    "  br label %if$(expressionIndex!)_merge" -> println
+                    not thenReturns! -> if { "  br label %if$(expressionIndex!)_merge" -> println }
+                    false => elseReturns!
                     expression.nextOperand >= 0 -> if {
                         "if$(expressionIndex!)_else:" -> println
+                        expression.nextOperand -> regionReturns => elseReturns!
                         expression.nextOperand -> emitRegion
-                        "  br label %if$(expressionIndex!)_merge" -> println
+                        not elseReturns! -> if { "  br label %if$(expressionIndex!)_merge" -> println }
                     }
-                    "if$(expressionIndex!)_merge:" -> println
+                    not (thenReturns! and elseReturns!) -> if { "if$(expressionIndex!)_merge:" -> println }
                     (expression.typeSymbol != 0 and expression.nextOperand >= 0) -> if {
                         ir![expression.operand1] => thenRegion
                         ir![expression.nextOperand] => elseRegion
@@ -1913,7 +1978,7 @@ emitCore sources: move [Text; ~] -> Unit {
                     WhileBranchRequest { whileIndex: expressionIndex!, ownerIndex: functionIndex! } -> emitWhileBranch
                     "while$(expressionIndex!)_body:" -> println
                     expression.operand1 -> emitRegion
-                    OwnedDropRequest { regionIndex: expression.operand1, beforeAst: -1, edgeIndex: expressionIndex! * 10 + 3 } -> emitOwnedDrops
+                    OwnedDropRequest { regionIndex: expression.operand1, beforeAst: -1, edgeIndex: expressionIndex! * 10 + 3, transferredSymbol: -1 } -> emitOwnedDrops
                     "  br label %while$(expressionIndex!)_header" -> println
                     "while$(expressionIndex!)_exit:" -> println
                 }
@@ -2538,7 +2603,7 @@ emitCore sources: move [Text; ~] -> Unit {
                         WhileBranchRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex! } -> emitWhileBranch
                         "while$(entryExpressionIndex!)_body:" -> println
                         entryExpression.operand1 -> emitRegion
-                        OwnedDropRequest { regionIndex: entryExpression.operand1, beforeAst: -1, edgeIndex: entryExpressionIndex! * 10 + 3 } -> emitOwnedDrops
+                        OwnedDropRequest { regionIndex: entryExpression.operand1, beforeAst: -1, edgeIndex: entryExpressionIndex! * 10 + 3, transferredSymbol: -1 } -> emitOwnedDrops
                         "  br label %while$(entryExpressionIndex!)_header" -> println
                         "while$(entryExpressionIndex!)_exit:" -> println
                     }
