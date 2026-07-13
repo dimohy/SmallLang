@@ -1,0 +1,5 @@
+async_cfg_resume
+cancel_suspended
+cancel_input
+cancel_spill_task_handle
+ret i1 false

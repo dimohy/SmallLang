@@ -1,0 +1,1 @@
+bare yield is only valid inside an async function

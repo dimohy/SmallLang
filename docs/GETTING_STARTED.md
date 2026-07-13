@@ -233,6 +233,26 @@ Body-local owners are dropped before either transfer. An outer owner required
 by the next iteration or after loop exit must remain initialized on every
 incoming edge; inconsistent consumption is a compile-time error.
 
+Long CPU work can explicitly cooperate with the executor using bare `yield`:
+
+```smalllang
+scan count: Int -> async Int {
+    0 => index!
+    index! < count -> while {
+        # Perform one bounded piece of CPU work.
+        index! + 1 => index!
+        yield
+    }
+    index!
+}
+```
+
+`yield` spills live state, places the current Task at the back of the ready
+queue, and resumes at the following statement. If its owner cancels the queued
+Task, the compiler-generated state destroy path drops the frame instead. This
+bare async statement is distinct from `value -> yield`, which still transfers a
+value from a user-defined block function.
+
 Browser WebAssembly output is available through the `wasm32-browser` target. The
 generated module exports `smalllang_start` and `memory`, and imports
 `env.smalllang_browser_write(ptr, len)` so the page can render stdout text:

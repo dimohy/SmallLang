@@ -3736,4 +3736,42 @@ dropped from 793.8 seconds to 382.8 seconds, a 51.8% reduction, with all cases
 passing. This fixes scheduling starvation. Reusing fingerprinted self-host
 modules or native objects remains a separate future optimization.
 
+## D124 - Bare Yield Is A Cancellation-Aware Scheduler Suspension
+
+Status: reference compiler and self-host suspension metadata implemented
+Date: 2026-07-14
+
+Bare `yield` is valid only as a statement inside an async function. It is a real
+stackless suspension point with no child Task: the worker spills every active
+typed local not already resident in its function context, stores a stable state
+number, returns pending, and is appended to the FIFO ready queue. Resume reloads
+the exact state frame and continues after the statement.
+
+If the Task owner cancels it while queued, the state-specific cancel entry does
+not look for a child handle. It drops affine Task spills and other owned values
+in reverse order, frees the frame and context, and removes the task control from
+the queue. Long CPU loops are therefore cooperative and cancelable at explicit,
+reviewable points rather than through hidden preemption.
+
+The spelling intentionally follows SL's zero-input property rule: `yield`, not
+`yield()`. It also reuses an existing word contextually. Bare `yield` suspends an
+async Task, while `value -> yield` continues to transfer a value out of a block
+function. `main` and synchronous functions have no resumable Task frame and
+reject the bare form.
+
+This combines Swift's explicit scheduler yield, Kotlin's cancellation-aware
+yield, and Tokio's requeue-at-the-back behavior while preserving SL's affine
+ownership and target-neutral single executor. Example 256 proves an infinite
+CPU loop yields so a later gate Task can finish, then is canceled with a live
+box and dynamic owner in its frame. It also covers loop, branch, straight-line,
+post-await, and repeated yield. Example 257 proves self-host metadata assigns
+one shared state sequence while distinguishing await and yield kinds. Example
+258 covers a live owned input, normal resumption, and an input transferred to a
+child before yielding; each cancellation state retains exactly one cleanup
+obligation.
+
+References: [Swift Task.yield](https://developer.apple.com/documentation/swift/task/yield%28%29),
+[Kotlin cancellation and yield](https://kotlinlang.org/docs/cancellation-and-timeouts.html),
+[Tokio task yield](https://docs.rs/tokio/latest/tokio/task/fn.yield_now.html).
+
 

@@ -1,0 +1,5 @@
+async_cfg_resume
+async_spill_frame
+async_while_continue
+cancel_suspended
+ret i1 false

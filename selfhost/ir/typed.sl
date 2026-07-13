@@ -50,14 +50,17 @@ public struct MoveEvent {
 }
 
 # A suspension point belongs to one async function and receives a stable,
-# one-based resume state in source order. awaitIr is -1 until the corresponding
-# flow target becomes a first-class typed-IR node; awaitAst remains stable now.
+# one-based resume state in source order. Kind distinguishes child await from
+# cooperative yield. awaitIr is -1 until a corresponding node is available;
+# awaitAst is the stable source-site AST index for either kind.
 public struct CoroutineSuspendPoint {
     functionIr: Int
     sourceModule: Int
     awaitAst: Int
     awaitIr: Int
     state: Int
+    # 0 awaits a child Task; 1 cooperatively yields the current Task.
+    kind: Int
 }
 
 # One frame slot records a binding that is defined before a suspension and
@@ -1341,6 +1344,7 @@ public suspensions sources: [Text; ~] -> [CoroutineSuspendPoint; ~] {
         awaitAstIndex! < (astNodes! -> len) -> while {
             astNodes![awaitAstIndex!] => awaitAst
             false => isAwait!
+            false => isYield!
             (awaitAst.kind == 16 and awaitAst.parent >= 0 and astNodes![awaitAst.parent].kind == 10 and awaitAst.payloadToken >= 0) -> if {
                 tokens![awaitAst.payloadToken] => awaitToken
                 awaitToken.span.length == UIntSize(5) -> if {
@@ -1354,7 +1358,20 @@ public suspensions sources: [Text; ~] -> [CoroutineSuspendPoint; ~] {
                     }
                 }
             }
-            isAwait! -> if {
+            (awaitAst.kind == 15 and awaitAst.payloadToken >= 0) -> if {
+                tokens![awaitAst.payloadToken] => yieldToken
+                yieldToken.span.length == UIntSize(5) -> if {
+                    source -> byte(yieldToken.span.start) => yieldByte0
+                    source -> byte(yieldToken.span.start + UIntSize(1)) => yieldByte1
+                    source -> byte(yieldToken.span.start + UIntSize(2)) => yieldByte2
+                    source -> byte(yieldToken.span.start + UIntSize(3)) => yieldByte3
+                    source -> byte(yieldToken.span.start + UIntSize(4)) => yieldByte4
+                    (yieldByte0 == UInt8(121) and yieldByte1 == UInt8(105) and yieldByte2 == UInt8(101) and yieldByte3 == UInt8(108) and yieldByte4 == UInt8(100)) -> if {
+                        true => isYield!
+                    }
+                }
+            }
+            (isAwait! or isYield!) -> if {
                 awaitAst.parent => functionAstIndex!
                 (functionAstIndex! >= 0 and astNodes![functionAstIndex!].kind != 7) -> while {
                     astNodes![functionAstIndex!].parent => functionAstIndex!
@@ -1386,6 +1403,7 @@ public suspensions sources: [Text; ~] -> [CoroutineSuspendPoint; ~] {
                             awaitAst: awaitAstIndex!
                             awaitIr: awaitIr!
                             state: state!
+                            kind: isYield! -> if { 1 } else { 0 }
                         })
                     }
                 }

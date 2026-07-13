@@ -1,0 +1,1 @@
+suspensions=2,states=3,yields=1,awaits=1,slots=3

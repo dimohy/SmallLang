@@ -63,6 +63,11 @@ internal sealed partial class LlvmEmitter
 
     private void EmitStatement(Statement statement)
     {
+        if (statement is ExpressionStatement cfgYield && TryEmitCfgYieldStatement(cfgYield))
+        {
+            EmitStackLifetimeEndsAfter(statement);
+            return;
+        }
         if (statement is BindingStatement cfgAwait && TryEmitCfgAwaitBinding(cfgAwait))
         {
             EmitStackLifetimeEndsAfter(statement);
@@ -560,7 +565,7 @@ internal sealed partial class LlvmEmitter
 
     private void EmitWhileBlockFunctionCall(BlockFunctionCallStatement statement)
     {
-        if (HasPlannedCfgAwait(statement.Body))
+        if (HasPlannedCfgSuspension(statement.Body))
         {
             EmitAsyncWhileBlockFunctionCall(statement);
             return;
@@ -597,17 +602,16 @@ internal sealed partial class LlvmEmitter
         _currentBlockLabel = endLabel;
     }
 
-    private bool HasPlannedCfgAwait(IReadOnlyList<Statement> statements)
+    private bool HasPlannedCfgSuspension(IReadOnlyList<Statement> statements)
     {
         if (_activeAsyncCfg is not { } lowering)
         {
             return false;
         }
 
-        var candidates = new List<(BindingStatement Binding, bool Nested)>();
-        CollectCfgAwaits(statements, nested: true, candidates);
-        return candidates.Any(candidate =>
-            lowering.Plan.ByBinding.ContainsKey(candidate.Binding));
+        var candidates = new List<AsyncCfgCandidate>();
+        CollectCfgSuspensions(statements, nested: true, candidates);
+        return candidates.Any(candidate => lowering.Plan.BySite.ContainsKey(candidate.Site));
     }
 
     private void EmitAsyncWhileBlockFunctionCall(BlockFunctionCallStatement statement)

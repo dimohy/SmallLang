@@ -1703,6 +1703,19 @@ internal sealed class SemanticCompiler
         IReadOnlySet<string>? mutableBindings = null,
         BoundType? yieldInputType = null)
     {
+        if (expression is NameExpression { Name: "yield" })
+        {
+            if (!_currentFunctionIsAsync || _currentFunctionReturnType is null)
+            {
+                throw Error(
+                    expression.Line,
+                    expression.Column,
+                    "bare yield is only valid inside an async function");
+            }
+
+            return FlowEffect.None;
+        }
+
         if (expression is FlowExpression flow)
         {
             var result = InferFlowExpression(

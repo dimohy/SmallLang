@@ -1,0 +1,1 @@
+gate=42,finite=9,mixed=31,survivor=2

@@ -621,8 +621,20 @@ entry cancels the active child and drops initialized owners. `break`,
 early edge drops body-local owners first, captures the surviving loop-carried
 representation, and joins either the continue or exit phi. Consuming a required
 outer owner on only one edge is rejected as inconsistent ownership.
-Cancellation observation, task groups, closure-capture analysis, and
-nonblocking I/O registration follow.
+
+A bare `yield` statement is an async-only cooperative suspension point. It
+spills the same typed live state as `await`, records its numbered resume state,
+returns pending, and lets the FIFO executor append the current Task behind
+other ready work. It has no child Task. Cancellation while it is queued invokes
+the state-specific destroy path, so CPU loops become cancelable exactly where
+the programmer places `yield`. In contrast, `value -> yield` remains the
+existing block-function value transfer. Bare `yield` is rejected in `main` and
+ordinary synchronous functions because neither has a resumable Task frame.
+For a `move` input, each suspension state records whether the original input
+owner is still live; cancellation drops either that context owner or the owner
+to which it was transferred, never both.
+Task groups, closure-capture analysis, failure propagation, and nonblocking I/O
+registration follow.
 
 ## Local Functions
 
