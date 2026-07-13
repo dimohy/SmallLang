@@ -4,8 +4,9 @@ main {
     [
         """
         main {
-            -2147483648 => value
-            "value = $value!" -> println
+            -2147483648 => minimum
+            42 => answer
+            "$minimum/$answer/$minimum" -> println
         }
         """,
         ~

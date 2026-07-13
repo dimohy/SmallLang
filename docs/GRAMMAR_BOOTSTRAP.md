@@ -387,12 +387,13 @@ runtime extraction. Direct literal calls and literal function arguments retain
 their compact constant paths, avoiding unused materializations. A second
 execution regression verifies `"hello" => message` followed by
 `message -> println`.
-Main-local `$name` interpolation now resolves an `Int` binding through the
-source symbol table and typed-IR binding node. LLVM prints the literal prefix,
-formats the `i32` into a 12-byte stack buffer, and prints the suffix without
-allocating an intermediate Text. Sign extension makes `-2147483648` safe.
-Multiple segments, function parameters, `$(expression)`, other display types,
-general dynamic Text construction, and lifetime ownership remain.
+Main-local `$name` interpolation now resolves `Int` bindings through the source
+symbol table and typed-IR binding nodes. LLVM walks multiple segments, prints
+each intervening literal range, and formats every `i32` into a reusable 12-byte
+stack buffer without allocating intermediate Text. Repeated names and empty
+leading/trailing ranges are valid; sign extension makes `-2147483648` safe.
+Function parameters, `$(expression)`, other display types, general dynamic Text
+construction, and lifetime ownership remain.
 
 The bootstrap type table now predeclares parametric dynamic-array identities
 used by struct fields before struct layouts are finalized. A field such as

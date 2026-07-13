@@ -59,13 +59,20 @@ emit:
   ret void
 }
 %sl.text = type { ptr, i64 }
-@sl_str_5 = private unnamed_addr constant [15 x i8] c"value = $value!"
+@sl_str_7 = private unnamed_addr constant [25 x i8] c"$minimum/$answer/$minimum"
 define i32 @main() {
 entry:
-  %v2 = sub i32 2147483648, 0
-  call void @sl_runtime_print(ptr @sl_str_5, i64 8, i1 false)
-  call void @sl_runtime_print_i32(i32 %v2, i1 false)
-  %v4_interpolation_suffix = getelementptr i8, ptr @sl_str_5, i64 14
-  call void @sl_runtime_print(ptr %v4_interpolation_suffix, i64 1, i1 true)
+  %v3 = sub i32 2147483648, 0
+  %v6_interpolation_part0 = getelementptr i8, ptr @sl_str_7, i64 0
+  call void @sl_runtime_print(ptr %v6_interpolation_part0, i64 0, i1 false)
+  call void @sl_runtime_print_i32(i32 %v3, i1 false)
+  %v6_interpolation_part1 = getelementptr i8, ptr @sl_str_7, i64 8
+  call void @sl_runtime_print(ptr %v6_interpolation_part1, i64 1, i1 false)
+  call void @sl_runtime_print_i32(i32 42, i1 false)
+  %v6_interpolation_part2 = getelementptr i8, ptr @sl_str_7, i64 16
+  call void @sl_runtime_print(ptr %v6_interpolation_part2, i64 1, i1 false)
+  call void @sl_runtime_print_i32(i32 %v3, i1 false)
+  %v6_interpolation_suffix = getelementptr i8, ptr @sl_str_7, i64 25
+  call void @sl_runtime_print(ptr %v6_interpolation_suffix, i64 0, i1 true)
   ret i32 0
 }

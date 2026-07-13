@@ -750,65 +750,78 @@ emitCore sources: move [Text; ~] -> Unit {
                                 Int(runtimeArgumentToken.span.length) - 2 => runtimeArgumentLength
                                 runtimeArgumentToken.span.start + UIntSize(1) => interpolationContentStart
                                 runtimeArgumentToken.span.start + runtimeArgumentToken.span.length - UIntSize(1) => interpolationContentEnd
-                                interpolationContentStart => interpolationDollar!
-                                -1 => interpolationBindingIr!
-                                interpolationContentStart => interpolationMatchStart!
-                                UIntSize(0) => interpolationNameEnd!
-                                interpolationDollar! < interpolationContentEnd -> while {
-                                    ((sources[runtimeArgument.sourceModule] -> byte(interpolationDollar!)) == UInt8(36) and interpolationDollar! + UIntSize(1) < interpolationContentEnd) -> if {
-                                        interpolationDollar! + UIntSize(1) => interpolationNameStart
-                                        interpolationNameStart => interpolationNameEnd!
-                                        true => interpolationNameContinues!
-                                        (interpolationNameEnd! < interpolationContentEnd and interpolationNameContinues!) -> while {
-                                            sources[runtimeArgument.sourceModule] -> byte(interpolationNameEnd!) => interpolationNameByte
-                                            ((interpolationNameByte >= UInt8(48) and interpolationNameByte <= UInt8(57)) or (interpolationNameByte >= UInt8(65) and interpolationNameByte <= UInt8(90)) or (interpolationNameByte >= UInt8(97) and interpolationNameByte <= UInt8(122)) or interpolationNameByte == UInt8(95)) -> if {
-                                                interpolationNameEnd! + UIntSize(1) => interpolationNameEnd!
-                                            } else { false => interpolationNameContinues! }
-                                        }
-                                        interpolationNameEnd! > interpolationNameStart -> if {
-                                            sources[runtimeArgument.sourceModule] -> symbols.collect => interpolationSymbols!
-                                            0 => interpolationSymbolIndex!
-                                            interpolationSymbolIndex! < (interpolationSymbols! -> len) -> while {
-                                                interpolationSymbols![interpolationSymbolIndex!] => interpolationSymbol
-                                                interpolationSymbol.kind == 9 -> if {
-                                                    runtimeArgumentTokens![interpolationSymbol.nameToken] => interpolationSymbolToken
-                                                    interpolationSymbolToken.span.length == interpolationNameEnd! - interpolationNameStart => interpolationNameEqual!
-                                                    UIntSize(0) => interpolationNameByteIndex!
-                                                    (interpolationNameEqual! and interpolationNameByteIndex! < interpolationSymbolToken.span.length) -> while {
-                                                        (sources[runtimeArgument.sourceModule] -> byte(interpolationNameStart + interpolationNameByteIndex!)) != (sources[runtimeArgument.sourceModule] -> byte(interpolationSymbolToken.span.start + interpolationNameByteIndex!)) -> if { false => interpolationNameEqual! }
-                                                        interpolationNameByteIndex! + UIntSize(1) => interpolationNameByteIndex!
-                                                    }
-                                                    interpolationNameEqual! -> if {
-                                                        functionIndex! + 1 => interpolationBindingSearch!
-                                                        interpolationBindingSearch! < entryEnd! -> while {
-                                                            (ir![interpolationBindingSearch!].kind == 17 and ir![interpolationBindingSearch!].symbol == interpolationSymbolIndex! and ir![interpolationBindingSearch!].typeSymbol == 2) -> if {
-                                                                interpolationBindingSearch! => interpolationBindingIr!
-                                                                interpolationDollar! => interpolationMatchStart!
+                                interpolationContentStart => interpolationSegmentStart!
+                                0 => interpolationPartIndex!
+                                false => emittedInterpolation!
+                                true => interpolationSegmentsRemain!
+                                interpolationSegmentsRemain! -> while {
+                                    interpolationSegmentStart! => interpolationDollar!
+                                    -1 => interpolationBindingIr!
+                                    interpolationSegmentStart! => interpolationMatchStart!
+                                    interpolationSegmentStart! => interpolationNameEnd!
+                                    (interpolationDollar! < interpolationContentEnd and interpolationBindingIr! < 0) -> while {
+                                        ((sources[runtimeArgument.sourceModule] -> byte(interpolationDollar!)) == UInt8(36) and interpolationDollar! + UIntSize(1) < interpolationContentEnd) -> if {
+                                            interpolationDollar! + UIntSize(1) => interpolationNameStart
+                                            interpolationNameStart => interpolationNameEnd!
+                                            true => interpolationNameContinues!
+                                            (interpolationNameEnd! < interpolationContentEnd and interpolationNameContinues!) -> while {
+                                                sources[runtimeArgument.sourceModule] -> byte(interpolationNameEnd!) => interpolationNameByte
+                                                ((interpolationNameByte >= UInt8(48) and interpolationNameByte <= UInt8(57)) or (interpolationNameByte >= UInt8(65) and interpolationNameByte <= UInt8(90)) or (interpolationNameByte >= UInt8(97) and interpolationNameByte <= UInt8(122)) or interpolationNameByte == UInt8(95)) -> if {
+                                                    interpolationNameEnd! + UIntSize(1) => interpolationNameEnd!
+                                                } else { false => interpolationNameContinues! }
+                                            }
+                                            interpolationNameEnd! > interpolationNameStart -> if {
+                                                sources[runtimeArgument.sourceModule] -> symbols.collect => interpolationSymbols!
+                                                0 => interpolationSymbolIndex!
+                                                interpolationSymbolIndex! < (interpolationSymbols! -> len) -> while {
+                                                    interpolationSymbols![interpolationSymbolIndex!] => interpolationSymbol
+                                                    interpolationSymbol.kind == 9 -> if {
+                                                        runtimeArgumentTokens![interpolationSymbol.nameToken] => interpolationSymbolToken
+                                                        interpolationSymbolToken.span.length == interpolationNameEnd! - interpolationNameStart => interpolationNameEqual!
+                                                        UIntSize(0) => interpolationNameByteIndex!
+                                                        (interpolationNameEqual! and interpolationNameByteIndex! < interpolationSymbolToken.span.length) -> while {
+                                                            (sources[runtimeArgument.sourceModule] -> byte(interpolationNameStart + interpolationNameByteIndex!)) != (sources[runtimeArgument.sourceModule] -> byte(interpolationSymbolToken.span.start + interpolationNameByteIndex!)) -> if { false => interpolationNameEqual! }
+                                                            interpolationNameByteIndex! + UIntSize(1) => interpolationNameByteIndex!
+                                                        }
+                                                        interpolationNameEqual! -> if {
+                                                            functionIndex! + 1 => interpolationBindingSearch!
+                                                            interpolationBindingSearch! < entryEnd! -> while {
+                                                                (ir![interpolationBindingSearch!].kind == 17 and ir![interpolationBindingSearch!].symbol == interpolationSymbolIndex! and ir![interpolationBindingSearch!].typeSymbol == 2) -> if {
+                                                                    interpolationBindingSearch! => interpolationBindingIr!
+                                                                    interpolationDollar! => interpolationMatchStart!
+                                                                }
+                                                                interpolationBindingSearch! + 1 => interpolationBindingSearch!
                                                             }
-                                                            interpolationBindingSearch! + 1 => interpolationBindingSearch!
                                                         }
                                                     }
+                                                    interpolationSymbolIndex! + 1 => interpolationSymbolIndex!
                                                 }
-                                                interpolationSymbolIndex! + 1 => interpolationSymbolIndex!
                                             }
                                         }
+                                        interpolationBindingIr! < 0 -> if { interpolationDollar! + UIntSize(1) => interpolationDollar! }
                                     }
-                                    interpolationBindingIr! < 0 -> if { interpolationDollar! + UIntSize(1) => interpolationDollar! } else { interpolationContentEnd => interpolationDollar! }
+                                    interpolationBindingIr! >= 0 -> if {
+                                        Int(interpolationSegmentStart! - interpolationContentStart) => interpolationPartOffset
+                                        Int(interpolationMatchStart! - interpolationSegmentStart!) => interpolationPartLength
+                                        "  %v$(entryExpressionIndex!)_interpolation_part$(interpolationPartIndex!) = getelementptr i8, ptr @sl_str_$(entryExpression.operand0), i64 $interpolationPartOffset" -> println
+                                        "  call void @sl_runtime_print(ptr %v$(entryExpressionIndex!)_interpolation_part$(interpolationPartIndex!), i64 $interpolationPartLength, i1 false)" -> println
+                                        ir![interpolationBindingIr!] => interpolationBinding
+                                        ir![interpolationBinding.operand0] => interpolationValue
+                                        "  call void @sl_runtime_print_i32(i32 " -> print
+                                        interpolationValue.kind == 3 -> if {
+                                            sources[interpolationValue.sourceModule] -> lexer.lex => interpolationValueTokens!
+                                            interpolationValueTokens![interpolationValue.payloadToken] => interpolationValueToken
+                                            sources[interpolationValue.sourceModule] -> slice(interpolationValueToken.span.start, interpolationValueToken.span.length) -> print
+                                        } else { "%v$(interpolationBinding.operand0)" -> print }
+                                        ", i1 false)" -> println
+                                        interpolationNameEnd! => interpolationSegmentStart!
+                                        interpolationPartIndex! + 1 => interpolationPartIndex!
+                                        true => emittedInterpolation!
+                                    } else { false => interpolationSegmentsRemain! }
                                 }
-                                interpolationBindingIr! >= 0 -> if {
-                                    Int(interpolationMatchStart! - interpolationContentStart) => interpolationPrefixLength
-                                    "  call void @sl_runtime_print(ptr @sl_str_$(entryExpression.operand0), i64 $interpolationPrefixLength, i1 false)" -> println
-                                    ir![interpolationBindingIr!] => interpolationBinding
-                                    ir![interpolationBinding.operand0] => interpolationValue
-                                    "  call void @sl_runtime_print_i32(i32 " -> print
-                                    interpolationValue.kind == 3 -> if {
-                                        sources[interpolationValue.sourceModule] -> lexer.lex => interpolationValueTokens!
-                                        interpolationValueTokens![interpolationValue.payloadToken] => interpolationValueToken
-                                        sources[interpolationValue.sourceModule] -> slice(interpolationValueToken.span.start, interpolationValueToken.span.length) -> print
-                                    } else { "%v$(interpolationBinding.operand0)" -> print }
-                                    ", i1 false)" -> println
-                                    Int(interpolationNameEnd! - interpolationContentStart) => interpolationSuffixOffset
-                                    Int(interpolationContentEnd - interpolationNameEnd!) => interpolationSuffixLength
+                                emittedInterpolation! -> if {
+                                    Int(interpolationSegmentStart! - interpolationContentStart) => interpolationSuffixOffset
+                                    Int(interpolationContentEnd - interpolationSegmentStart!) => interpolationSuffixLength
                                     "  %v$(entryExpressionIndex!)_interpolation_suffix = getelementptr i8, ptr @sl_str_$(entryExpression.operand0), i64 $interpolationSuffixOffset" -> println
                                     "  call void @sl_runtime_print(ptr %v$(entryExpressionIndex!)_interpolation_suffix, i64 $interpolationSuffixLength, i1 " -> print
                                 } else {

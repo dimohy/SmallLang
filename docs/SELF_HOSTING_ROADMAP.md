@@ -455,13 +455,13 @@ are emitted only when referenced. Text parameters now cross effectful `Unit`
 functions, where LLVM `void` calls and returns avoid phantom SSA results.
 Main-local Text literals and immutable bindings now also form valid SSA before
 dynamic runtime output, rather than referring to an undefined `%v` value. The
-first integer-interpolation slice recognizes a main-local `Int` binding in a
-Text literal, splits the literal into prefix/value/suffix output, and formats
-the value through one target-neutral `i32` helper. It sign-extends before
+integer-interpolation lowering recognizes main-local `Int` bindings in a Text
+literal, walks any number of `$name` segments in source order, and formats each
+value through one target-neutral `i32` helper. It supports repeated names and
+empty leading/trailing literal segments. The helper sign-extends before
 negation, so `Int32`'s minimum value is handled without overflow. Function
-parameters, multiple interpolation segments, `$(expression)`, broader numeric
-types, input, allocation policy, files, process services, and target-native
-entrypoint/export policy remain.
+parameters, `$(expression)`, broader numeric types, input, allocation policy,
+files, process services, and target-native entrypoint/export policy remain.
 
 Text now crosses the self-hosted LLVM boundary as `{ ptr, i64 }`. UTF-8
 literals become immutable globals with byte-accurate lengths and LLVM `\XX`
