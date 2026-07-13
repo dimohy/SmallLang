@@ -1350,6 +1350,8 @@ opened -> when {
     Result<file.FileWriter, Text>.Ok(writer) {
         writer -> writeAt(UInt16(513), 0) => inferred
         writer -> writeAt<UInt16>(1027, 3) => contextual
+        writer -> writeAtAsync(UInt16(2049), 8) => pending
+        pending -> await => asynchronous
     }
     Result<file.FileWriter, Text>.Err(error) => error
 }
@@ -1362,8 +1364,13 @@ entire scalar is written. It never advances a cursor and extends the file when
 the offset lies beyond its end. Windows uses an overlapped offset and Linux
 uses `pwrite` without append mode.
 
-Async open/write/flush/close and a future IOCP/io_uring completion backend
-remain before the general file-I/O gate is complete.
+`writeAtAsync` has the same inference and explicit-context forms and returns
+`Task<Result<Unit, Text>>`. Submission copies the scalar bytes and duplicates
+the writer's native handle into the affine Task; it never borrows caller stack
+storage or the original writer. Completion and cancellation therefore retain
+independent exactly-once close obligations. The shared file worker dispatches
+both reads and writes. Async open/flush/close and a future IOCP/io_uring
+completion backend remain before the general file-I/O gate is complete.
 
 Double-quoted UTF-8 literals decode `\n`, `\r`, `\t`, and `\\` in text
 segments and support optional identifier and expression interpolation. Unknown

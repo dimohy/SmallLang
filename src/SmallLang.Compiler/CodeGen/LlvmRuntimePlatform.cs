@@ -138,11 +138,17 @@ internal abstract class LlvmRuntimePlatform
               %explicit_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 19
               %explicit = load i32, ptr %explicit_slot, align 4
               %is_explicit = icmp ne i32 %explicit, 0
-              br i1 %is_explicit, label %perform_owned_read, label %perform_compatibility_read
+              br i1 %is_explicit, label %inspect_owned_operation, label %perform_compatibility_read
 
             perform_compatibility_read:
               %compatibility_result = call %smalllang.file_count_result @smalllang_platform_read_file_bytes(ptr %data_slot, i64 %size64)
               br label %record_read
+
+            inspect_owned_operation:
+              %operation_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 20
+              %operation = load i32, ptr %operation_slot, align 4
+              %is_write = icmp eq i32 %operation, 1
+              br i1 %is_write, label %perform_owned_write, label %perform_owned_read
 
             perform_owned_read:
               %owned_handle_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 17
@@ -152,8 +158,16 @@ internal abstract class LlvmRuntimePlatform
               %owned_result = call %smalllang.file_count_result @smalllang_platform_read_owned_file_at(i64 %owned_handle, ptr %data_slot, i64 %size64, i64 %owned_offset)
               br label %record_read
 
+            perform_owned_write:
+              %write_handle_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 17
+              %write_handle = load i64, ptr %write_handle_slot, align 8
+              %write_offset_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 18
+              %write_offset = load i64, ptr %write_offset_slot, align 8
+              %write_result = call %smalllang.file_count_result @smalllang_platform_write_owned_file_at(i64 %write_handle, ptr %data_slot, i64 %size64, i64 %write_offset)
+              br label %record_read
+
             record_read:
-              %result = phi %smalllang.file_count_result [ %compatibility_result, %perform_compatibility_read ], [ %owned_result, %perform_owned_read ]
+              %result = phi %smalllang.file_count_result [ %compatibility_result, %perform_compatibility_read ], [ %owned_result, %perform_owned_read ], [ %write_result, %perform_owned_write ]
               %count = extractvalue %smalllang.file_count_result %result, 0
               %ok = extractvalue %smalllang.file_count_result %result, 1
               %count_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 14
@@ -619,7 +633,7 @@ internal abstract class LlvmRuntimePlatform
 
             define internal ptr @smalllang_task_start(ptr %worker, ptr %destroy, ptr %cancel, ptr %context) #0 {
             entry:
-              %control = call ptr @smalllang_alloc(i64 144)
+              %control = call ptr @smalllang_alloc(i64 152)
               %allocated = icmp ne ptr %control, null
               br i1 %allocated, label %initialize, label %fail
 
@@ -664,6 +678,8 @@ internal abstract class LlvmRuntimePlatform
               store i64 0, ptr %file_offset_slot, align 8
               %file_explicit_slot = getelementptr %smalllang.task_control, ptr %control, i32 0, i32 19
               store i32 0, ptr %file_explicit_slot, align 4
+              %file_operation_slot = getelementptr %smalllang.task_control, ptr %control, i32 0, i32 20
+              store i32 0, ptr %file_operation_slot, align 4
               %tail = load ptr, ptr @smalllang_task_ready_tail, align 8
               %empty = icmp eq ptr %tail, null
               br i1 %empty, label %first, label %append

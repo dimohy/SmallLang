@@ -55,7 +55,8 @@ internal sealed partial class LlvmEmitter
                 (function.Body is not null && UsesChildProcess(function.Body))
                 || function.BlockBody.Any(UsesChildProcess));
         _usesAsyncFile = program.ResolvedGenericCalls.Values.Any(function =>
-            function.Kind == BoundFunctionKind.RuntimeReadScalarAsync);
+            function.Kind is BoundFunctionKind.RuntimeReadScalarAsync
+                or BoundFunctionKind.RuntimeWriteScalarAtAsync);
         _usesAsync = program.Functions.Values.Any(function => function.IsAsync && !function.IsStandardLibrary)
             || _usesAsyncFile
             || program.MainStatements.Any(UsesRuntimeSleep)
@@ -358,7 +359,7 @@ internal sealed partial class LlvmEmitter
             %smalllang.environment_result = type { ptr, i64, i1, i1 }
             %smalllang.process_result = type { i32, i32 }
             %smalllang.task = type { ptr, ptr }
-            %smalllang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr, ptr, i64, ptr, ptr, i32, i32, i64, i64, i32, ptr, i64, i64, i32 }
+            %smalllang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr, ptr, i64, ptr, ptr, i32, i32, i64, i64, i32, ptr, i64, i64, i32, i32 }
 
             """;
         header += EmitStructTypeDefinitions();

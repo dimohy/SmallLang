@@ -3965,4 +3965,36 @@ References: [Rust FileExt write_at/write_all_at](https://doc.rust-lang.org/std/o
 [.NET RandomAccess](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess),
 [.NET RandomAccess.WriteAsync](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess.writeasync).
 
+## D129 - Async Writes Own Their Bytes And Native Handle
+
+Status: portable scalar async writes implemented
+Date: 2026-07-14
+
+`writeAtAsync<T>` follows the same position-based, all-or-error contract as
+`writeAt<T>`, but returns `Task<Result<Unit, Text>>`. The Task copies the scalar
+bytes at submission and owns a duplicated native writer handle plus the 64-bit
+offset. It never borrows the caller's stack or the original `FileWriter`, so
+completion order and lexical writer cleanup cannot create dangling storage.
+
+This is the ownership shape demonstrated by `tokio-uring`: an in-flight
+operation owns the resource and stable buffer until the kernel returns it. It
+also preserves .NET `RandomAccess.WriteAsync` semantics: the explicit offset
+does not mutate a shared cursor and cancellation belongs to the operation.
+
+The portable backend reuses one shared file worker for both operation kinds.
+Windows writes through overlapped `WriteFile`; Linux uses `pwrite`. Completion
+converts a full write to `Ok(Unit)` and every partial or failed scalar write to
+`Err("io")`. Cancellation consumes the affine Task and closes its duplicate
+exactly once, whether the request is still queued or already worker-owned.
+
+Example 266 covers inferred and explicitly contextual scalar writes, concurrent
+submission, cancellation before execution, read-back, and Windows/Linux parity.
+Example 267 proves self-host generic flow-call resolution and await suspension
+discovery. A diagnostic rejects non-scalar `Text` payloads.
+
+References: [tokio-uring](https://docs.rs/tokio-uring/latest/tokio_uring/),
+[tokio-uring write operation](https://docs.rs/tokio-uring/latest/src/tokio_uring/io/write.rs.html),
+[Rust FileExt write_all_at](https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html),
+[.NET RandomAccess.WriteAsync](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess.writeasync).
+
 

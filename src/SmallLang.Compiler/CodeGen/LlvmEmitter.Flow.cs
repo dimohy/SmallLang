@@ -202,17 +202,23 @@ internal sealed partial class LlvmEmitter
                 _program.Types.GetStruct(writer.Type).Name,
                 "sys.file.FileWriter",
                 StringComparison.Ordinal)
-            && path == "writeAt")
+            && path is "writeAt" or "writeAtAsync")
         {
             if (!_program.ResolvedGenericCalls.TryGetValue(target, out var writeFunction))
             {
                 throw new SmallLangException("unresolved generic file operation 'writeAt'");
             }
-            var value = EmitRuntimeWriteScalarAt(
-                writeFunction,
-                writer,
-                target.Arguments[0],
-                target.Arguments[1]);
+            var value = path == "writeAtAsync"
+                ? (RuntimeValue)EmitRuntimeWriteScalarAtAsync(
+                    writeFunction,
+                    writer,
+                    target.Arguments[0],
+                    target.Arguments[1])
+                : EmitRuntimeWriteScalarAt(
+                    writeFunction,
+                    writer,
+                    target.Arguments[0],
+                    target.Arguments[1]);
             result = new RuntimeFlowResult(value, null, _mainOk);
             return true;
         }

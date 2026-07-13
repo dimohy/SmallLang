@@ -3529,14 +3529,14 @@ internal sealed class SemanticCompiler
     {
         result = new FlowResult(BoundType.Unit, FlowEffect.None);
 
-        if (IsFileWriterType(currentType) && path == "writeAt")
+        if (IsFileWriterType(currentType) && path is "writeAt" or "writeAtAsync")
         {
             if (target.CompileTimeValueArgument is not null || target.Arguments.Count != 2)
             {
                 throw Error(
                     target.Line,
                     target.Column,
-                    "writeAt expects a scalar value and one UInt64 byte offset");
+                    $"{path} expects a scalar value and one UInt64 byte offset");
             }
 
             BoundType scalarType;
@@ -3568,7 +3568,7 @@ internal sealed class SemanticCompiler
                 throw Error(
                     target.Arguments[0].Line,
                     target.Arguments[0].Column,
-                    $"writeAt supports Bool, CodePoint, and numeric scalars; got {FormatType(scalarType)}");
+                    $"{path} supports Bool, CodePoint, and numeric scalars; got {FormatType(scalarType)}");
             }
             ValidateMapContextValue(
                 target.Arguments[1],
@@ -3582,8 +3582,9 @@ internal sealed class SemanticCompiler
                 BoundType.Unit,
                 BoundType.Text,
                 "Result<Unit, Text>");
+            var isAsync = path == "writeAtAsync";
             var specialization = new BoundFunction(
-                Name: $"sys.file.writeAt${(int)scalarType}",
+                Name: $"sys.file.{path}${(int)scalarType}",
                 InputName: "writer",
                 InputType: currentType,
                 InputOwnership: BoundFunctionInputOwnership.Default,
@@ -3595,14 +3596,19 @@ internal sealed class SemanticCompiler
                 BlockBody: [],
                 Line: target.Line,
                 Column: target.Column,
-                Kind: BoundFunctionKind.RuntimeWriteScalarAt,
+                Kind: isAsync
+                    ? BoundFunctionKind.RuntimeWriteScalarAtAsync
+                    : BoundFunctionKind.RuntimeWriteScalarAt,
                 IsStandardLibrary: true,
                 IsLocal: false,
                 SpecializedType: scalarType,
                 ModuleName: "sys.file",
-                IsPublic: true);
+                IsPublic: true,
+                IsAsync: isAsync);
             _resolvedGenericCalls[target] = specialization;
-            result = new FlowResult(returnType, FlowEffect.None);
+            result = new FlowResult(
+                isAsync ? _types.GetOrAddTask(returnType) : returnType,
+                FlowEffect.None);
             return true;
         }
 

@@ -1,0 +1,5 @@
+call i64 @smalllang_platform_duplicate_owned_file
+call %smalllang.file_count_result @smalllang_platform_write_owned_file_at
+getelementptr %smalllang.task_control
+call void @smalllang_platform_close_owned_file
+smalllang_file_read_task_worker

@@ -240,6 +240,96 @@ internal sealed partial class LlvmEmitter
             function);
     }
 
+    private RuntimeTask EmitRuntimeWriteScalarAtAsync(
+        BoundFunction function,
+        RuntimeStruct writer,
+        Expression valueExpression,
+        Expression offsetExpression)
+    {
+        if (function.SpecializedType is not { } scalarType
+            || (scalarType != BoundType.Bool
+                && !IsNumericType(scalarType)
+                && scalarType != BoundType.CodePoint)
+            || !_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || resultTypes.Ok != BoundType.Unit
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid asynchronous scalar specialization");
+        }
+
+        RuntimeValue value = valueExpression is NumberExpression literal && IsIntegerType(scalarType)
+            ? new RuntimeInt(scalarType, literal.Text)
+            : EmitExpression(valueExpression);
+        EnsureRuntimeType(value, scalarType, function.Name);
+        var materialized = MaterializeAggregateValue(value);
+
+        var contextSize = AsyncContextSize(null, function.ReturnType);
+        var context = NextTemp("file_async_write_context");
+        EmitCall(context, "ptr", "smalllang_alloc", $"i64 {contextSize}");
+        var allocated = NextTemp("file_async_write_context_allocated");
+        EmitCompare(allocated, "ne", "ptr", context, "null");
+        var initializeLabel = NextLabel("file_async_write_initialize");
+        var allocationFailedLabel = NextLabel("file_async_write_allocation_failed");
+        EmitConditionalBranch(allocated, initializeLabel, allocationFailedLabel);
+        EmitLabel(allocationFailedLabel);
+        EmitTrap();
+        EmitLabel(initializeLabel);
+
+        var handle = NextTemp("file_async_write_handle");
+        EmitCall(
+            handle,
+            "ptr",
+            "smalllang_task_start",
+            $"ptr @smalllang_file_read_task_worker, ptr @smalllang_free, " +
+            $"ptr @smalllang_file_read_task_cancel, ptr {context}");
+        var started = NextTemp("file_async_write_started");
+        EmitCompare(started, "ne", "ptr", handle, "null");
+        var readyLabel = NextLabel("file_async_write_ready");
+        var startFailedLabel = NextLabel("file_async_write_start_failed");
+        EmitConditionalBranch(started, readyLabel, startFailedLabel);
+        EmitLabel(startFailedLabel);
+        EmitCall(target: null, "void", "smalllang_free", $"ptr {context}");
+        EmitTrap();
+        EmitLabel(readyLabel);
+
+        var byteSize = RuntimeScalarByteSize(scalarType);
+        var sizeAddress = NextTemp("file_async_write_size_address");
+        EmitAssign(sizeAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 11");
+        EmitStore("i32", byteSize.ToString(CultureInfo.InvariantCulture), sizeAddress, 4);
+        var dataAddress = NextTemp("file_async_write_data_address");
+        EmitAssign(dataAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 13");
+        EmitStore(materialized.TypeName, materialized.ValueName, dataAddress, RuntimeAlignment(scalarType));
+
+        var sourceHandle = ExtractOwnedFileHandle(writer, "sys.file.FileWriter");
+        var ownedHandle = NextTemp("file_async_write_owned_handle");
+        EmitCall(
+            ownedHandle,
+            "i64",
+            "smalllang_platform_duplicate_owned_file",
+            $"i64 {sourceHandle}");
+        var handleAddress = NextTemp("file_async_write_owned_handle_address");
+        EmitAssign(handleAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 17");
+        EmitStore("i64", ownedHandle, handleAddress, 8);
+        var offset = EmitMapInteger(offsetExpression, BoundType.UInt64, "file_async_write_offset");
+        var offsetAddress = NextTemp("file_async_write_offset_address");
+        EmitAssign(offsetAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 18");
+        EmitStore("i64", offset, offsetAddress, 8);
+        var explicitAddress = NextTemp("file_async_write_explicit_address");
+        EmitAssign(explicitAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 19");
+        EmitStore("i32", "1", explicitAddress, 4);
+        var operationAddress = NextTemp("file_async_write_operation_address");
+        EmitAssign(operationAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 20");
+        EmitStore("i32", "1", operationAddress, 4);
+
+        return new RuntimeTask(
+            _program.Types.GetOrAddTask(function.ReturnType),
+            null,
+            function.ReturnType,
+            handle,
+            context,
+            function);
+    }
+
     private RuntimeEnum EmitRuntimeOpenFile(BoundFunction function, RuntimeValue argument)
     {
         var path = argument as RuntimeText
@@ -543,6 +633,15 @@ internal sealed partial class LlvmEmitter
         EmitAssign(count, $"extractvalue %smalllang.file_count_result {raw}, 0");
         var platformOk = NextTemp("file_scalar_write_at_ok");
         EmitAssign(platformOk, $"extractvalue %smalllang.file_count_result {raw}, 1");
+        return EmitRuntimeWriteScalarResult(function, count, platformOk, byteSize);
+    }
+
+    private RuntimeEnum EmitRuntimeWriteScalarResult(
+        BoundFunction function,
+        string count,
+        string platformOk,
+        int byteSize)
+    {
         var callSucceeded = NextTemp("file_scalar_write_at_call_succeeded");
         EmitCompare(callSucceeded, "ne", "i32", platformOk, "0");
         var full = NextTemp("file_scalar_write_at_full");
@@ -576,6 +675,36 @@ internal sealed partial class LlvmEmitter
             "file_write_at_result",
             function.ReturnType,
             [(success, successExit), (failure, errorExit)]);
+    }
+
+    private RuntimeEnum EmitRuntimeCompletedWriteScalarAt(
+        BoundFunction function,
+        string completedTaskControl)
+    {
+        if (function.SpecializedType is not { } scalarType
+            || !_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || resultTypes.Ok != BoundType.Unit
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid completed write result");
+        }
+        var countSlot = NextTemp("file_async_write_count_slot");
+        EmitAssign(
+            countSlot,
+            $"getelementptr %smalllang.task_control, ptr {completedTaskControl}, i32 0, i32 14");
+        var count = NextTemp("file_async_write_count");
+        EmitLoad(count, "i64", countSlot, 8);
+        var okSlot = NextTemp("file_async_write_ok_slot");
+        EmitAssign(
+            okSlot,
+            $"getelementptr %smalllang.task_control, ptr {completedTaskControl}, i32 0, i32 15");
+        var platformOk = NextTemp("file_async_write_ok");
+        EmitLoad(platformOk, "i32", okSlot, 4);
+        return EmitRuntimeWriteScalarResult(
+            function,
+            count,
+            platformOk,
+            RuntimeScalarByteSize(scalarType));
     }
 
     private RuntimeEnum EmitRuntimeReadScalar(

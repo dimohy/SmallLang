@@ -1,0 +1,1 @@
+async generic write calls=1,suspensions=1

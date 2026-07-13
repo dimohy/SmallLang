@@ -1196,6 +1196,17 @@ internal sealed partial class LlvmEmitter
                 fileResultAddress,
                 RuntimeAlignment(fileResult.Type));
         }
+        else if (task.RuntimeFunction is { Kind: BoundFunctionKind.RuntimeWriteScalarAtAsync } fileWrite)
+        {
+            var fileResult = EmitRuntimeCompletedWriteScalarAt(fileWrite, task.HandleName);
+            var fileResultAddress = AsyncContextField(
+                task.ContextName, task.InputType, task.ResultType, 6, "file_write_task_result_address");
+            EmitStore(
+                LlvmEnumType(fileResult.Type),
+                fileResult.ValueName,
+                fileResultAddress,
+                RuntimeAlignment(fileResult.Type));
+        }
         var resultAddress = AsyncContextField(
             task.ContextName, task.InputType, task.ResultType, 6, "task_result_address");
         var loaded = NextTemp(discardResult ? "task_discarded_result" : "task_result");

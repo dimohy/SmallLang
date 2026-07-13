@@ -313,14 +313,17 @@ file.openWrite("values.bin") => opened
 opened -> when {
     Result<file.FileWriter, Text>.Ok(writer) {
         writer -> writeAt(UInt16(513), 0)
-        writer -> writeAt<UInt16>(1027, 3)
+        writer -> writeAtAsync<UInt16>(1027, 3) => pending
+        pending -> await => written
     }
     Result<file.FileWriter, Text>.Err(error) => error
 }
 ```
 
 The first form infers `UInt16`; the second contextually types the literal.
-Every write is position-based, all-or-error, and the writer closes
+Every write is position-based and all-or-error. An asynchronous write copies
+the scalar and owns a duplicated OS handle, so the original writer can close
+independently; `await` returns `Result<Unit, Text>`. The writer closes
 automatically at owner-scope exit.
 
 Browser WebAssembly output is available through the `wasm32-browser` target. The

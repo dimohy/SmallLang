@@ -149,8 +149,10 @@ duplicated native handle, Windows uses overlapped reads, and Linux uses `pread`.
 `sys.file.FileWriter` is a distinct affine write capability. `writeAt(value,
 UInt64)` infers its scalar type, optionally accepts an explicit type context,
 requires an all-or-error full scalar write, and lowers to overlapped `WriteFile`
-or Linux `pwrite`. Async open/write/close, failure propagation, captures, and
-task groups remain partial.
+or Linux `pwrite`. `writeAtAsync<T>` copies its scalar into the Task, duplicates
+the writer handle, and shares the existing file worker and completion queue;
+self-host call and suspension analysis retain its generic flow target. Async
+open/flush/close, failure propagation, captures, and task groups remain partial.
 Straight-line states now carry heap owners and
 mutable locals safely: frame storage temporarily owns the value, resume restores
 one owner, and async container stack promotion is disabled. Self-host frame-slot
@@ -242,8 +244,9 @@ test-performance boundary.
   zero-input `read<T>` calls with explicit EOF/error results. Affine `File`
   owners and position-based `readAt<T>`/`readAtAsync<T>` remove shared-cursor
   races. Affine `FileWriter` and scalar `writeAt<T>` now provide the symmetric
-  output path, while async writer operations and explicit user-value
-  serialization remain.
+  output path; `writeAtAsync<T>` owns copied bytes and a duplicate handle while
+  it is pending. Async open/flush/close and explicit user-value serialization
+  remain.
 - Missing (3): portable path/filesystem library, package/build command, formatter
   and language server based on the real parser.
 
