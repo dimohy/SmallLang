@@ -17,6 +17,16 @@ public emit sources: [Text; ~] -> Unit {
         symbol == 23 => "i1"
         else => "void"
     }
+    storageSize symbol: Int -> Int => when {
+        symbol == 1 => 16
+        symbol == 23 => 1
+        else => 4
+    }
+    storageAlign symbol: Int -> Int => when {
+        symbol == 1 => 8
+        symbol == 23 => 1
+        else => 4
+    }
     hexDigit value: Int -> Text => when {
         value == 0 => "0"
         value == 1 => "1"
@@ -40,7 +50,7 @@ public emit sources: [Text; ~] -> Unit {
             "%sl.array.i32" -> print
         } else {
         node.typeOrigin == 15 -> if {
-            "%sl.dict.i32.i32" -> print
+            "%sl.dict" -> print
         } else {
         (node.typeOrigin == 0 or node.typeOrigin == 2) -> if {
             "%sl.struct.m$(node.typeModule)_s$(node.typeSymbol)" -> print
@@ -110,7 +120,8 @@ public emit sources: [Text; ~] -> Unit {
         dictionaryTypeSearch! + 1 => dictionaryTypeSearch!
     }
     usesDictionary! -> if {
-        "%sl.dict.i32.i32 = type { ptr, ptr, i64, i64 }" -> println
+        "%sl.dict = type { ptr, ptr, i64, i64 }" -> println
+        "declare void @llvm.trap()" -> println
         not usesDynamicArray! -> if {
             "declare ptr @malloc(i64)" -> println
             "declare void @free(ptr)" -> println
@@ -290,44 +301,54 @@ public emit sources: [Text; ~] -> Unit {
                         ir![dictionaryCountIndex!].nextOperand => dictionaryCountIndex!
                     }
                     dictionaryItemCount! / 2 => dictionaryLength
-                    dictionaryLength * 4 => dictionaryByteLength
-                    "  %v$(expressionIndex!)_keys = call ptr @malloc(i64 $dictionaryByteLength)" -> println
-                    "  %v$(expressionIndex!)_values = call ptr @malloc(i64 $dictionaryByteLength)" -> println
+                    dictionaryLength * (expression.typeModule -> storageSize) => dictionaryKeyByteLength
+                    dictionaryLength * (expression.typeSymbol -> storageSize) => dictionaryValueByteLength
+                    "  %v$(expressionIndex!)_keys = call ptr @malloc(i64 $dictionaryKeyByteLength)" -> println
+                    "  %v$(expressionIndex!)_values = call ptr @malloc(i64 $dictionaryValueByteLength)" -> println
                     expression.operand0 => dictionaryItemIndex!
                     0 => dictionaryItemPosition!
                     dictionaryItemIndex! >= 0 -> while {
                         ir![dictionaryItemIndex!] => dictionaryItem
                         dictionaryItemPosition! / 2 => dictionaryEntryPosition
                         dictionaryItemPosition! % 2 == 0 -> if { "keys" } else { "values" } => dictionarySide
-                        "  %v$(expressionIndex!)_$(dictionarySide)_ptr$(dictionaryEntryPosition) = getelementptr i32, ptr %v$(expressionIndex!)_$(dictionarySide), i64 $(dictionaryEntryPosition)" -> println
-                        "  store i32 " -> print
-                        dictionaryItem.kind == 3 -> if {
+                        dictionaryItemPosition! % 2 == 0 -> if { expression.typeModule } else { expression.typeSymbol } => dictionaryItemSymbol
+                        "  %v$(expressionIndex!)_$(dictionarySide)_ptr$(dictionaryEntryPosition) = getelementptr " -> print
+                        dictionaryItemSymbol -> llvmType -> print
+                        ", ptr %v$(expressionIndex!)_$(dictionarySide), i64 $(dictionaryEntryPosition)" -> println
+                        "  store " -> print
+                        dictionaryItemSymbol -> llvmType -> print
+                        " " -> print
+                        (dictionaryItem.kind == 3 or dictionaryItem.kind == 4) -> if {
                             sources[dictionaryItem.sourceModule] -> lexer.lex => dictionaryItemTokens!
                             dictionaryItemTokens![dictionaryItem.payloadToken] => dictionaryItemToken
-                            sources[dictionaryItem.sourceModule] -> slice(dictionaryItemToken.span.start, dictionaryItemToken.span.length) -> print
+                            dictionaryItem.kind == 3 -> if {
+                                sources[dictionaryItem.sourceModule] -> slice(dictionaryItemToken.span.start, dictionaryItemToken.span.length) -> print
+                            } else {
+                                ((sources[dictionaryItem.sourceModule] -> byte(dictionaryItemToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> print
+                            }
                         } else {
                             dictionaryItem.kind == 5 -> if { "%arg" -> print } else { "%v$(dictionaryItemIndex!)" -> print }
                         }
-                        ", ptr %v$(expressionIndex!)_$(dictionarySide)_ptr$(dictionaryEntryPosition), align 4" -> println
+                        ", ptr %v$(expressionIndex!)_$(dictionarySide)_ptr$(dictionaryEntryPosition), align $(dictionaryItemSymbol -> storageAlign)" -> println
                         dictionaryItem.nextOperand => dictionaryItemIndex!
                         dictionaryItemPosition! + 1 => dictionaryItemPosition!
                     }
-                    "  %v$(expressionIndex!)_0 = insertvalue %sl.dict.i32.i32 poison, ptr %v$(expressionIndex!)_keys, 0" -> println
-                    "  %v$(expressionIndex!)_1 = insertvalue %sl.dict.i32.i32 %v$(expressionIndex!)_0, ptr %v$(expressionIndex!)_values, 1" -> println
-                    "  %v$(expressionIndex!)_2 = insertvalue %sl.dict.i32.i32 %v$(expressionIndex!)_1, i64 $(dictionaryLength), 2" -> println
-                    "  %v$(expressionIndex!) = insertvalue %sl.dict.i32.i32 %v$(expressionIndex!)_2, i64 $(dictionaryLength), 3" -> println
+                    "  %v$(expressionIndex!)_0 = insertvalue %sl.dict poison, ptr %v$(expressionIndex!)_keys, 0" -> println
+                    "  %v$(expressionIndex!)_1 = insertvalue %sl.dict %v$(expressionIndex!)_0, ptr %v$(expressionIndex!)_values, 1" -> println
+                    "  %v$(expressionIndex!)_2 = insertvalue %sl.dict %v$(expressionIndex!)_1, i64 $(dictionaryLength), 2" -> println
+                    "  %v$(expressionIndex!) = insertvalue %sl.dict %v$(expressionIndex!)_2, i64 $(dictionaryLength), 3" -> println
                 }
                 expression.kind == 15 -> if {
                     ir![expression.operand0] => indexedArray
                     ir![expression.operand1] => arrayIndex
                     indexedArray.typeOrigin == 15 -> if {
-                        "  %v$(expressionIndex!)_keys = extractvalue %sl.dict.i32.i32 " -> print
+                        "  %v$(expressionIndex!)_keys = extractvalue %sl.dict " -> print
                         indexedArray.kind == 5 -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
                         ", 0" -> println
-                        "  %v$(expressionIndex!)_values = extractvalue %sl.dict.i32.i32 " -> print
+                        "  %v$(expressionIndex!)_values = extractvalue %sl.dict " -> print
                         indexedArray.kind == 5 -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
                         ", 1" -> println
-                        "  %v$(expressionIndex!)_length = extractvalue %sl.dict.i32.i32 " -> print
+                        "  %v$(expressionIndex!)_length = extractvalue %sl.dict " -> print
                         indexedArray.kind == 5 -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
                         ", 2" -> println
                         "  br label %dict$(expressionIndex!)_start" -> println
@@ -338,13 +359,23 @@ public emit sources: [Text; ~] -> Unit {
                         "  %v$(expressionIndex!)_in_range = icmp ult i64 %v$(expressionIndex!)_slot, %v$(expressionIndex!)_length" -> println
                         "  br i1 %v$(expressionIndex!)_in_range, label %dict$(expressionIndex!)_check, label %dict$(expressionIndex!)_missing" -> println
                         "dict$(expressionIndex!)_check:" -> println
-                        "  %v$(expressionIndex!)_key_ptr = getelementptr i32, ptr %v$(expressionIndex!)_keys, i64 %v$(expressionIndex!)_slot" -> println
-                        "  %v$(expressionIndex!)_key = load i32, ptr %v$(expressionIndex!)_key_ptr, align 4" -> println
-                        "  %v$(expressionIndex!)_found = icmp eq i32 %v$(expressionIndex!)_key, " -> print
-                        arrayIndex.kind == 3 -> if {
+                        "  %v$(expressionIndex!)_key_ptr = getelementptr " -> print
+                        indexedArray.typeModule -> llvmType -> print
+                        ", ptr %v$(expressionIndex!)_keys, i64 %v$(expressionIndex!)_slot" -> println
+                        "  %v$(expressionIndex!)_key = load " -> print
+                        indexedArray.typeModule -> llvmType -> print
+                        ", ptr %v$(expressionIndex!)_key_ptr, align $(indexedArray.typeModule -> storageAlign)" -> println
+                        "  %v$(expressionIndex!)_found = icmp eq " -> print
+                        indexedArray.typeModule -> llvmType -> print
+                        " %v$(expressionIndex!)_key, " -> print
+                        (arrayIndex.kind == 3 or arrayIndex.kind == 4) -> if {
                             sources[arrayIndex.sourceModule] -> lexer.lex => dictionaryIndexTokens!
                             dictionaryIndexTokens![arrayIndex.payloadToken] => dictionaryIndexToken
-                            sources[arrayIndex.sourceModule] -> slice(dictionaryIndexToken.span.start, dictionaryIndexToken.span.length) -> println
+                            arrayIndex.kind == 3 -> if {
+                                sources[arrayIndex.sourceModule] -> slice(dictionaryIndexToken.span.start, dictionaryIndexToken.span.length) -> println
+                            } else {
+                                ((sources[arrayIndex.sourceModule] -> byte(dictionaryIndexToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> println
+                            }
                         } else {
                             arrayIndex.kind == 5 -> if { "%arg" -> println } else { "%v$(expression.operand1)" -> println }
                         }
@@ -353,10 +384,15 @@ public emit sources: [Text; ~] -> Unit {
                         "  %v$(expressionIndex!)_next = add i64 %v$(expressionIndex!)_slot, 1" -> println
                         "  br label %dict$(expressionIndex!)_loop" -> println
                         "dict$(expressionIndex!)_missing:" -> println
+                        "  call void @llvm.trap()" -> println
                         "  unreachable" -> println
                         "dict$(expressionIndex!)_hit:" -> println
-                        "  %v$(expressionIndex!)_value_ptr = getelementptr i32, ptr %v$(expressionIndex!)_values, i64 %v$(expressionIndex!)_slot" -> println
-                        "  %v$(expressionIndex!) = load i32, ptr %v$(expressionIndex!)_value_ptr, align 4" -> println
+                        "  %v$(expressionIndex!)_value_ptr = getelementptr " -> print
+                        indexedArray.typeSymbol -> llvmType -> print
+                        ", ptr %v$(expressionIndex!)_values, i64 %v$(expressionIndex!)_slot" -> println
+                        "  %v$(expressionIndex!) = load " -> print
+                        indexedArray.typeSymbol -> llvmType -> print
+                        ", ptr %v$(expressionIndex!)_value_ptr, align $(indexedArray.typeSymbol -> storageAlign)" -> println
                     } else {
                     "  %v$(expressionIndex!)_data = extractvalue %sl.array.i32 " -> print
                     indexedArray.kind == 5 -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
@@ -468,9 +504,9 @@ public emit sources: [Text; ~] -> Unit {
                     "  call void @free(ptr %drop$(dropIndex!))" -> println
                 }
                 (dropCandidate.kind == 16 and dropCandidate.typeOrigin == 15 and dropCandidate.parent == function.operand0 and dropIndex! != returnNode.operand0) -> if {
-                    "  %drop$(dropIndex!)_keys = extractvalue %sl.dict.i32.i32 %v$(dropIndex!), 0" -> println
+                    "  %drop$(dropIndex!)_keys = extractvalue %sl.dict %v$(dropIndex!), 0" -> println
                     "  call void @free(ptr %drop$(dropIndex!)_keys)" -> println
-                    "  %drop$(dropIndex!)_values = extractvalue %sl.dict.i32.i32 %v$(dropIndex!), 1" -> println
+                    "  %drop$(dropIndex!)_values = extractvalue %sl.dict %v$(dropIndex!), 1" -> println
                     "  call void @free(ptr %drop$(dropIndex!)_values)" -> println
                 }
                 dropIndex! + 1 => dropIndex!
@@ -485,9 +521,9 @@ public emit sources: [Text; ~] -> Unit {
                 }
                 (ownedParameter.typeOrigin == 15 and ownedParameter.flags % 2 == 1) -> if {
                     not (returnOperand.kind == 5 and returnOperand.symbol == ownedParameter.symbol) -> if {
-                        "  %drop_arg_keys = extractvalue %sl.dict.i32.i32 %arg, 0" -> println
+                        "  %drop_arg_keys = extractvalue %sl.dict %arg, 0" -> println
                         "  call void @free(ptr %drop_arg_keys)" -> println
-                        "  %drop_arg_values = extractvalue %sl.dict.i32.i32 %arg, 1" -> println
+                        "  %drop_arg_values = extractvalue %sl.dict %arg, 1" -> println
                         "  call void @free(ptr %drop_arg_values)" -> println
                     }
                 }

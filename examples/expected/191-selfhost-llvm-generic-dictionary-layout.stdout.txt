@@ -1,0 +1,61 @@
+%sl.dict = type { ptr, ptr, i64, i64 }
+declare void @llvm.trap()
+declare ptr @malloc(i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_4 = private unnamed_addr constant [3 x i8] c"yes"
+@sl_str_6 = private unnamed_addr constant [2 x i8] c"no"
+define %sl.dict @sl_m0_s0() {
+entry:
+  %v6_ptr = insertvalue %sl.text poison, ptr @sl_str_6, 0
+  %v6 = insertvalue %sl.text %v6_ptr, i64 2, 1
+  %v4_ptr = insertvalue %sl.text poison, ptr @sl_str_4, 0
+  %v4 = insertvalue %sl.text %v4_ptr, i64 3, 1
+  %v2_keys = call ptr @malloc(i64 2)
+  %v2_values = call ptr @malloc(i64 32)
+  %v2_keys_ptr0 = getelementptr i1, ptr %v2_keys, i64 0
+  store i1 1, ptr %v2_keys_ptr0, align 1
+  %v2_values_ptr0 = getelementptr %sl.text, ptr %v2_values, i64 0
+  store %sl.text %v4, ptr %v2_values_ptr0, align 8
+  %v2_keys_ptr1 = getelementptr i1, ptr %v2_keys, i64 1
+  store i1 0, ptr %v2_keys_ptr1, align 1
+  %v2_values_ptr1 = getelementptr %sl.text, ptr %v2_values, i64 1
+  store %sl.text %v6, ptr %v2_values_ptr1, align 8
+  %v2_0 = insertvalue %sl.dict poison, ptr %v2_keys, 0
+  %v2_1 = insertvalue %sl.dict %v2_0, ptr %v2_values, 1
+  %v2_2 = insertvalue %sl.dict %v2_1, i64 2, 2
+  %v2 = insertvalue %sl.dict %v2_2, i64 2, 3
+  ret %sl.dict %v2
+}
+define %sl.text @sl_m0_s1(%sl.dict %arg) {
+entry:
+  %v10_keys = extractvalue %sl.dict %arg, 0
+  %v10_values = extractvalue %sl.dict %arg, 1
+  %v10_length = extractvalue %sl.dict %arg, 2
+  br label %dict10_start
+dict10_start:
+  br label %dict10_loop
+dict10_loop:
+  %v10_slot = phi i64 [ 0, %dict10_start ], [ %v10_next, %dict10_advance ]
+  %v10_in_range = icmp ult i64 %v10_slot, %v10_length
+  br i1 %v10_in_range, label %dict10_check, label %dict10_missing
+dict10_check:
+  %v10_key_ptr = getelementptr i1, ptr %v10_keys, i64 %v10_slot
+  %v10_key = load i1, ptr %v10_key_ptr, align 1
+  %v10_found = icmp eq i1 %v10_key, 0
+  br i1 %v10_found, label %dict10_hit, label %dict10_advance
+dict10_advance:
+  %v10_next = add i64 %v10_slot, 1
+  br label %dict10_loop
+dict10_missing:
+  call void @llvm.trap()
+  unreachable
+dict10_hit:
+  %v10_value_ptr = getelementptr %sl.text, ptr %v10_values, i64 %v10_slot
+  %v10 = load %sl.text, ptr %v10_value_ptr, align 8
+  ret %sl.text %v10
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

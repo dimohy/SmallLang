@@ -434,13 +434,14 @@ freed, preventing the first class of double-free errors. Snapshots assert both
 the positive drop cases and the absence of drops on transfer. Conditional
 paths, early exits, nested owned aggregates, and general liveness remain.
 
-Owned `Int -> Int` dictionaries now have a self-hosted LLVM ABI with separate
-key/value stores plus length/capacity. Literal construction, move
-parameter/return transfer, deterministic linear lookup, and two-store drop are
-covered by assembly, link, and execution snapshots. This intentionally starts
-with a simple deterministic lookup representation; generic layouts, mutation,
-checked missing-key behavior, and the production Swiss-table representation
-remain before dictionary backend parity.
+Owned dictionaries now have a common self-hosted `%sl.dict` LLVM ABI with
+separate key/value stores plus length/capacity, while typed IR drives concrete
+storage size, alignment, load/store, and equality lowering. `Int -> Int` and
+`Bool -> Text` snapshots cover literal construction, move parameter/return
+transfer, deterministic lookup, explicit missing-key trap, and two-store drop.
+This intentionally starts with a simple deterministic lookup representation;
+broader scalar/nominal layouts, mutation, and the production Swiss-table
+representation remain before dictionary backend parity.
 
 Imported call signatures now participate in expression inference and checking:
 the target module's return type becomes the caller's call-expression type, its
