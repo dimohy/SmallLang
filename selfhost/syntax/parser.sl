@@ -13,9 +13,15 @@ public struct ParseEvent {
     tokenIndex: Int
 }
 
+public struct ParseRequest {
+    source: Text
+    startRule: Int
+}
+
 # Executes the generated parser bytecode without embedding grammar-specific
 # control flow in the VM. Events invalidated by backtracking are rolled back.
-public parseEvents source: Text -> [ParseEvent; ~] {
+public parseRuleEvents request: ParseRequest -> [ParseEvent; ~] {
+    request.source => source
     source -> lexer.lex => tokens!
     grammar.parserProgram => program!
     grammar.ruleOffsets => ruleOffsets!
@@ -32,7 +38,7 @@ public parseEvents source: Text -> [ParseEvent; ~] {
     0 => callDepth!
     0 => choiceDepth!
     0 => eventDepth!
-    grammar.startRule => startRule
+    request.startRule => startRule
     ruleOffsets![startRule] => pc!
     0 => tokenIndex!
     true => running!
@@ -368,4 +374,18 @@ public parseEvents source: Text -> [ParseEvent; ~] {
         copyIndex! + 1 => copyIndex!
     }
     result!
+}
+
+public parseEvents source: Text -> [ParseEvent; ~] {
+    ParseRequest {
+        source: source
+        startRule: grammar.startRule
+    } -> parseRuleEvents
+}
+
+public parseExpressionEvents source: Text -> [ParseEvent; ~] {
+    ParseRequest {
+        source: source
+        startRule: grammar.ruleIdExpression
+    } -> parseRuleEvents
 }

@@ -15,9 +15,18 @@ public struct GreenNode {
     length: UIntSize
 }
 
-public build source: Text -> [GreenNode; ~] {
+public struct BuildRequest {
+    source: Text
+    startRule: Int
+}
+
+public buildRule request: BuildRequest -> [GreenNode; ~] {
+    request.source => source
     source -> lexer.lex => tokens!
-    source -> parser.parseEvents => events!
+    parser.ParseRequest {
+        source: source
+        startRule: request.startRule
+    } -> parser.parseRuleEvents => events!
     [GreenNode; ~] => nodes!
     [Int; ~] => nodeStack!
     0 => stackDepth!
@@ -132,4 +141,18 @@ public build source: Text -> [GreenNode; ~] {
     }
 
     nodes!
+}
+
+public build source: Text -> [GreenNode; ~] {
+    BuildRequest {
+        source: source
+        startRule: grammar.startRule
+    } -> buildRule
+}
+
+public buildExpression source: Text -> [GreenNode; ~] {
+    BuildRequest {
+        source: source
+        startRule: grammar.ruleIdExpression
+    } -> buildRule
 }

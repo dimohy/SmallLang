@@ -21,6 +21,11 @@ public struct AstNode {
     length: UIntSize
 }
 
+struct LowerRequest {
+    source: Text
+    startRule: Int
+}
+
 # Kinds: 0 source, 1 namespace, 2 import, 3 struct, 4 enum, 5 trait,
 # 6 impl, 7 function, 8 main, 9 binding, 10 flow, 11 call, 12 type,
 # 13 string, 14 number, 15 name, 16 path, 17 function signature,
@@ -33,7 +38,7 @@ public struct AstNode {
 # 41 index access.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
-public lower source: Text -> [AstNode; ~] {
+lowerFrom request: LowerRequest -> [AstNode; ~] {
     classify rule: Int -> Int => when {
         rule == grammar.ruleIdSourceFile => 0
         rule == grammar.ruleIdNamespaceDeclaration => 1
@@ -78,7 +83,11 @@ public lower source: Text -> [AstNode; ~] {
         rule == grammar.ruleIdStructFieldInitializer => 40
         else => -1
     }
-    source -> cst.build => green!
+    request.source => source
+    cst.BuildRequest {
+        source: source
+        startRule: request.startRule
+    } -> cst.buildRule => green!
     source -> lexer.lex => tokens!
     [AstNode; ~] => ast!
     [Int; ~] => cstToAst!
@@ -406,4 +415,18 @@ public lower source: Text -> [AstNode; ~] {
     }
 
     ast!
+}
+
+public lower source: Text -> [AstNode; ~] {
+    LowerRequest {
+        source: source
+        startRule: grammar.startRule
+    } -> lowerFrom
+}
+
+public lowerExpression source: Text -> [AstNode; ~] {
+    LowerRequest {
+        source: source
+        startRule: grammar.ruleIdExpression
+    } -> lowerFrom
 }

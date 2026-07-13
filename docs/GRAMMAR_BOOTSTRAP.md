@@ -273,6 +273,16 @@ top-level SL starts in that column after raw-string indentation removal, and
 each nested block adds four spaces, so fixtures follow the same layout as
 ordinary `.sl` files.
 
+The parser VM is no longer hard-wired to the source-file start rule. Its public
+`ParseRequest` accepts any generated grammar rule, while `parseEvents` remains
+the source-file convenience entry point and `parseExpressionEvents` starts at
+`ruleIdExpression`. CST and AST expose matching rule-based and expression-
+fragment entry points. The fragment regression lowers `value + 2 * -3` with
+the same generated precedence rules and lossless spans used by full modules.
+This mirrors the C# reference compiler's `ParseExpressionFragment` foundation
+needed by `$(expression)` rather than introducing a second interpolation-only
+parser.
+
 The first typed IR lowering lives in `selfhost/ir/typed.sl`. It emits a flat,
 relocatable node table whose initial stable kinds are function, return, and
 typed Int/Text/Bool constants. Every node retains its source-module index, AST

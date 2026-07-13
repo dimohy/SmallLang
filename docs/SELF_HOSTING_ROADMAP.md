@@ -473,6 +473,11 @@ escaping, and Text parameters, returns, and imported calls share that ABI.
 ASCII and Korean examples both pass assembly, link, and execution validation.
 General interpolated/dynamic Text construction and lifetime ownership remain;
 the direct `Int` output slice above does not allocate a temporary Text value.
+For `$(expression)`, the generated parser VM, CST, and AST now accept an
+expression grammar start rule. A standalone fragment preserves precedence,
+unary operators, parent links, token payloads, and byte spans exactly as the
+full-module path does. The remaining step is to attach those fragment nodes to
+the surrounding lexical scope and typed interpolation IR before LLVM emission.
 
 Nominal struct ABI now uses deterministic module/symbol LLVM type names.
 Struct-literal fields form a general typed-IR sibling chain and lower through
