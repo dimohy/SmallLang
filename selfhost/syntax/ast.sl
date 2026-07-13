@@ -36,7 +36,7 @@ struct LowerRequest {
 # 34 associated-type equality, 36 member access, 37 array expression,
 # 38 dictionary expression, 39 struct literal, 40 struct field initializer,
 # 41 index access, 42 if flow target, 43 control-flow region,
-# 44 while flow target.
+# 44 while flow target, 45 loop control statement.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
 lowerFrom request: LowerRequest -> [AstNode; ~] {
@@ -85,6 +85,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
         rule == grammar.ruleIdIfFlowTarget => 42
         rule == grammar.ruleIdBlockBody => 43
         rule == grammar.ruleIdWhileFlowTarget => 44
+        rule == grammar.ruleIdLoopControlStatement => 45
         else => -1
     }
     request.source => source

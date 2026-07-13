@@ -366,13 +366,14 @@ block_function_body := "block" identifier ":" type_name "{" statement* "}"
 function_body := "{" function_declaration* statement* expression "}" | "=>" expression | "->" expression | "=" "intrinsic"
 main_block   := "main" block
 block        := "{" statement* "}"
-statement    := each_statement | binding_statement | index_assignment_statement | field_assignment_statement | expression_statement | block_function_call
+statement    := loop_control_statement | each_statement | binding_statement | index_assignment_statement | field_assignment_statement | expression_statement | block_function_call
 block_function_call := range_or_logical_expression "->" path identifier? block
 each_statement := "each" identifier "in" range_expression block
 binding_statement := identifier "=" expression statement_end | expression "=>" identifier "!"? statement_end
 index_assignment_statement := expression "=>" identifier "!"? "[" expression "]" statement_end
 field_assignment_statement := expression "=>" identifier "!"? "." identifier statement_end
 expression_statement := expression statement_end
+loop_control_statement := ("break" | "continue") statement_end
 statement_end := newline+ | "}" lookahead
 range_expression := logical_or_expression ".." logical_or_expression
 expression   := flow_expression
@@ -1322,6 +1323,13 @@ each i in 1..9 {
     "$n x $i = $value" -> println
 }
 ```
+
+`break` exits the closest lexically enclosing loop and `continue` transfers to
+that loop's next condition/iteration block. Both are statements without a
+value. Using either outside a loop is a semantic error. A control transfer
+drops every owned local created since the target loop was entered before the
+LLVM branch is emitted; nested loops therefore clean up and target their own
+innermost scope.
 
 The loop variable is immutable for the iteration and scoped to the loop body.
 Bindings introduced inside the loop body are also scoped to that body. The

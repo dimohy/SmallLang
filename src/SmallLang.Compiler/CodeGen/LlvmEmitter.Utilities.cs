@@ -21,6 +21,10 @@ internal sealed partial class LlvmEmitter
     private void EmitFunctionLine(string line = "")
     {
         _functions.Add(line + Environment.NewLine);
+        if (line.EndsWith(':'))
+        {
+            _currentBlockTerminated = false;
+        }
     }
 
     private void EmitFunctionBlock(string block)
@@ -946,6 +950,8 @@ internal sealed partial class LlvmEmitter
         Dictionary<string, MutableContainerSlot> MutableContainerSlots,
         Dictionary<string, string> MutableStructSlots,
         Dictionary<string, string> MutableScalarSlots);
+
+    private sealed record LoopContext(string ContinueLabel, string BreakLabel, LocalScope OuterScope);
 
     private sealed record RuntimeBlockInvocation(
         string ItemName,

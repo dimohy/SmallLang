@@ -18,6 +18,7 @@ internal sealed class SemanticCompiler
     private BoundType? _currentFunctionReturnType;
     private string? _currentMoveInputName;
     private readonly int _pointerBitWidth;
+    private int _loopDepth;
 
     public SemanticCompiler(SmallLangProgram program, int pointerBitWidth)
     {
@@ -1035,6 +1036,15 @@ internal sealed class SemanticCompiler
                 case BlockFunctionCallStatement blockFunctionCall:
                     BindBlockFunctionCall(blockFunctionCall, functions, bindings, mutableBindings, yieldInputType);
                     break;
+                case LoopControlStatement loopControl:
+                    if (_loopDepth == 0)
+                    {
+                        throw Error(
+                            loopControl.Line,
+                            loopControl.Column,
+                            $"'{loopControl.Kind.ToString().ToLowerInvariant()}' is only valid inside a loop");
+                    }
+                    break;
                 case ExpressionStatement expressionStatement:
                     var effect = InferExpressionStatement(expressionStatement.Expression, functions, bindings, mutableBindings, yieldInputType);
                     if (effect is FlowBindingEffect bindingEffect)
@@ -1246,7 +1256,7 @@ internal sealed class SemanticCompiler
         {
             throw Error(call.Source.Line, call.Source.Column, "while condition must be Bool");
         }
-        BindStatements(call.Body, functions,
+        BindLoopStatements(call.Body, functions,
             new Dictionary<string, BoundType>(bindings, StringComparer.Ordinal),
             new HashSet<string>(mutableBindings, StringComparer.Ordinal),
             yieldInputType,
@@ -1331,7 +1341,7 @@ internal sealed class SemanticCompiler
         {
             [call.ItemName] = itemType
         };
-        BindStatements(
+        BindLoopStatements(
             call.Body,
             functions,
             bodyBindings,
@@ -1436,13 +1446,38 @@ internal sealed class SemanticCompiler
         {
             [call.ItemName] = itemType
         };
-        BindStatements(
+        BindLoopStatements(
             call.Body,
             functions,
             bodyBindings,
             new HashSet<string>(mutableBindings, StringComparer.Ordinal),
             yieldInputType,
             allowContainerBindings: true);
+    }
+
+    private void BindLoopStatements(
+        IReadOnlyList<Statement> statements,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        Dictionary<string, BoundType> bindings,
+        HashSet<string> mutableBindings,
+        BoundType? yieldInputType = null,
+        bool allowContainerBindings = true)
+    {
+        _loopDepth++;
+        try
+        {
+            BindStatements(
+                statements,
+                functions,
+                bindings,
+                mutableBindings,
+                yieldInputType,
+                allowContainerBindings);
+        }
+        finally
+        {
+            _loopDepth--;
+        }
     }
 
     private void BindRepeatBlockFunctionCall(
@@ -1479,7 +1514,7 @@ internal sealed class SemanticCompiler
         {
             [call.ItemName] = BoundType.Int
         };
-        BindStatements(
+        BindLoopStatements(
             call.Body,
             functions,
             bodyBindings,

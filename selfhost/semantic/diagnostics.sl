@@ -15,6 +15,7 @@ public struct SemanticDiagnostic {
 
 # Code 1 identifies a duplicate declaration in the same lexical owner.
 # Code 2 identifies an unresolved name expression.
+# Code 3 identifies break/continue without an enclosing while.
 public analyze source: Text -> [SemanticDiagnostic; ~] {
     source -> symbols.collect => table!
     source -> lexer.lex => tokens!
@@ -105,6 +106,22 @@ public analyze source: Text -> [SemanticDiagnostic; ~] {
                     } => unresolvedDiagnostic
                     diagnostics! -> push(unresolvedDiagnostic)
                 }
+            }
+        }
+        nameAst.kind == 45 -> if {
+            nameAst.parent => loopOwner!
+            false => hasLoopOwner!
+            (loopOwner! >= 0 and not hasLoopOwner!) -> while {
+                nodes![loopOwner!].kind == 44 -> if { true => hasLoopOwner! } else { nodes![loopOwner!].parent => loopOwner! }
+            }
+            not hasLoopOwner! -> if {
+                tokens![nameAst.payloadToken] => loopControlToken
+                diagnostics! -> push(SemanticDiagnostic {
+                    code: 3
+                    symbol: -1
+                    previousSymbol: -1
+                    span: loopControlToken.span
+                })
             }
         }
         diagnosticAstIndex! + 1 => diagnosticAstIndex!

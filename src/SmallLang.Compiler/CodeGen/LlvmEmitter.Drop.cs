@@ -1,5 +1,6 @@
 using System.Globalization;
 using SmallLang.Compiler.Semantics;
+using SmallLang.Compiler.Syntax;
 
 namespace SmallLang.Compiler.CodeGen;
 
@@ -8,8 +9,11 @@ internal sealed partial class LlvmEmitter
     private void EmitOwnedDropHelpers()
     {
         var needsHelpers = _program.MainBindings.Values.Any(IsCustomOwnedType)
+            || _program.MainStatements.Any(UsesBox)
             || _program.Functions.Values.Any(function => IsCustomOwnedType(function.ReturnType)
-                || (function.InputType is { } input && IsCustomOwnedType(input)))
+                || (function.InputType is { } input && IsCustomOwnedType(input))
+                || (function.Body is not null && UsesBox(function.Body))
+                || function.BlockBody.Any(UsesBox))
             || _program.Types.Structs.Any(definition => IsCustomOwnedType(definition.Id))
             || _program.Types.Enums.Any(definition => IsCustomOwnedType(definition.Id))
             || _program.Types.StaticArrays.Any(definition =>
@@ -53,6 +57,59 @@ internal sealed partial class LlvmEmitter
             EmitEnumDropHelper(enumeration);
         }
     }
+
+    private static bool UsesBox(Statement statement) => statement switch
+    {
+        BindingStatement value => UsesBox(value.Value),
+        IndexAssignmentStatement value => UsesBox(value.Index) || UsesBox(value.Value),
+        FieldAssignmentStatement value => UsesBox(value.Value),
+        BlockFunctionCallStatement value => UsesBox(value.Source) || value.Body.Any(UsesBox),
+        ExpressionStatement value => UsesBox(value.Expression),
+        _ => false
+    };
+
+    private static bool UsesBox(Expression expression) => expression switch
+    {
+        BoxExpression => true,
+        StringExpression value => value.Segments.OfType<InterpolationSegment>().Any(x => UsesBox(x.Expression)),
+        AddExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        SubtractExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        MultiplyExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        DivideExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        ModuloExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        NegateExpression value => UsesBox(value.Value),
+        CompareExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        AndExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        OrExpression value => UsesBox(value.Left) || UsesBox(value.Right),
+        NotExpression value => UsesBox(value.Value),
+        RangeExpression value => UsesBox(value.Start) || UsesBox(value.End),
+        FlowExpression value => UsesBox(value.Source) || value.Targets.SelectMany(x => x.Arguments).Any(UsesBox),
+        CallExpression value => value.Arguments.Any(UsesBox),
+        ArrayLiteralExpression value => value.Elements.Any(UsesBox),
+        ArrayRepeatExpression value => UsesBox(value.Value),
+        DictionaryLiteralExpression value => value.Entries.Any(x => UsesBox(x.Key) || UsesBox(x.Value)),
+        IndexExpression value => UsesBox(value.Source) || UsesBox(value.Index),
+        StructLiteralExpression value => value.Fields.Any(x => UsesBox(x.Value)),
+        FieldAccessExpression value => UsesBox(value.Source),
+        TryExpression value => UsesBox(value.Value),
+        MapExpression value => UsesBox(value.Path)
+            || (value.Offset is not null && UsesBox(value.Offset))
+            || (value.Length is not null && UsesBox(value.Length))
+            || (value.FileSize is not null && UsesBox(value.FileSize)),
+        IfExpression value => UsesBox(value.Condition) || UsesBox(value.Then)
+            || (value.Else is not null && UsesBox(value.Else)),
+        WhenExpression value => (value.Subject is not null && UsesBox(value.Subject))
+            || value.Arms.Any(x => UsesBox(x.Condition) || UsesBox(x.Body))
+            || UsesBox(value.Else),
+        EnumMatchExpression value => UsesBox(value.Subject)
+            || value.Arms.Any(x => UsesBox(x.Body))
+            || (value.Else is not null && UsesBox(value.Else)),
+        FoldExpression value => UsesBox(value.Source) || UsesBox(value.Initial) || UsesBox(value.Body),
+        _ => false
+    };
+
+    private static bool UsesBox(BlockBody body) => body.Statements.Any(UsesBox)
+        || (body.Value is not null && UsesBox(body.Value));
 
     private bool IsCustomOwnedType(BoundType type)
     {

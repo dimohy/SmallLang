@@ -14,7 +14,8 @@ import smalllang.compiler.semantic.symbols as symbols
 # 4 Bool constant, 5 name, 6 call, 7 unary, 8 binary, 9 other expression,
 # 10 parameter, 11 entry point, 12 struct literal, 13 member access,
 # 14 array literal, 15 index access, 16 dictionary literal, 17 binding,
-# 18 structured if, 19 control-flow region, 20 structured while.
+# 18 structured if, 19 control-flow region, 20 structured while,
+# 21 loop exit (opcode 0 break, 1 continue; operand0 targets the while).
 public struct TypedIrNode {
     kind: Int
     parent: Int
@@ -310,12 +311,18 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             expressionTypeSearch! + 1 => expressionTypeSearch!
                         }
                         expressionBelongsToFunction! -> if {
-                            (expression.kind == 42 or expression.kind == 43 or expression.kind == 44) -> if {
+                            (expression.kind == 42 or expression.kind == 43 or expression.kind == 44 or expression.kind == 45) -> if {
                                 results! -> len => controlIr
                                 controlIr => astToIr![expressionAstIndex!]
                                 18 => controlKind!
                                 expression.kind == 43 -> if { 19 => controlKind! }
                                 expression.kind == 44 -> if { 20 => controlKind! }
+                                expression.kind == 45 -> if { 21 => controlKind! }
+                                -1 => controlOpcode!
+                                expression.kind == 45 -> if {
+                                    0 => controlOpcode!
+                                    (source -> byte(expression.start)) == UInt8(99) -> if { 1 => controlOpcode! }
+                                }
                                 1 => controlTypeOrigin!
                                 -1 => controlTypeModule!
                                 0 => controlTypeSymbol!
@@ -336,7 +343,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: controlTypeModule!
                                     typeSymbol: controlTypeSymbol!
                                     payloadToken: expression.payloadToken
-                                    opcode: -1
+                                    opcode: controlOpcode!
                                     operand0: -1
                                     operand1: -1
                                     nextOperand: -1
@@ -761,12 +768,18 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             entryExpressionTypeSearch! + 1 => entryExpressionTypeSearch!
                         }
                         entryExpressionBelongs! -> if {
-                            (entryExpression.kind == 42 or entryExpression.kind == 43 or entryExpression.kind == 44) -> if {
+                            (entryExpression.kind == 42 or entryExpression.kind == 43 or entryExpression.kind == 44 or entryExpression.kind == 45) -> if {
                                 results! -> len => entryControlIr
                                 entryControlIr => entryAstToIr![entryExpressionAst!]
                                 18 => entryControlKind!
                                 entryExpression.kind == 43 -> if { 19 => entryControlKind! }
                                 entryExpression.kind == 44 -> if { 20 => entryControlKind! }
+                                entryExpression.kind == 45 -> if { 21 => entryControlKind! }
+                                -1 => entryControlOpcode!
+                                entryExpression.kind == 45 -> if {
+                                    0 => entryControlOpcode!
+                                    (source -> byte(entryExpression.start)) == UInt8(99) -> if { 1 => entryControlOpcode! }
+                                }
                                 1 => entryControlTypeOrigin!
                                 -1 => entryControlTypeModule!
                                 0 => entryControlTypeSymbol!
@@ -787,7 +800,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: entryControlTypeModule!
                                     typeSymbol: entryControlTypeSymbol!
                                     payloadToken: entryExpression.payloadToken
-                                    opcode: -1
+                                    opcode: entryControlOpcode!
                                     operand0: -1
                                     operand1: -1
                                     nextOperand: -1
@@ -1048,6 +1061,19 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
             entryAstIndex! + 1 => entryAstIndex!
         }
         sourceIndex! + 1 => sourceIndex!
+    }
+    0 => loopExitIndex!
+    loopExitIndex! < (results! -> len) -> while {
+        results![loopExitIndex!] => loopExit!
+        loopExit!.kind == 21 -> if {
+            loopExit!.parent => targetLoop!
+            (targetLoop! >= 0 and results![targetLoop!].kind != 20) -> while {
+                results![targetLoop!].parent => targetLoop!
+            }
+            targetLoop! => loopExit!.operand0
+            loopExit! => results![loopExitIndex!]
+        }
+        loopExitIndex! + 1 => loopExitIndex!
     }
     results!
 }

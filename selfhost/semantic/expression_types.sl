@@ -51,6 +51,9 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
             node.kind == 44 -> if {
                 inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 0, keyOrigin: -1, keyModule: -1, valueOrigin: -1, valueModule: -1 })
             }
+            node.kind == 45 -> if {
+                inferred! -> push(ExpressionType { sourceModule: sourceIndex!, astNode: astIndex!, origin: 1, targetModule: -1, targetSymbol: 0, keyOrigin: -1, keyModule: -1, valueOrigin: -1, valueModule: -1 })
+            }
             node.kind == 15 -> if {
                 tokens![node.payloadToken] => nameToken
                 false => booleanLiteral!

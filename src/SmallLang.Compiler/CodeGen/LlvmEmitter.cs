@@ -33,6 +33,8 @@ internal sealed partial class LlvmEmitter
     private int _labelId;
     private string _mainOk = "true";
     private string _currentBlockLabel = "entry";
+    private bool _currentBlockTerminated;
+    private readonly Stack<LoopContext> _loopContexts = new();
 
     public LlvmEmitter(BoundProgram program, LlvmRuntimePlatform platform)
     {

@@ -1,6 +1,8 @@
 syntax = 2,11,2,20
-expected count = 13
+expected count = 15
 expected = 31
+expected = -29
+expected = -30
 expected = -18
 expected = 0
 expected = -26

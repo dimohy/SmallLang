@@ -53,6 +53,10 @@ internal sealed partial class LlvmEmitter
     {
         foreach (var statement in statements)
         {
+            if (_currentBlockTerminated)
+            {
+                break;
+            }
             EmitStatement(statement);
         }
     }
@@ -116,6 +120,9 @@ internal sealed partial class LlvmEmitter
             case BlockFunctionCallStatement blockFunctionCall:
                 EmitBlockFunctionCall(blockFunctionCall);
                 break;
+            case LoopControlStatement loopControl:
+                EmitLoopControlStatement(loopControl);
+                return;
             case ExpressionStatement expressionStatement:
                 _mainOk = EmitExpressionStatement(expressionStatement.Expression, _mainOk);
                 break;
@@ -124,6 +131,38 @@ internal sealed partial class LlvmEmitter
         }
 
         EmitStackLifetimeEndsAfter(statement);
+    }
+
+    private void EmitLoopControlStatement(LoopControlStatement statement)
+    {
+        if (!_loopContexts.TryPeek(out var loop))
+        {
+            throw new SmallLangException($"'{statement.Kind.ToString().ToLowerInvariant()}' is only valid inside a loop");
+        }
+
+        DropOwnedLocalsCreatedSince(loop.OuterScope, transferredOwnerName: null);
+        EmitBranch(statement.Kind == LoopControlKind.Break ? loop.BreakLabel : loop.ContinueLabel);
+    }
+
+    private void EmitLoopBody(
+        IReadOnlyList<Statement> statements,
+        LocalScope outerScope,
+        string continueLabel,
+        string breakLabel)
+    {
+        _loopContexts.Push(new LoopContext(continueLabel, breakLabel, outerScope));
+        try
+        {
+            EmitStatements(statements);
+            if (!_currentBlockTerminated)
+            {
+                DropOwnedLocalsCreatedSince(outerScope, transferredOwnerName: null);
+            }
+        }
+        finally
+        {
+            _loopContexts.Pop();
+        }
     }
 
     private void CreateMutableStructSlot(string name, RuntimeStruct value)
@@ -268,15 +307,17 @@ internal sealed partial class LlvmEmitter
         try
         {
             _locals[statement.ItemName] = new RuntimeInt(item);
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, continueLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
 
-        EmitBranch(continueLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
         EmitLabel(continueLabel);
         _currentBlockLabel = continueLabel;
         EmitBinary(next, "add", "i32", item, "1");
@@ -344,15 +385,17 @@ internal sealed partial class LlvmEmitter
             {
                 _borrowedOwnedLocals.Add(statement.ItemName);
             }
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, continueLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
 
-        EmitBranch(continueLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
         EmitLabel(continueLabel);
         _currentBlockLabel = continueLabel;
         EmitBinary(next, "add", "i64", index, "1");
@@ -427,14 +470,16 @@ internal sealed partial class LlvmEmitter
         var outerLocals = CaptureLocals();
         try
         {
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, conditionLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
-        EmitBranch(conditionLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(conditionLabel);
+        }
 
         EmitLabel(endLabel);
         _currentBlockLabel = endLabel;
@@ -512,14 +557,16 @@ internal sealed partial class LlvmEmitter
             {
                 _borrowedOwnedLocals.Add(statement.ItemName);
             }
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, continueLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
-        EmitBranch(continueLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
         EmitFunctionLine();
 
         EmitLabel(continueLabel);
@@ -572,15 +619,17 @@ internal sealed partial class LlvmEmitter
         try
         {
             _locals[statement.ItemName] = new RuntimeInt(BoundType.CodePoint, codePoint);
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, continueLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
 
-        EmitBranch(continueLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
         EmitLabel(continueLabel);
         _currentBlockLabel = continueLabel;
         EmitBinary(nextIndex, "add", "i64", index, width);
@@ -613,15 +662,17 @@ internal sealed partial class LlvmEmitter
         try
         {
             _locals[statement.ItemName] = new RuntimeInt(item);
-            EmitStatements(statement.Body);
-            DropOwnedLocalsCreatedSince(outerLocals, transferredOwnerName: null);
+            EmitLoopBody(statement.Body, outerLocals, continueLabel, endLabel);
         }
         finally
         {
             RestoreLocals(outerLocals);
         }
 
-        EmitBranch(continueLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
         EmitLabel(continueLabel);
         _currentBlockLabel = continueLabel;
         EmitBinary(next, "add", "i32", item, "1");

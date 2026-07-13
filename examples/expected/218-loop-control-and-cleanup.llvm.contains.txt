@@ -1,0 +1,2 @@
+call void @smalllang_drop_
+call void @smalllang_free

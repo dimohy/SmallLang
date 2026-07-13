@@ -113,6 +113,14 @@ internal sealed record BlockFunctionCallStatement(
 
 internal sealed record ExpressionStatement(Expression Expression) : Statement;
 
+internal enum LoopControlKind
+{
+    Break,
+    Continue
+}
+
+internal sealed record LoopControlStatement(LoopControlKind Kind, int Line, int Column) : Statement;
+
 internal abstract record Expression(int Line, int Column);
 
 internal sealed record StringExpression(IReadOnlyList<StringSegment> Segments, int Line, int Column)

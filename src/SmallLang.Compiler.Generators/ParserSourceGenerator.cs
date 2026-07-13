@@ -760,7 +760,7 @@ internal static class ParserEmitter
         builder.AppendLine("        var statements = new List<Statement>();");
         builder.AppendLine("        while (!Check(TokenKind.RightBrace) && !Check(TokenKind.End))");
         builder.AppendLine("        {");
-        builder.AppendLine("            if (TryParseBlockValue(out var value))");
+        builder.AppendLine("            if (!CheckIdentifier(\"break\") && !CheckIdentifier(\"continue\") && TryParseBlockValue(out var value))");
         builder.AppendLine("            {");
         builder.AppendLine("                return new BlockBody(statements, value, value.Line, value.Column);");
         builder.AppendLine("            }");
@@ -892,7 +892,12 @@ internal static class ParserEmitter
         builder.AppendLine();
         builder.AppendLine("    private Statement ParseStatement()");
         builder.AppendLine("    {");
-        builder.AppendLine("        // Statement = BlockFunctionCallStatement | EachStatement | BindingStatement | ExpressionStatement");
+        builder.AppendLine("        // Statement = LoopControlStatement | BlockFunctionCallStatement | EachStatement | BindingStatement | ExpressionStatement");
+        builder.AppendLine("        if (CheckIdentifier(\"break\") || CheckIdentifier(\"continue\"))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            return ParseLoopControlStatement();");
+        builder.AppendLine("        }");
+        builder.AppendLine();
         builder.AppendLine("        if (CheckIdentifier(\"each\"))");
         builder.AppendLine("        {");
         builder.AppendLine("            return ParseEachStatement();");
@@ -914,6 +919,15 @@ internal static class ParserEmitter
         builder.AppendLine("        }");
         builder.AppendLine();
         builder.AppendLine("        return ParseExpressionStatement();");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private Statement ParseLoopControlStatement()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        // LoopControlStatement = (Identifier(\"break\") | Identifier(\"continue\")) StatementEnd");
+        builder.AppendLine("        var keyword = Expect(TokenKind.Identifier);");
+        builder.AppendLine("        ExpectStatementEnd();");
+        builder.AppendLine("        var kind = keyword.Text == \"break\" ? LoopControlKind.Break : LoopControlKind.Continue;");
+        builder.AppendLine("        return new LoopControlStatement(kind, keyword.Line, keyword.Column);");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    private bool TryParseLeadingIndexAssignment(out Statement statement)");
@@ -1233,7 +1247,7 @@ internal static class ParserEmitter
         builder.AppendLine();
         builder.AppendLine("        while (!Check(TokenKind.RightBrace) && !Check(TokenKind.End))");
         builder.AppendLine("        {");
-        builder.AppendLine("            if (TryParseBlockValue(out var value))");
+        builder.AppendLine("            if (!CheckIdentifier(\"break\") && !CheckIdentifier(\"continue\") && TryParseBlockValue(out var value))");
         builder.AppendLine("            {");
         builder.AppendLine("                Expect(TokenKind.RightBrace);");
         builder.AppendLine("                return new BlockBody(statements, value, start.Line, start.Column);");

@@ -1,0 +1,79 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.text = type { ptr, i64 }
+@sl_str_32 = private unnamed_addr constant [4 x i8] c"skip"
+@sl_str_41 = private unnamed_addr constant [4 x i8] c"stop"
+@sl_str_44 = private unnamed_addr constant [4 x i8] c"body"
+@sl_str_46 = private unnamed_addr constant [5 x i8] c"outer"
+@sl_str_48 = private unnamed_addr constant [4 x i8] c"done"
+define i32 @main() {
+entry:
+  %slot1 = alloca i32, align 4
+  %slot3 = alloca i32, align 4
+  store i32 0, ptr %slot1, align 4
+  br label %while10_header
+while10_header:
+  %while10_v8 = load i32, ptr %slot1, align 4
+  %while10_v7 = icmp slt i32 %while10_v8, 2
+  br i1 %while10_v7, label %while10_body, label %while10_exit
+while10_body:
+  %v13 = load i32, ptr %slot1, align 4
+  %v12 = add i32 %v13, 1
+  store i32 %v12, ptr %slot1, align 4
+  store i32 0, ptr %slot3, align 4
+  br label %while20_header
+while20_header:
+  %while20_v18 = load i32, ptr %slot3, align 4
+  %while20_v17 = icmp slt i32 %while20_v18, 4
+  br i1 %while20_v17, label %while20_body, label %while20_exit
+while20_body:
+  %v23 = load i32, ptr %slot3, align 4
+  %v22 = add i32 %v23, 1
+  store i32 %v22, ptr %slot3, align 4
+  %v27 = load i32, ptr %slot3, align 4
+  %v26 = icmp eq i32 %v27, 2
+  br i1 %v26, label %if29_then, label %if29_merge
+if29_then:
+  call void @sl_runtime_print(ptr @sl_str_32, i64 4, i1 true)
+  br label %while20_header
+if29_merge:
+  %v36 = load i32, ptr %slot3, align 4
+  %v35 = icmp eq i32 %v36, 3
+  br i1 %v35, label %if38_then, label %if38_merge
+if38_then:
+  call void @sl_runtime_print(ptr @sl_str_41, i64 4, i1 true)
+  br label %while20_exit
+if38_merge:
+  call void @sl_runtime_print(ptr @sl_str_44, i64 4, i1 true)
+  br label %while20_header
+while20_exit:
+  call void @sl_runtime_print(ptr @sl_str_46, i64 5, i1 true)
+  br label %while10_header
+while10_exit:
+  call void @sl_runtime_print(ptr @sl_str_48, i64 4, i1 true)
+  ret i32 0
+}

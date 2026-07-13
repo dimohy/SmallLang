@@ -352,12 +352,24 @@ emitCore sources: move [Text; ~] -> Unit {
     emitRegion regionIndex: Int -> Unit {
         sources -> typedIr.lower => regionIr!
         regionIr![regionIndex] => region
+        sources[region.sourceModule] -> ast.lower => regionAst!
         region.parent => ownerIndex!
         (ownerIndex! >= 0 and regionIr![ownerIndex!].kind != 0 and regionIr![ownerIndex!].kind != 11) -> while { regionIr![ownerIndex!].parent => ownerIndex! }
         [Int; ~] => regionEventKinds!
         [Int; ~] => regionOrder!
         [Int; ~] => regionTaskKinds!
         [Int; ~] => regionTaskNodes!
+        [Bool; ~] => ifActive!
+        [Bool; ~] => ifThenReachesMerge!
+        [Bool; ~] => loopActive!
+        0 => regionStateIndex!
+        regionStateIndex! < (regionIr! -> len) -> while {
+            ifActive! -> push(false)
+            ifThenReachesMerge! -> push(false)
+            loopActive! -> push(false)
+            regionStateIndex! + 1 => regionStateIndex!
+        }
+        false => regionTerminated!
         regionTaskKinds! -> push(0)
         regionTaskNodes! -> push(regionIndex)
         1 => regionTaskSize!
@@ -385,7 +397,7 @@ emitCore sources: move [Text; ~] -> Unit {
                             false => belongsToNestedRegion!
                             (localAncestor! >= 0 and not belongsToLocalRegion! and not belongsToNestedRegion!) -> while {
                                 localAncestor! == regionTaskNode -> if { true => belongsToLocalRegion! } else {
-                                    regionIr![localAncestor!].kind == 19 -> if { true => belongsToNestedRegion! } else { regionIr![localAncestor!].parent => localAncestor! }
+                                    (regionIr![localAncestor!].kind == 19 or regionIr![localAncestor!].kind == 20) -> if { true => belongsToNestedRegion! } else { regionIr![localAncestor!].parent => localAncestor! }
                                 }
                             }
                             belongsToLocalRegion! -> if {
@@ -395,7 +407,45 @@ emitCore sources: move [Text; ~] -> Unit {
                                 }
                                 localCandidate.kind != 19 -> if {
                                     true => localReady!
-                                    localCandidate.operand0 >= 0 -> if {
+                                    localCandidateIndex! => localStatementRoot!
+                                    localCandidate.parent => localRootParent!
+                                    (localRootParent! >= 0 and localRootParent! != regionTaskNode) -> while {
+                                        localRootParent! => localStatementRoot!
+                                        regionIr![localRootParent!].parent => localRootParent!
+                                    }
+                                    -1 => localPreviousRoot!
+                                    UIntSize(0) => localPreviousRootStart!
+                                    0 => localRootSearch!
+                                    localRootSearch! < (regionIr! -> len) -> while {
+                                        regionIr![localRootSearch!] => localRootCandidate
+                                        (localRootCandidate.parent == regionTaskNode and regionAst![localRootCandidate.astNode].start < regionAst![regionIr![localStatementRoot!].astNode].start) -> if {
+                                            regionAst![localRootCandidate.astNode].start => localRootCandidateStart
+                                            (localPreviousRoot! < 0 or localRootCandidateStart > localPreviousRootStart!) -> if {
+                                                localRootSearch! => localPreviousRoot!
+                                                localRootCandidateStart => localPreviousRootStart!
+                                            }
+                                        }
+                                        localRootSearch! + 1 => localRootSearch!
+                                    }
+                                    localPreviousRoot! >= 0 -> if {
+                                        0 => localPreviousMemberSearch!
+                                        localPreviousMemberSearch! < (regionIr! -> len) -> while {
+                                            not localScheduled![localPreviousMemberSearch!] -> if {
+                                                localPreviousMemberSearch! => localPreviousMemberRoot!
+                                                regionIr![localPreviousMemberSearch!].parent => localPreviousMemberParent!
+                                                false => localPreviousMemberNested!
+                                                (localPreviousMemberParent! >= 0 and localPreviousMemberParent! != regionTaskNode and not localPreviousMemberNested!) -> while {
+                                                    (regionIr![localPreviousMemberParent!].kind == 19 or regionIr![localPreviousMemberParent!].kind == 20) -> if { true => localPreviousMemberNested! } else {
+                                                        localPreviousMemberParent! => localPreviousMemberRoot!
+                                                        regionIr![localPreviousMemberParent!].parent => localPreviousMemberParent!
+                                                    }
+                                                }
+                                                (not localPreviousMemberNested! and localPreviousMemberParent! == regionTaskNode and localPreviousMemberRoot! == localPreviousRoot!) -> if { false => localReady! }
+                                            }
+                                            localPreviousMemberSearch! + 1 => localPreviousMemberSearch!
+                                        }
+                                    }
+                                    (localCandidate.kind != 20 and localCandidate.operand0 >= 0) -> if {
                                         regionIr![localCandidate.operand0].parent => localOperandAncestor!
                                         false => localOperandBelongs!
                                         (localOperandAncestor! >= 0 and not localOperandBelongs!) -> while {
@@ -527,6 +577,16 @@ emitCore sources: move [Text; ~] -> Unit {
             regionIr![regionNodeIndex!] => regionNode
             regionEventKinds![regionOrderIndex!] => regionEventKind
             regionEventKind == 1 -> if {
+            not regionTerminated! -> if {
+            regionNode.kind == 21 -> if {
+                regionNode.opcode == 1 -> if {
+                    "  br label %while$(regionNode.operand0)_header" -> println
+                } else {
+                    "  br label %while$(regionNode.operand0)_exit" -> println
+                }
+                true => regionTerminated!
+            }
+            regionNode.kind != 21 -> if {
             (regionNode.kind == 5 and ownerIndex! >= 0 and not (regionIr![ownerIndex!].kind == 0 and regionIr![ownerIndex!].operand1 >= 0 and regionNode.symbol == regionIr![regionIr![ownerIndex!].operand1].symbol)) -> if {
                 -1 => regionBindingIndex!
                 0 => regionBindingSearch!
@@ -660,7 +720,11 @@ emitCore sources: move [Text; ~] -> Unit {
                 }
             }
             }
+            }
+            }
             regionEventKind == 2 -> if {
+                not regionTerminated! -> if {
+                true => ifActive![regionNodeIndex!]
                 regionIr![regionNode.operand0] => nestedCondition
                 "  br i1 " -> print
                 nestedCondition.kind == 4 -> if {
@@ -676,14 +740,30 @@ emitCore sources: move [Text; ~] -> Unit {
                     ", label %if$(regionNodeIndex!)_then, label %if$(regionNodeIndex!)_merge" -> println
                 }
                 "if$(regionNodeIndex!)_then:" -> println
+                false => regionTerminated!
+                }
             }
             regionEventKind == 3 -> if {
-                "  br label %if$(regionNodeIndex!)_merge" -> println
-                "if$(regionNodeIndex!)_else:" -> println
+                ifActive![regionNodeIndex!] -> if {
+                    not regionTerminated! -> if {
+                        "  br label %if$(regionNodeIndex!)_merge" -> println
+                        true => ifThenReachesMerge![regionNodeIndex!]
+                    }
+                    "if$(regionNodeIndex!)_else:" -> println
+                    false => regionTerminated!
+                }
             }
             regionEventKind == 4 -> if {
-                "  br label %if$(regionNodeIndex!)_merge" -> println
-                "if$(regionNodeIndex!)_merge:" -> println
+                ifActive![regionNodeIndex!] -> if {
+                regionNode.nextOperand < 0 -> if { true => ifThenReachesMerge![regionNodeIndex!] }
+                not regionTerminated! -> if {
+                    "  br label %if$(regionNodeIndex!)_merge" -> println
+                    true => ifThenReachesMerge![regionNodeIndex!]
+                }
+                ifThenReachesMerge![regionNodeIndex!] -> if {
+                    "if$(regionNodeIndex!)_merge:" -> println
+                    false => regionTerminated!
+                }
                 (regionNode.typeSymbol != 0 and regionNode.nextOperand >= 0) -> if {
                     regionIr![regionNode.operand1] => nestedThenRegion
                     regionIr![regionNode.nextOperand] => nestedElseRegion
@@ -713,18 +793,29 @@ emitCore sources: move [Text; ~] -> Unit {
                     nestedElseValue.kind == 18 -> if { "$(nestedElseRegion.operand1)_merge" -> print } else { "$(regionNodeIndex!)_else" -> print }
                     " ]" -> println
                 }
+                }
             }
             regionEventKind == 6 -> if {
-                "  br label %while$(regionNodeIndex!)_header" -> println
-                "while$(regionNodeIndex!)_header:" -> println
+                not regionTerminated! -> if {
+                    true => loopActive![regionNodeIndex!]
+                    "  br label %while$(regionNodeIndex!)_header" -> println
+                    "while$(regionNodeIndex!)_header:" -> println
+                    false => regionTerminated!
+                }
             }
             regionEventKind == 7 -> if {
-                WhileBranchRequest { whileIndex: regionNodeIndex!, ownerIndex: ownerIndex! } -> emitWhileBranch
-                "while$(regionNodeIndex!)_body:" -> println
+                loopActive![regionNodeIndex!] -> if {
+                    WhileBranchRequest { whileIndex: regionNodeIndex!, ownerIndex: ownerIndex! } -> emitWhileBranch
+                    "while$(regionNodeIndex!)_body:" -> println
+                    false => regionTerminated!
+                }
             }
             regionEventKind == 8 -> if {
-                "  br label %while$(regionNodeIndex!)_header" -> println
-                "while$(regionNodeIndex!)_exit:" -> println
+                loopActive![regionNodeIndex!] -> if {
+                    not regionTerminated! -> if { "  br label %while$(regionNodeIndex!)_header" -> println }
+                    "while$(regionNodeIndex!)_exit:" -> println
+                    false => regionTerminated!
+                }
             }
             regionOrderIndex! + 1 => regionOrderIndex!
         }

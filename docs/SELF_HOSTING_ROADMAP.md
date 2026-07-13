@@ -463,16 +463,20 @@ expression supplies the return operand, fixing effectful Bool helpers used by
 loop conditions. This memory-form lowering is valid for nested CFGs and is designed
 for LLVM `mem2reg`/SROA promotion to SSA `phi` nodes. Native regressions execute
 terminating mutable loops in both a function and `main`, including observable
-short-circuit calls. `break`/`continue` and ownership cleanup on loop exits
-remain before general self-hosted loops are complete.
+short-circuit calls. Dedicated loop-exit IR now links `break`/`continue` to the
+closest structured while, suppresses unreachable siblings, and emits valid
+branches through nested if/while regions. The C# reference backend drops
+loop-local owned values before either transfer; matching self-hosted ownership
+cleanup blocks remain before the structured early-exit gate is complete.
 
 Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA
 values in both functions and `main`, so bound values can be returned or passed
 to calls instead of every name being mistaken for `%arg`. General topological
-scheduling now uses a stable operand-readiness pass, so call-valued and
-operator-valued scalar bindings are emitted before their uses in functions and
-`main`. Aggregate/container dependencies, mutation, branch joins, cycle
+scheduling now combines operand readiness with source-ordered statement roots,
+so values are emitted before their uses without moving independent effects
+across nested control-flow boundaries in functions or `main`.
+Aggregate/container dependencies, mutation, branch joins, cycle
 diagnostics, and ownership-sensitive binding drops remain.
 
 Aggregate-valued bindings now participate in the same dependency schedule.

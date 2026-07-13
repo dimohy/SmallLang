@@ -7,6 +7,7 @@ internal sealed partial class LlvmEmitter
     private void EmitLabel(string label)
     {
         EmitFunctionLine($"{label}:");
+        _currentBlockTerminated = false;
     }
 
     private void EmitInstruction(string instruction)
@@ -22,22 +23,26 @@ internal sealed partial class LlvmEmitter
     private void EmitBranch(string label)
     {
         EmitInstruction($"br label %{label}");
+        _currentBlockTerminated = true;
     }
 
     private void EmitConditionalBranch(string condition, string trueLabel, string falseLabel)
     {
         EmitInstruction($"br i1 {condition}, label %{trueLabel}, label %{falseLabel}");
+        _currentBlockTerminated = true;
     }
 
     private void EmitRet(string typeName, string value)
     {
         EmitInstruction($"ret {typeName} {value}");
+        _currentBlockTerminated = true;
     }
 
     private void EmitTrap()
     {
         EmitInstruction("call void @llvm.trap()");
         EmitInstruction("unreachable");
+        _currentBlockTerminated = true;
     }
 
     private void EmitAlloca(string target, string typeName, int align)

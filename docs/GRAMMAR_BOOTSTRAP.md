@@ -365,8 +365,10 @@ Declared result types now drive self-hosted LLVM function signatures, while the
 last top-level body expression supplies the return operand. LLVM's normal
 `mem2reg`/SROA pipeline can promote these non-escaping
 slots to SSA `phi` nodes without making the source semantics depend on emitter
-predecessor bookkeeping. `break`/`continue` and ownership cleanup on loop exits
-remain.
+predecessor bookkeeping. `break`/`continue` are dedicated AST and typed-IR loop
+exits that target the closest while and compose through nested if/while tasks.
+The reference backend drops owned loop locals on both transfers; equivalent
+self-hosted ownership cleanup blocks remain.
 
 The first self-hosted LLVM text backend lives in `selfhost/llvm/text.sl`. It
 emits stable `sl_m<module>_s<symbol>` function names, `i32`/`i1` signatures,

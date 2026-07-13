@@ -230,16 +230,30 @@ internal sealed partial class LlvmEmitter
         _currentBlockLabel = thenLabel;
         var thenResult = EmitScopedBlockBody(expression.Then);
         var thenEndLabel = _currentBlockLabel;
-        EmitBranch(endLabel);
+        var thenTerminated = _currentBlockTerminated;
+        if (!thenTerminated)
+        {
+            EmitBranch(endLabel);
+        }
 
         BlockResult? elseResult = null;
+        var elseTerminated = false;
         if (expression.Else is not null)
         {
             var activeElseLabel = elseLabel!;
             EmitLabel(activeElseLabel);
             _currentBlockLabel = activeElseLabel;
             elseResult = EmitScopedBlockBody(expression.Else);
-            EmitBranch(endLabel);
+            elseTerminated = _currentBlockTerminated;
+            if (!elseTerminated)
+            {
+                EmitBranch(endLabel);
+            }
+        }
+
+        if (expression.Else is not null && thenTerminated && elseTerminated)
+        {
+            return RuntimeUnit.Instance;
         }
 
         EmitLabel(endLabel);
@@ -257,6 +271,7 @@ internal sealed partial class LlvmEmitter
     {
         var endLabel = NextLabel("when_end");
         var valueResults = new List<(RuntimeValue Value, string Label)>();
+        var hasEndPredecessor = false;
         var hasSubjectConditions = expression.Arms.Any(static arm => IsSubjectWhenCondition(arm.Condition));
         var subject = expression.Subject is not null
             ? EmitIntExpression(expression.Subject)
@@ -279,24 +294,36 @@ internal sealed partial class LlvmEmitter
             EmitLabel(armLabel);
             _currentBlockLabel = armLabel;
             var armResult = EmitScopedBlockBody(arm.Body);
-            if (armResult.Value is not null)
+            if (!_currentBlockTerminated && armResult.Value is not null)
             {
                 valueResults.Add((armResult.Value, armResult.EndLabel));
             }
 
-            EmitBranch(endLabel);
+            if (!_currentBlockTerminated)
+            {
+                EmitBranch(endLabel);
+                hasEndPredecessor = true;
+            }
             EmitLabel(nextLabel);
             nextConditionLabel = nextLabel;
         }
 
         _currentBlockLabel = nextConditionLabel;
         var elseResult = EmitScopedBlockBody(expression.Else);
-        if (elseResult.Value is not null)
+        if (!_currentBlockTerminated && elseResult.Value is not null)
         {
             valueResults.Add((elseResult.Value, elseResult.EndLabel));
         }
 
-        EmitBranch(endLabel);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(endLabel);
+            hasEndPredecessor = true;
+        }
+        if (!hasEndPredecessor)
+        {
+            return RuntimeUnit.Instance;
+        }
         EmitLabel(endLabel);
         _currentBlockLabel = endLabel;
 
@@ -468,6 +495,10 @@ internal sealed partial class LlvmEmitter
         try
         {
             EmitStatements(body.Statements);
+            if (_currentBlockTerminated)
+            {
+                return new BlockResult(null, _currentBlockLabel);
+            }
             var transferredOwnerName = body.Value is null
                 ? null
                 : GetBlockResultTransferredOwnerName(body.Value);
