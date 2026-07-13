@@ -74,11 +74,17 @@ public lower source: Text -> [InterpolationNode; ~] {
                         0 => fragmentAstIndex!
                         fragmentAstIndex! < (fragmentAst! -> len) -> while {
                             fragmentAst![fragmentAstIndex!] => fragmentNode
+                            0 => fragmentChildCount!
+                            0 => fragmentChildSearch!
+                            fragmentChildSearch! < (fragmentAst! -> len) -> while {
+                                fragmentAst![fragmentChildSearch!].parent == fragmentAstIndex! -> if { fragmentChildCount! + 1 => fragmentChildCount! }
+                                fragmentChildSearch! + 1 => fragmentChildSearch!
+                            }
                             -1 => loweredKind!
                             fragmentNode.kind == 14 -> if { 0 => loweredKind! }
                             fragmentNode.kind == 15 -> if { 1 => loweredKind! }
                             fragmentNode.kind == 22 -> if { 2 => loweredKind! }
-                            ((fragmentNode.kind >= 18 and fragmentNode.kind <= 21) or fragmentNode.kind == 24 or fragmentNode.kind == 25) -> if { 3 => loweredKind! }
+                            (fragmentChildCount! >= 2 and ((fragmentNode.kind >= 18 and fragmentNode.kind <= 21) or fragmentNode.kind == 24 or fragmentNode.kind == 25)) -> if { 3 => loweredKind! }
                             loweredKind! >= 0 -> if {
                                 -1 => loweredParent!
                                 fragmentNode.parent => parentAst!

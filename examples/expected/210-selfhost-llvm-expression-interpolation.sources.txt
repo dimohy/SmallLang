@@ -1,4 +1,4 @@
-examples/181-selfhost-llvm-operators.sl
+examples/210-selfhost-llvm-expression-interpolation.sl
 selfhost/llvm/text.sl
 selfhost/ir/interpolation.sl
 selfhost/llvm/target.sl

@@ -1,5 +1,6 @@
 examples/184-selfhost-llvm-utf8-text.sl
 selfhost/llvm/text.sl
+selfhost/ir/interpolation.sl
 selfhost/llvm/target.sl
 selfhost/ir/typed.sl
 selfhost/semantic/expression_types.sl

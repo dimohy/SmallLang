@@ -106,23 +106,23 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
         operatorTokenIndex! < operatorTokenEnd -> while {
             tokens![operatorTokenIndex!].kind => candidateOperator
             tokens![operatorTokenIndex!] => candidateToken
-            operatorGroupDepth! == 0 and astKind! == 18 and (candidateOperator == grammar.tokenIdEqualEqual or candidateOperator == grammar.tokenIdBangEqual) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 18 and (candidateOperator == grammar.tokenIdEqualEqual or candidateOperator == grammar.tokenIdBangEqual) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
-            operatorGroupDepth! == 0 and astKind! == 19 and (candidateOperator == grammar.tokenIdLessEqual or candidateOperator == grammar.tokenIdGreaterEqual or candidateOperator == grammar.tokenIdLess or candidateOperator == grammar.tokenIdGreater) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 19 and (candidateOperator == grammar.tokenIdLessEqual or candidateOperator == grammar.tokenIdGreaterEqual or candidateOperator == grammar.tokenIdLess or candidateOperator == grammar.tokenIdGreater) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
-            operatorGroupDepth! == 0 and astKind! == 20 and (candidateOperator == grammar.tokenIdPlus or candidateOperator == grammar.tokenIdMinus) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 20 and (candidateOperator == grammar.tokenIdPlus or candidateOperator == grammar.tokenIdMinus) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
-            operatorGroupDepth! == 0 and astKind! == 21 and (candidateOperator == grammar.tokenIdStar or candidateOperator == grammar.tokenIdSlash or candidateOperator == grammar.tokenIdPercent) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 21 and (candidateOperator == grammar.tokenIdStar or candidateOperator == grammar.tokenIdSlash or candidateOperator == grammar.tokenIdPercent) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
-            operatorGroupDepth! == 0 and astKind! == 22 and (candidateOperator == grammar.tokenIdMinus or candidateOperator == grammar.tokenIdBang) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 22 and (candidateOperator == grammar.tokenIdMinus or candidateOperator == grammar.tokenIdBang) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
@@ -138,7 +138,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
             (operatorGroupDepth! == 0 and candidateOperator == grammar.tokenIdIdentifier and candidateToken.span.length == UIntSize(2)) -> if {
                 source -> byte(candidateToken.span.start) => shortKeywordByte0
                 source -> byte(candidateToken.span.start + UIntSize(1)) => shortKeywordByte1
-                (astKind! == 24 and shortKeywordByte0 == UInt8(111) and shortKeywordByte1 == UInt8(114)) -> if {
+                (operatorPayloadToken! < 0 and astKind! == 24 and shortKeywordByte0 == UInt8(111) and shortKeywordByte1 == UInt8(114)) -> if {
                     -24 => operatorKind!
                     operatorTokenIndex! => operatorPayloadToken!
                 }
@@ -147,11 +147,11 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                 source -> byte(candidateToken.span.start) => longKeywordByte0
                 source -> byte(candidateToken.span.start + UIntSize(1)) => longKeywordByte1
                 source -> byte(candidateToken.span.start + UIntSize(2)) => longKeywordByte2
-                (astKind! == 25 and longKeywordByte0 == UInt8(97) and longKeywordByte1 == UInt8(110) and longKeywordByte2 == UInt8(100)) -> if {
+                (operatorPayloadToken! < 0 and astKind! == 25 and longKeywordByte0 == UInt8(97) and longKeywordByte1 == UInt8(110) and longKeywordByte2 == UInt8(100)) -> if {
                     -25 => operatorKind!
                     operatorTokenIndex! => operatorPayloadToken!
                 }
-                (astKind! == 22 and longKeywordByte0 == UInt8(110) and longKeywordByte1 == UInt8(111) and longKeywordByte2 == UInt8(116)) -> if {
+                (operatorPayloadToken! < 0 and astKind! == 22 and longKeywordByte0 == UInt8(110) and longKeywordByte1 == UInt8(111) and longKeywordByte2 == UInt8(116)) -> if {
                     -26 => operatorKind!
                     operatorTokenIndex! => operatorPayloadToken!
                 }

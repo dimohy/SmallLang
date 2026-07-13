@@ -1,6 +1,7 @@
 namespace smalllang.compiler.llvm.text
 
 import smalllang.compiler.ast as ast
+import smalllang.compiler.ir.interpolation as interpolation
 import smalllang.compiler.ir.typed as typedIr
 import smalllang.compiler.lexer as lexer
 import smalllang.compiler.llvm.target as llvmTarget
@@ -544,6 +545,147 @@ emitCore sources: move [Text; ~] -> Unit {
                             sources[runtimeArgument.sourceModule] -> lexer.lex => runtimeArgumentTokens!
                             runtimeArgumentTokens![runtimeArgument.payloadToken] => runtimeArgumentToken
                             Int(runtimeArgumentToken.span.length) - 2 => runtimeArgumentLength
+                            sources[runtimeArgument.sourceModule] -> interpolation.lower => functionExpressionInterpolation!
+                            false => hasFunctionExpressionInterpolation!
+                            0 => functionExpressionSearch!
+                            functionExpressionSearch! < (functionExpressionInterpolation! -> len) -> while {
+                                (functionExpressionInterpolation![functionExpressionSearch!].sourceToken == runtimeArgument.payloadToken and functionExpressionInterpolation![functionExpressionSearch!].parent < 0) -> if { true => hasFunctionExpressionInterpolation! }
+                                functionExpressionSearch! + 1 => functionExpressionSearch!
+                            }
+                            hasFunctionExpressionInterpolation! -> if {
+                                0 => functionExpressionSegment!
+                                UIntSize(0) => functionExpressionSuffixStart!
+                                0 => functionExpressionRootSearch!
+                                functionExpressionRootSearch! < (functionExpressionInterpolation! -> len) -> while {
+                                    functionExpressionInterpolation![functionExpressionRootSearch!] => functionExpressionRoot
+                                    (functionExpressionRoot.sourceToken == runtimeArgument.payloadToken and functionExpressionRoot.parent < 0) -> if {
+                                        "  %v$(expressionIndex!)_expression_literal$(functionExpressionSegment!) = getelementptr i8, ptr @sl_str_$(expression.operand0), i64 $(functionExpressionRoot.literalStart)" -> println
+                                        "  call void @sl_runtime_print(ptr %v$(expressionIndex!)_expression_literal$(functionExpressionSegment!), i64 $(functionExpressionRoot.literalLength), i1 false)" -> println
+                                        (functionExpressionInterpolation! -> len) - 1 => functionExpressionNodeIndex!
+                                        functionExpressionNodeIndex! >= 0 -> while {
+                                            functionExpressionInterpolation![functionExpressionNodeIndex!] => functionExpressionNode
+                                            (functionExpressionNode.sourceToken == runtimeArgument.payloadToken and functionExpressionNode.segment == functionExpressionRoot.segment and (functionExpressionNode.kind == 2 or functionExpressionNode.kind == 3)) -> if {
+                                                functionExpressionNode.kind == 2 -> if { "sub" } else {
+                                                    functionExpressionNode.opcode == grammar.tokenIdPlus -> if { "add" } else {
+                                                    functionExpressionNode.opcode == grammar.tokenIdMinus -> if { "sub" } else {
+                                                    functionExpressionNode.opcode == grammar.tokenIdStar -> if { "mul" } else {
+                                                    functionExpressionNode.opcode == grammar.tokenIdSlash -> if { "sdiv" } else { "srem" }
+                                                    }
+                                                    }
+                                                    }
+                                                } => functionExpressionOperation
+                                                "  %v$(expressionIndex!)_expression$(functionExpressionNodeIndex!) = $functionExpressionOperation i32 " -> print
+                                                functionExpressionNode.kind == 2 -> if { "0" -> print } else {
+                                                    functionExpressionInterpolation![functionExpressionNode.operand0] => functionExpressionLeft
+                                                    functionExpressionLeft.kind == 0 -> if {
+                                                        sources[runtimeArgument.sourceModule] -> slice(functionExpressionLeft.payloadStart, functionExpressionLeft.payloadLength) -> print
+                                                    } else {
+                                                    functionExpressionLeft.kind == 1 -> if {
+                                                        (function.operand1 >= 0 and ir![function.operand1].symbol == functionExpressionLeft.symbol) -> if { "%arg" -> print } else {
+                                                            -1 => functionExpressionLeftBinding!
+                                                            expressionStart => functionExpressionLeftBindingSearch!
+                                                            functionExpressionLeftBindingSearch! < functionEnd! -> while {
+                                                                (ir![functionExpressionLeftBindingSearch!].kind == 17 and ir![functionExpressionLeftBindingSearch!].symbol == functionExpressionLeft.symbol) -> if { functionExpressionLeftBindingSearch! => functionExpressionLeftBinding! }
+                                                                functionExpressionLeftBindingSearch! + 1 => functionExpressionLeftBindingSearch!
+                                                            }
+                                                            functionExpressionLeftBinding! >= 0 -> if {
+                                                                ir![ir![functionExpressionLeftBinding!].operand0] => functionExpressionLeftValue
+                                                                functionExpressionLeftValue.kind == 3 -> if {
+                                                                    sources[functionExpressionLeftValue.sourceModule] -> lexer.lex => functionExpressionLeftTokens!
+                                                                    functionExpressionLeftTokens![functionExpressionLeftValue.payloadToken] => functionExpressionLeftToken
+                                                                    sources[functionExpressionLeftValue.sourceModule] -> slice(functionExpressionLeftToken.span.start, functionExpressionLeftToken.span.length) -> print
+                                                                } else { "%v$(ir![functionExpressionLeftBinding!].operand0)" -> print }
+                                                            }
+                                                        }
+                                                    } else { "%v$(expressionIndex!)_expression$(functionExpressionNode.operand0)" -> print }
+                                                    }
+                                                }
+                                                ", " -> print
+                                                functionExpressionNode.kind == 2 -> if {
+                                                    functionExpressionInterpolation![functionExpressionNode.operand0] => functionExpressionUnary
+                                                    functionExpressionUnary.kind == 0 -> if {
+                                                        sources[runtimeArgument.sourceModule] -> slice(functionExpressionUnary.payloadStart, functionExpressionUnary.payloadLength) -> println
+                                                    } else {
+                                                    functionExpressionUnary.kind == 1 -> if {
+                                                        (function.operand1 >= 0 and ir![function.operand1].symbol == functionExpressionUnary.symbol) -> if { "%arg" -> println } else {
+                                                            -1 => functionExpressionUnaryBinding!
+                                                            expressionStart => functionExpressionUnaryBindingSearch!
+                                                            functionExpressionUnaryBindingSearch! < functionEnd! -> while {
+                                                                (ir![functionExpressionUnaryBindingSearch!].kind == 17 and ir![functionExpressionUnaryBindingSearch!].symbol == functionExpressionUnary.symbol) -> if { functionExpressionUnaryBindingSearch! => functionExpressionUnaryBinding! }
+                                                                functionExpressionUnaryBindingSearch! + 1 => functionExpressionUnaryBindingSearch!
+                                                            }
+                                                            functionExpressionUnaryBinding! >= 0 -> if {
+                                                                ir![ir![functionExpressionUnaryBinding!].operand0] => functionExpressionUnaryValue
+                                                                functionExpressionUnaryValue.kind == 3 -> if {
+                                                                    sources[functionExpressionUnaryValue.sourceModule] -> lexer.lex => functionExpressionUnaryTokens!
+                                                                    functionExpressionUnaryTokens![functionExpressionUnaryValue.payloadToken] => functionExpressionUnaryToken
+                                                                    sources[functionExpressionUnaryValue.sourceModule] -> slice(functionExpressionUnaryToken.span.start, functionExpressionUnaryToken.span.length) -> println
+                                                                } else { "%v$(ir![functionExpressionUnaryBinding!].operand0)" -> println }
+                                                            }
+                                                        }
+                                                    } else { "%v$(expressionIndex!)_expression$(functionExpressionNode.operand0)" -> println }
+                                                    }
+                                                } else {
+                                                    functionExpressionInterpolation![functionExpressionNode.operand1] => functionExpressionRight
+                                                    functionExpressionRight.kind == 0 -> if {
+                                                        sources[runtimeArgument.sourceModule] -> slice(functionExpressionRight.payloadStart, functionExpressionRight.payloadLength) -> println
+                                                    } else {
+                                                    functionExpressionRight.kind == 1 -> if {
+                                                        (function.operand1 >= 0 and ir![function.operand1].symbol == functionExpressionRight.symbol) -> if { "%arg" -> println } else {
+                                                            -1 => functionExpressionRightBinding!
+                                                            expressionStart => functionExpressionRightBindingSearch!
+                                                            functionExpressionRightBindingSearch! < functionEnd! -> while {
+                                                                (ir![functionExpressionRightBindingSearch!].kind == 17 and ir![functionExpressionRightBindingSearch!].symbol == functionExpressionRight.symbol) -> if { functionExpressionRightBindingSearch! => functionExpressionRightBinding! }
+                                                                functionExpressionRightBindingSearch! + 1 => functionExpressionRightBindingSearch!
+                                                            }
+                                                            functionExpressionRightBinding! >= 0 -> if {
+                                                                ir![ir![functionExpressionRightBinding!].operand0] => functionExpressionRightValue
+                                                                functionExpressionRightValue.kind == 3 -> if {
+                                                                    sources[functionExpressionRightValue.sourceModule] -> lexer.lex => functionExpressionRightTokens!
+                                                                    functionExpressionRightTokens![functionExpressionRightValue.payloadToken] => functionExpressionRightToken
+                                                                    sources[functionExpressionRightValue.sourceModule] -> slice(functionExpressionRightToken.span.start, functionExpressionRightToken.span.length) -> println
+                                                                } else { "%v$(ir![functionExpressionRightBinding!].operand0)" -> println }
+                                                            }
+                                                        }
+                                                    } else { "%v$(expressionIndex!)_expression$(functionExpressionNode.operand1)" -> println }
+                                                    }
+                                                }
+                                            }
+                                            functionExpressionNodeIndex! - 1 => functionExpressionNodeIndex!
+                                        }
+                                        "  call void @sl_runtime_print_i32(i32 " -> print
+                                        functionExpressionRoot.kind == 0 -> if {
+                                            sources[runtimeArgument.sourceModule] -> slice(functionExpressionRoot.payloadStart, functionExpressionRoot.payloadLength) -> print
+                                        } else {
+                                        functionExpressionRoot.kind == 1 -> if {
+                                            (function.operand1 >= 0 and ir![function.operand1].symbol == functionExpressionRoot.symbol) -> if { "%arg" -> print } else {
+                                                -1 => functionExpressionRootBinding!
+                                                expressionStart => functionExpressionRootBindingSearch!
+                                                functionExpressionRootBindingSearch! < functionEnd! -> while {
+                                                    (ir![functionExpressionRootBindingSearch!].kind == 17 and ir![functionExpressionRootBindingSearch!].symbol == functionExpressionRoot.symbol) -> if { functionExpressionRootBindingSearch! => functionExpressionRootBinding! }
+                                                    functionExpressionRootBindingSearch! + 1 => functionExpressionRootBindingSearch!
+                                                }
+                                                functionExpressionRootBinding! >= 0 -> if {
+                                                    ir![ir![functionExpressionRootBinding!].operand0] => functionExpressionRootValue
+                                                    functionExpressionRootValue.kind == 3 -> if {
+                                                        sources[functionExpressionRootValue.sourceModule] -> lexer.lex => functionExpressionRootTokens!
+                                                        functionExpressionRootTokens![functionExpressionRootValue.payloadToken] => functionExpressionRootToken
+                                                        sources[functionExpressionRootValue.sourceModule] -> slice(functionExpressionRootToken.span.start, functionExpressionRootToken.span.length) -> print
+                                                    } else { "%v$(ir![functionExpressionRootBinding!].operand0)" -> print }
+                                                }
+                                            }
+                                        } else { "%v$(expressionIndex!)_expression$(functionExpressionRootSearch!)" -> print }
+                                        }
+                                        ", i1 false)" -> println
+                                        functionExpressionRoot.expressionStart + functionExpressionRoot.expressionLength + UIntSize(1) => functionExpressionSuffixStart!
+                                        functionExpressionSegment! + 1 => functionExpressionSegment!
+                                    }
+                                    functionExpressionRootSearch! + 1 => functionExpressionRootSearch!
+                                }
+                                UIntSize(runtimeArgumentLength) - functionExpressionSuffixStart! => functionExpressionSuffixLength
+                                "  %v$(expressionIndex!)_expression_suffix = getelementptr i8, ptr @sl_str_$(expression.operand0), i64 $(functionExpressionSuffixStart!)" -> println
+                                "  call void @sl_runtime_print(ptr %v$(expressionIndex!)_expression_suffix, i64 $functionExpressionSuffixLength, i1 " -> print
+                            } else {
                             runtimeArgumentToken.span.start + UIntSize(1) => functionInterpolationContentStart
                             runtimeArgumentToken.span.start + runtimeArgumentToken.span.length - UIntSize(1) => functionInterpolationContentEnd
                             functionInterpolationContentStart => functionInterpolationSegmentStart!
@@ -630,6 +772,7 @@ emitCore sources: move [Text; ~] -> Unit {
                                 "  call void @sl_runtime_print(ptr %v$(expressionIndex!)_interpolation_suffix, i64 $functionInterpolationSuffixLength, i1 " -> print
                             } else {
                                 "  call void @sl_runtime_print(ptr @sl_str_$(expression.operand0), i64 $runtimeArgumentLength, i1 " -> print
+                            }
                             }
                         } else {
                             "  %v$(expressionIndex!)_runtime_ptr = extractvalue %sl.text " -> print
@@ -852,6 +995,139 @@ emitCore sources: move [Text; ~] -> Unit {
                                 sources[runtimeArgument.sourceModule] -> lexer.lex => runtimeArgumentTokens!
                                 runtimeArgumentTokens![runtimeArgument.payloadToken] => runtimeArgumentToken
                                 Int(runtimeArgumentToken.span.length) - 2 => runtimeArgumentLength
+                                sources[runtimeArgument.sourceModule] -> interpolation.lower => entryExpressionInterpolation!
+                                false => hasEntryExpressionInterpolation!
+                                0 => entryExpressionInterpolationSearch!
+                                entryExpressionInterpolationSearch! < (entryExpressionInterpolation! -> len) -> while {
+                                    (entryExpressionInterpolation![entryExpressionInterpolationSearch!].sourceToken == runtimeArgument.payloadToken and entryExpressionInterpolation![entryExpressionInterpolationSearch!].parent < 0) -> if { true => hasEntryExpressionInterpolation! }
+                                    entryExpressionInterpolationSearch! + 1 => entryExpressionInterpolationSearch!
+                                }
+                                hasEntryExpressionInterpolation! -> if {
+                                    0 => entryExpressionSegment!
+                                    UIntSize(0) => entryExpressionSuffixStart!
+                                    0 => entryExpressionRootSearch!
+                                    entryExpressionRootSearch! < (entryExpressionInterpolation! -> len) -> while {
+                                        entryExpressionInterpolation![entryExpressionRootSearch!] => entryExpressionRoot
+                                        (entryExpressionRoot.sourceToken == runtimeArgument.payloadToken and entryExpressionRoot.parent < 0) -> if {
+                                            "  %v$(entryExpressionIndex!)_expression_literal$(entryExpressionSegment!) = getelementptr i8, ptr @sl_str_$(entryExpression.operand0), i64 $(entryExpressionRoot.literalStart)" -> println
+                                            "  call void @sl_runtime_print(ptr %v$(entryExpressionIndex!)_expression_literal$(entryExpressionSegment!), i64 $(entryExpressionRoot.literalLength), i1 false)" -> println
+                                            (entryExpressionInterpolation! -> len) - 1 => entryExpressionNodeIndex!
+                                            entryExpressionNodeIndex! >= 0 -> while {
+                                                entryExpressionInterpolation![entryExpressionNodeIndex!] => entryInterpolationNode
+                                                (entryInterpolationNode.sourceToken == runtimeArgument.payloadToken and entryInterpolationNode.segment == entryExpressionRoot.segment and (entryInterpolationNode.kind == 2 or entryInterpolationNode.kind == 3)) -> if {
+                                                    entryInterpolationNode.kind == 2 -> if { "sub" } else {
+                                                        entryInterpolationNode.opcode == grammar.tokenIdPlus -> if { "add" } else {
+                                                        entryInterpolationNode.opcode == grammar.tokenIdMinus -> if { "sub" } else {
+                                                        entryInterpolationNode.opcode == grammar.tokenIdStar -> if { "mul" } else {
+                                                        entryInterpolationNode.opcode == grammar.tokenIdSlash -> if { "sdiv" } else { "srem" }
+                                                        }
+                                                        }
+                                                        }
+                                                    } => entryExpressionOperation
+                                                    "  %v$(entryExpressionIndex!)_expression$(entryExpressionNodeIndex!) = $entryExpressionOperation i32 " -> print
+                                                    entryInterpolationNode.kind == 2 -> if { "0" -> print } else {
+                                                        entryExpressionInterpolation![entryInterpolationNode.operand0] => entryExpressionLeft
+                                                        entryExpressionLeft.kind == 0 -> if {
+                                                            sources[runtimeArgument.sourceModule] -> slice(entryExpressionLeft.payloadStart, entryExpressionLeft.payloadLength) -> print
+                                                        } else {
+                                                        entryExpressionLeft.kind == 1 -> if {
+                                                            -1 => entryExpressionLeftBinding!
+                                                            functionIndex! + 1 => entryExpressionLeftBindingSearch!
+                                                            entryExpressionLeftBindingSearch! < entryEnd! -> while {
+                                                                (ir![entryExpressionLeftBindingSearch!].kind == 17 and ir![entryExpressionLeftBindingSearch!].symbol == entryExpressionLeft.symbol) -> if { entryExpressionLeftBindingSearch! => entryExpressionLeftBinding! }
+                                                                entryExpressionLeftBindingSearch! + 1 => entryExpressionLeftBindingSearch!
+                                                            }
+                                                            entryExpressionLeftBinding! >= 0 -> if {
+                                                                ir![ir![entryExpressionLeftBinding!].operand0] => entryExpressionLeftValue
+                                                                entryExpressionLeftValue.kind == 3 -> if {
+                                                                    sources[entryExpressionLeftValue.sourceModule] -> lexer.lex => entryExpressionLeftTokens!
+                                                                    entryExpressionLeftTokens![entryExpressionLeftValue.payloadToken] => entryExpressionLeftToken
+                                                                    sources[entryExpressionLeftValue.sourceModule] -> slice(entryExpressionLeftToken.span.start, entryExpressionLeftToken.span.length) -> print
+                                                                } else { "%v$(ir![entryExpressionLeftBinding!].operand0)" -> print }
+                                                            }
+                                                        } else { "%v$(entryExpressionIndex!)_expression$(entryInterpolationNode.operand0)" -> print }
+                                                        }
+                                                    }
+                                                    ", " -> print
+                                                    entryInterpolationNode.kind == 2 -> if {
+                                                        entryExpressionInterpolation![entryInterpolationNode.operand0] => entryExpressionUnary
+                                                        entryExpressionUnary.kind == 0 -> if {
+                                                            sources[runtimeArgument.sourceModule] -> slice(entryExpressionUnary.payloadStart, entryExpressionUnary.payloadLength) -> println
+                                                        } else {
+                                                        entryExpressionUnary.kind == 1 -> if {
+                                                            -1 => entryExpressionUnaryBinding!
+                                                            functionIndex! + 1 => entryExpressionUnaryBindingSearch!
+                                                            entryExpressionUnaryBindingSearch! < entryEnd! -> while {
+                                                                (ir![entryExpressionUnaryBindingSearch!].kind == 17 and ir![entryExpressionUnaryBindingSearch!].symbol == entryExpressionUnary.symbol) -> if { entryExpressionUnaryBindingSearch! => entryExpressionUnaryBinding! }
+                                                                entryExpressionUnaryBindingSearch! + 1 => entryExpressionUnaryBindingSearch!
+                                                            }
+                                                            entryExpressionUnaryBinding! >= 0 -> if {
+                                                                ir![ir![entryExpressionUnaryBinding!].operand0] => entryExpressionUnaryValue
+                                                                entryExpressionUnaryValue.kind == 3 -> if {
+                                                                    sources[entryExpressionUnaryValue.sourceModule] -> lexer.lex => entryExpressionUnaryTokens!
+                                                                    entryExpressionUnaryTokens![entryExpressionUnaryValue.payloadToken] => entryExpressionUnaryToken
+                                                                    sources[entryExpressionUnaryValue.sourceModule] -> slice(entryExpressionUnaryToken.span.start, entryExpressionUnaryToken.span.length) -> println
+                                                                } else { "%v$(ir![entryExpressionUnaryBinding!].operand0)" -> println }
+                                                            }
+                                                        } else { "%v$(entryExpressionIndex!)_expression$(entryInterpolationNode.operand0)" -> println }
+                                                        }
+                                                    } else {
+                                                        entryExpressionInterpolation![entryInterpolationNode.operand1] => entryExpressionRight
+                                                        entryExpressionRight.kind == 0 -> if {
+                                                            sources[runtimeArgument.sourceModule] -> slice(entryExpressionRight.payloadStart, entryExpressionRight.payloadLength) -> println
+                                                        } else {
+                                                        entryExpressionRight.kind == 1 -> if {
+                                                            -1 => entryExpressionRightBinding!
+                                                            functionIndex! + 1 => entryExpressionRightBindingSearch!
+                                                            entryExpressionRightBindingSearch! < entryEnd! -> while {
+                                                                (ir![entryExpressionRightBindingSearch!].kind == 17 and ir![entryExpressionRightBindingSearch!].symbol == entryExpressionRight.symbol) -> if { entryExpressionRightBindingSearch! => entryExpressionRightBinding! }
+                                                                entryExpressionRightBindingSearch! + 1 => entryExpressionRightBindingSearch!
+                                                            }
+                                                            entryExpressionRightBinding! >= 0 -> if {
+                                                                ir![ir![entryExpressionRightBinding!].operand0] => entryExpressionRightValue
+                                                                entryExpressionRightValue.kind == 3 -> if {
+                                                                    sources[entryExpressionRightValue.sourceModule] -> lexer.lex => entryExpressionRightTokens!
+                                                                    entryExpressionRightTokens![entryExpressionRightValue.payloadToken] => entryExpressionRightToken
+                                                                    sources[entryExpressionRightValue.sourceModule] -> slice(entryExpressionRightToken.span.start, entryExpressionRightToken.span.length) -> println
+                                                                } else { "%v$(ir![entryExpressionRightBinding!].operand0)" -> println }
+                                                            }
+                                                        } else { "%v$(entryExpressionIndex!)_expression$(entryInterpolationNode.operand1)" -> println }
+                                                        }
+                                                    }
+                                                }
+                                                entryExpressionNodeIndex! - 1 => entryExpressionNodeIndex!
+                                            }
+                                            "  call void @sl_runtime_print_i32(i32 " -> print
+                                            entryExpressionRoot.kind == 0 -> if {
+                                                sources[runtimeArgument.sourceModule] -> slice(entryExpressionRoot.payloadStart, entryExpressionRoot.payloadLength) -> print
+                                            } else {
+                                            entryExpressionRoot.kind == 1 -> if {
+                                                -1 => entryExpressionRootBinding!
+                                                functionIndex! + 1 => entryExpressionRootBindingSearch!
+                                                entryExpressionRootBindingSearch! < entryEnd! -> while {
+                                                    (ir![entryExpressionRootBindingSearch!].kind == 17 and ir![entryExpressionRootBindingSearch!].symbol == entryExpressionRoot.symbol) -> if { entryExpressionRootBindingSearch! => entryExpressionRootBinding! }
+                                                    entryExpressionRootBindingSearch! + 1 => entryExpressionRootBindingSearch!
+                                                }
+                                                entryExpressionRootBinding! >= 0 -> if {
+                                                    ir![ir![entryExpressionRootBinding!].operand0] => entryExpressionRootValue
+                                                    entryExpressionRootValue.kind == 3 -> if {
+                                                        sources[entryExpressionRootValue.sourceModule] -> lexer.lex => entryExpressionRootTokens!
+                                                        entryExpressionRootTokens![entryExpressionRootValue.payloadToken] => entryExpressionRootToken
+                                                        sources[entryExpressionRootValue.sourceModule] -> slice(entryExpressionRootToken.span.start, entryExpressionRootToken.span.length) -> print
+                                                    } else { "%v$(ir![entryExpressionRootBinding!].operand0)" -> print }
+                                                }
+                                            } else { "%v$(entryExpressionIndex!)_expression$(entryExpressionRootSearch!)" -> print }
+                                            }
+                                            ", i1 false)" -> println
+                                            entryExpressionRoot.expressionStart + entryExpressionRoot.expressionLength + UIntSize(1) => entryExpressionSuffixStart!
+                                            entryExpressionSegment! + 1 => entryExpressionSegment!
+                                        }
+                                        entryExpressionRootSearch! + 1 => entryExpressionRootSearch!
+                                    }
+                                    UIntSize(runtimeArgumentLength) - entryExpressionSuffixStart! => entryExpressionSuffixLength
+                                    "  %v$(entryExpressionIndex!)_expression_suffix = getelementptr i8, ptr @sl_str_$(entryExpression.operand0), i64 $(entryExpressionSuffixStart!)" -> println
+                                    "  call void @sl_runtime_print(ptr %v$(entryExpressionIndex!)_expression_suffix, i64 $entryExpressionSuffixLength, i1 " -> print
+                                } else {
                                 runtimeArgumentToken.span.start + UIntSize(1) => interpolationContentStart
                                 runtimeArgumentToken.span.start + runtimeArgumentToken.span.length - UIntSize(1) => interpolationContentEnd
                                 interpolationContentStart => interpolationSegmentStart!
@@ -930,6 +1206,7 @@ emitCore sources: move [Text; ~] -> Unit {
                                     "  call void @sl_runtime_print(ptr %v$(entryExpressionIndex!)_interpolation_suffix, i64 $interpolationSuffixLength, i1 " -> print
                                 } else {
                                     "  call void @sl_runtime_print(ptr @sl_str_$(entryExpression.operand0), i64 $runtimeArgumentLength, i1 " -> print
+                                }
                                 }
                             } else {
                                 "  %v$(entryExpressionIndex!)_runtime_ptr = extractvalue %sl.text %v$(entryExpression.operand0), 0" -> println

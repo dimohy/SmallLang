@@ -3,7 +3,7 @@ import smalllang.compiler.ir.interpolation as interpolation
 main {
     """
     calculate value: Int -> Unit {
-        "result=$(value + 2 * -3), nested=$((value + 1) * 2)" -> println
+        "result=$(value + 2 * -3), nested=$((value + 1) * 2), unary=$(-value)" -> println
     }
 
     main { }

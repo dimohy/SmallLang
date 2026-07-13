@@ -1,0 +1,108 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+define internal void @sl_runtime_print_i32(i32 %value, i1 %newline) {
+entry:
+  %buffer = alloca [12 x i8], align 1
+  %end = getelementptr [12 x i8], ptr %buffer, i64 0, i64 12
+  %wide = sext i32 %value to i64
+  %negative = icmp slt i64 %wide, 0
+  %negated = sub i64 0, %wide
+  %magnitude = select i1 %negative, i64 %negated, i64 %wide
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sl_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
+%sl.text = type { ptr, i64 }
+@sl_str_8 = private unnamed_addr constant [103 x i8] c"result=$(adjusted + 2 * -3), nested=$(adjusted * 2), unary=$(-adjusted), literal=$(7), name=$(adjusted)"
+@sl_str_15 = private unnamed_addr constant [40 x i8] c"main=$(10 + offset * -2), name=$(offset)"
+define void @sl_m0_s0(i32 %arg) {
+entry:
+  %v8_ptr = insertvalue %sl.text poison, ptr @sl_str_8, 0
+  %v8 = insertvalue %sl.text %v8_ptr, i64 103, 1
+  %v4 = add i32 %arg, 1
+  %v7_expression_literal0 = getelementptr i8, ptr @sl_str_8, i64 0
+  call void @sl_runtime_print(ptr %v7_expression_literal0, i64 7, i1 false)
+  %v7_expression4 = sub i32 0, 3
+  %v7_expression2 = mul i32 2, %v7_expression4
+  %v7_expression0 = add i32 %v4, %v7_expression2
+  call void @sl_runtime_print_i32(i32 %v7_expression0, i1 false)
+  %v7_expression_literal1 = getelementptr i8, ptr @sl_str_8, i64 27
+  call void @sl_runtime_print(ptr %v7_expression_literal1, i64 9, i1 false)
+  %v7_expression6 = mul i32 %v4, 2
+  call void @sl_runtime_print_i32(i32 %v7_expression6, i1 false)
+  %v7_expression_literal2 = getelementptr i8, ptr @sl_str_8, i64 51
+  call void @sl_runtime_print(ptr %v7_expression_literal2, i64 8, i1 false)
+  %v7_expression9 = sub i32 0, %v4
+  call void @sl_runtime_print_i32(i32 %v7_expression9, i1 false)
+  %v7_expression_literal3 = getelementptr i8, ptr @sl_str_8, i64 71
+  call void @sl_runtime_print(ptr %v7_expression_literal3, i64 10, i1 false)
+  call void @sl_runtime_print_i32(i32 7, i1 false)
+  %v7_expression_literal4 = getelementptr i8, ptr @sl_str_8, i64 85
+  call void @sl_runtime_print(ptr %v7_expression_literal4, i64 7, i1 false)
+  call void @sl_runtime_print_i32(i32 %v4, i1 false)
+  %v7_expression_suffix = getelementptr i8, ptr @sl_str_8, i64 103
+  call void @sl_runtime_print(ptr %v7_expression_suffix, i64 0, i1 true)
+  ret void
+}
+define i32 @main() {
+entry:
+  call void @sl_m0_s0(i32 10)
+  %v14_expression_literal0 = getelementptr i8, ptr @sl_str_15, i64 0
+  call void @sl_runtime_print(ptr %v14_expression_literal0, i64 5, i1 false)
+  %v14_expression17 = sub i32 0, 2
+  %v14_expression15 = mul i32 4, %v14_expression17
+  %v14_expression13 = add i32 10, %v14_expression15
+  call void @sl_runtime_print_i32(i32 %v14_expression13, i1 false)
+  %v14_expression_literal1 = getelementptr i8, ptr @sl_str_15, i64 24
+  call void @sl_runtime_print(ptr %v14_expression_literal1, i64 7, i1 false)
+  call void @sl_runtime_print_i32(i32 4, i1 false)
+  %v14_expression_suffix = getelementptr i8, ptr @sl_str_15, i64 40
+  call void @sl_runtime_print(ptr %v14_expression_suffix, i64 0, i1 true)
+  ret i32 0
+}

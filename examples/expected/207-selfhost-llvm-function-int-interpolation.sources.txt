@@ -1,5 +1,6 @@
 examples/207-selfhost-llvm-function-int-interpolation.sl
 selfhost/llvm/text.sl
+selfhost/ir/interpolation.sl
 selfhost/llvm/target.sl
 selfhost/ir/typed.sl
 selfhost/semantic/expression_types.sl

@@ -290,7 +290,11 @@ each node retains its source-string token, literal range, expression range,
 operator, semantic parent, and operand indexes for later LLVM scheduling.
 Operator discovery now ignores tokens nested inside parentheses/brackets/
 braces, fixing a self-hosted AST defect where an inner `+` could turn an outer
-wrapper into a false additive node.
+wrapper into a false additive node. Operator selection is stable at the first
+top-level token, so a later unary `-` no longer overwrites an outer additive
+operator. Pass-through precedence wrappers with only one semantic child are
+removed from interpolation IR; `-value` therefore has one unary root rather
+than an invalid binary wrapper around it.
 
 The first typed IR lowering lives in `selfhost/ir/typed.sl`. It emits a flat,
 relocatable node table whose initial stable kinds are function, return, and
@@ -414,8 +418,15 @@ leading/trailing ranges are valid; sign extension makes `-2147483648` safe.
 Function literals use the same scan: `Int` parameters lower directly to
 `%arg`, while local bindings use their producer SSA value. A linked regression
 prints `-7->-6->-7`, also proving that unary minus emits LLVM `sub i32 0, value`
-rather than the previously reversed operands. `$(expression)`, other display
-types, general dynamic Text construction, and lifetime ownership remain.
+rather than the previously reversed operands. Arithmetic `$(expression)` now
+uses the expression-fragment AST and relocatable interpolation IR instead of
+rescanning expression text. LLVM reverse-schedules nested unary and binary
+nodes, resolves function parameters plus function/main local bindings, and
+streams literal/value segments through the same allocation-free `i32`
+formatter. The Windows regression links and executes parameter/local/main
+expressions; equivalent Linux x64 and Wasm32 modules assemble with `llvm-as`.
+Other display types, comparison/logical formatting, general dynamic Text
+construction, and lifetime ownership remain.
 
 The bootstrap type table now predeclares parametric dynamic-array identities
 used by struct fields before struct layouts are finalized. A field such as
