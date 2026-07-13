@@ -127,8 +127,12 @@ the async gate but does not change the formal score. Bare async `yield` now
 spills live state without a child Task, requeues the current Task at FIFO tail,
 and makes long CPU loops explicitly cancelable. Self-host suspension metadata
 distinguishes await and yield sites while sharing stable per-function state
-numbering. Nonblocking I/O, failure propagation, captures, and task groups
-remain partial.
+numbering. Typed `Duration` and `sleep: Duration -> async Unit` now feed a
+deadline-ordered runtime timer queue. Sleeping Tasks leave the ready queue,
+due timers wake at FIFO tail, and cancellation unlinks timer waiters without a
+per-Task OS thread. Self-host module/call resolution recognizes the separate
+`sys.time` module and preserves the timer await suspension state. File readiness,
+failure propagation, captures, and task groups remain partial.
 Straight-line states now carry heap owners and
 mutable locals safely: frame storage temporarily owns the value, resume restores
 one owner, and async container stack promotion is disabled. Self-host frame-slot

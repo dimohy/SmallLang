@@ -253,6 +253,22 @@ Task, the compiler-generated state destroy path drops the frame instead. This
 bare async statement is distinct from `value -> yield`, which still transfers a
 value from a user-defined block function.
 
+Use typed durations for nonblocking time suspension:
+
+```smalllang
+refresh: -> async Int {
+    250 -> milliseconds -> sleep -> await
+    1
+}
+```
+
+`sleep` returns an affine `Task<Unit>`, so it follows the same `await` or
+`cancel` ownership rule as every other Task. Sleeping work leaves the ready
+queue and enters a deadline-ordered timer queue; the executor runs other work
+and waits for the nearest timer only when nothing is runnable. `seconds` is
+available when that unit reads better. Zero or negative durations complete
+immediately.
+
 Browser WebAssembly output is available through the `wasm32-browser` target. The
 generated module exports `smalllang_start` and `memory`, and imports
 `env.smalllang_browser_write(ptr, len)` so the page can render stdout text:

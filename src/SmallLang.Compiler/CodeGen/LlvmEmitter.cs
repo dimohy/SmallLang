@@ -53,7 +53,11 @@ internal sealed partial class LlvmEmitter
             || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
                 (function.Body is not null && UsesChildProcess(function.Body))
                 || function.BlockBody.Any(UsesChildProcess));
-        _usesAsync = program.Functions.Values.Any(function => function.IsAsync);
+        _usesAsync = program.Functions.Values.Any(function => function.IsAsync && !function.IsStandardLibrary)
+            || program.MainStatements.Any(UsesRuntimeSleep)
+            || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
+                (function.Body is not null && UsesRuntimeSleep(function.Body))
+                || function.BlockBody.Any(UsesRuntimeSleep));
     }
 
     private bool UsesChildProcess(Statement statement) => statement switch
@@ -117,6 +121,65 @@ internal sealed partial class LlvmEmitter
 
     private bool UsesChildProcess(BlockBody body) => body.Statements.Any(UsesChildProcess)
         || (body.Value is not null && UsesChildProcess(body.Value));
+
+    private bool UsesRuntimeSleep(Statement statement) => statement switch
+    {
+        BindingStatement value => UsesRuntimeSleep(value.Value),
+        ExpressionStatement value => UsesRuntimeSleep(value.Expression),
+        IndexAssignmentStatement value => UsesRuntimeSleep(value.Index) || UsesRuntimeSleep(value.Value),
+        FieldAssignmentStatement value => UsesRuntimeSleep(value.Value),
+        BlockFunctionCallStatement value => UsesRuntimeSleep(value.Source) || value.Body.Any(UsesRuntimeSleep),
+        GuardLoopControlStatement value => UsesRuntimeSleep(value.Condition),
+        ReturnStatement { Value: { } value } => UsesRuntimeSleep(value),
+        _ => false
+    };
+
+    private bool UsesRuntimeSleep(Expression expression)
+    {
+        if (expression is CallExpression call
+            && string.Join('.', call.Path) is "sleep" or "sys.time.sleep") return true;
+        if (expression is FlowExpression flow
+            && flow.Targets.Any(target => string.Join('.', target.Path) is "sleep" or "sys.time.sleep")) return true;
+        return expression switch
+        {
+            StringExpression value => value.Segments.OfType<InterpolationSegment>().Any(x => UsesRuntimeSleep(x.Expression)),
+            AddExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            SubtractExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            MultiplyExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            DivideExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            ModuloExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            NegateExpression value => UsesRuntimeSleep(value.Value),
+            CompareExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            AndExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            OrExpression value => UsesRuntimeSleep(value.Left) || UsesRuntimeSleep(value.Right),
+            NotExpression value => UsesRuntimeSleep(value.Value),
+            FlowExpression value => UsesRuntimeSleep(value.Source)
+                || value.Targets.SelectMany(target => target.Arguments).Any(UsesRuntimeSleep),
+            CallExpression value => value.Arguments.Any(UsesRuntimeSleep),
+            RangeExpression value => UsesRuntimeSleep(value.Start) || UsesRuntimeSleep(value.End),
+            ArrayLiteralExpression value => value.Elements.Any(UsesRuntimeSleep),
+            ArrayRepeatExpression value => UsesRuntimeSleep(value.Value),
+            DictionaryLiteralExpression value => value.Entries.Any(x => UsesRuntimeSleep(x.Key) || UsesRuntimeSleep(x.Value)),
+            IndexExpression value => UsesRuntimeSleep(value.Source) || UsesRuntimeSleep(value.Index),
+            StructLiteralExpression value => value.Fields.Any(x => UsesRuntimeSleep(x.Value)),
+            BoxExpression value => UsesRuntimeSleep(value.Value),
+            TryExpression value => UsesRuntimeSleep(value.Value),
+            FieldAccessExpression value => UsesRuntimeSleep(value.Source),
+            IfExpression value => UsesRuntimeSleep(value.Condition) || UsesRuntimeSleep(value.Then)
+                || (value.Else is not null && UsesRuntimeSleep(value.Else)),
+            WhenExpression value => (value.Subject is not null && UsesRuntimeSleep(value.Subject))
+                || value.Arms.Any(x => UsesRuntimeSleep(x.Condition) || UsesRuntimeSleep(x.Body))
+                || UsesRuntimeSleep(value.Else),
+            EnumMatchExpression value => UsesRuntimeSleep(value.Subject)
+                || value.Arms.Any(x => UsesRuntimeSleep(x.Body))
+                || (value.Else is not null && UsesRuntimeSleep(value.Else)),
+            FoldExpression value => UsesRuntimeSleep(value.Source) || UsesRuntimeSleep(value.Initial) || UsesRuntimeSleep(value.Body),
+            _ => false
+        };
+    }
+
+    private bool UsesRuntimeSleep(BlockBody body) => body.Statements.Any(UsesRuntimeSleep)
+        || (body.Value is not null && UsesRuntimeSleep(body.Value));
 
     private bool UsesProcessArguments(Statement statement) => statement switch
     {
@@ -289,7 +352,7 @@ internal sealed partial class LlvmEmitter
             %smalllang.environment_result = type { ptr, i64, i1, i1 }
             %smalllang.process_result = type { i32, i32 }
             %smalllang.task = type { ptr, ptr }
-            %smalllang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr }
+            %smalllang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr, ptr, i64, ptr, ptr }
 
             """;
         header += EmitStructTypeDefinitions();
@@ -306,6 +369,7 @@ internal sealed partial class LlvmEmitter
         {
             EmitGlobalLine("@smalllang_task_ready_head = internal global ptr null");
             EmitGlobalLine("@smalllang_task_ready_tail = internal global ptr null");
+            EmitGlobalLine("@smalllang_task_timer_head = internal global ptr null");
         }
         EmitGlobalLine();
 

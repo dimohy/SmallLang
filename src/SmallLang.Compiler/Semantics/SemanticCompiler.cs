@@ -347,12 +347,15 @@ internal sealed class SemanticCompiler
             throw Error(function.Line, function.Column, "associated type bindings require a trait impl");
         }
         var inputOwnership = BindFunctionInputOwnership(function, inputType);
+        var isAsyncRuntimeIntrinsic = function.IsStandardLibrary
+            && function.IsIntrinsic
+            && string.Equals(function.Name, "sys.time.sleep", StringComparison.Ordinal);
         if (function.IsAsync
             && (!IsAsyncResultTypeSupported(returnType)
                 || !IsAsyncInputTypeSupported(inputType, inputOwnership)
                 || isLocal
-                || function.IsStandardLibrary
-                || function.IsIntrinsic))
+                || (function.IsStandardLibrary && !isAsyncRuntimeIntrinsic)
+                || (function.IsIntrinsic && !isAsyncRuntimeIntrinsic)))
         {
             throw Error(
                 function.Line,
@@ -777,6 +780,10 @@ internal sealed class SemanticCompiler
                 expectedInputType: null,
                 BoundType.Int64,
                 BoundFunctionKind.RuntimeNowMillis),
+            "sys.time.sleep" => RequireSleepIntrinsicSignature(
+                function,
+                inputType,
+                returnType),
             "sys.process.arguments" => RequireIntrinsicSignature(
                 function,
                 inputType,
@@ -814,6 +821,29 @@ internal sealed class SemanticCompiler
                 BoundFunctionKind.RuntimeCloseIntReader),
             _ => throw Error(function.Line, function.Column, $"unknown intrinsic function '{function.Name}'")
         };
+    }
+
+    private BoundFunctionKind RequireSleepIntrinsicSignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (!function.IsAsync
+            || returnType != BoundType.Unit
+            || inputType is not { } durationType
+            || !_types.IsStruct(durationType)
+            || !string.Equals(
+                _types.GetStruct(durationType).Name,
+                "sys.time.Duration",
+                StringComparison.Ordinal))
+        {
+            throw Error(
+                function.Line,
+                function.Column,
+                $"intrinsic function '{function.Name}' must be Duration -> async Unit");
+        }
+
+        return BoundFunctionKind.RuntimeSleep;
     }
 
     private BoundFunctionKind RequireEnvironmentIntrinsicSignature(
@@ -918,6 +948,9 @@ internal sealed class SemanticCompiler
         AddGlobalAlias(functions, "closestInt", "sys.file.closestInt");
         AddGlobalAlias(functions, "closeIntReader", "sys.file.closeIntReader");
         AddGlobalAlias(functions, "nowMillis", "sys.time.nowMillis");
+        AddGlobalAlias(functions, "milliseconds", "sys.time.milliseconds");
+        AddGlobalAlias(functions, "seconds", "sys.time.seconds");
+        AddGlobalAlias(functions, "sleep", "sys.time.sleep");
     }
 
     private void AddGlobalAlias(
@@ -3286,6 +3319,14 @@ internal sealed class SemanticCompiler
                         target.Column,
                         $"function value-flow target '{path}' does not accept additional arguments in this slice");
                 }
+                if (i == 0
+                    && function.InputType is { } contextualInput
+                    && IsIntegerType(contextualInput)
+                    && IsIntegerLiteralExpression(expression.Source))
+                {
+                    ValidateNumericLiteralConversion(expression.Source, contextualInput, FormatType(contextualInput));
+                    currentType = contextualInput;
+                }
 
                 switch (function.Kind)
                 {
@@ -3361,6 +3402,10 @@ internal sealed class SemanticCompiler
                     case BoundFunctionKind.RuntimeRunProcess:
                         EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
                         currentType = function.ReturnType;
+                        continue;
+                    case BoundFunctionKind.RuntimeSleep:
+                        EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
+                        currentType = AsyncCallType(function);
                         continue;
                     case BoundFunctionKind.User:
                         if (function.GenericParameterName is not null
@@ -4031,6 +4076,26 @@ internal sealed class SemanticCompiler
                 }
 
                 return function.ReturnType;
+            case BoundFunctionKind.RuntimeSleep:
+                if (expression.Arguments.Count != 1)
+                {
+                    throw Error(expression.Line, expression.Column, $"{path} expects exactly one Duration argument");
+                }
+
+                var durationType = InferExpression(
+                    expression.Arguments[0],
+                    functions,
+                    bindings,
+                    allowPrintCall: false,
+                    allowReadIntCall,
+                    allowFlowBindingTarget: false);
+                EnsureRuntimeInput(
+                    durationType,
+                    function,
+                    expression.Arguments[0].Line,
+                    expression.Arguments[0].Column,
+                    path);
+                return AsyncCallType(function);
             case BoundFunctionKind.RuntimeWriteScalar:
                 return InferGenericCallExpression(
                     expression, function, functions, bindings, allowReadIntCall);
@@ -4640,13 +4705,24 @@ internal sealed class SemanticCompiler
             throw Error(expression.Line, expression.Column, $"function '{path}' expects exactly one argument");
         }
 
-        var argumentType = InferExpression(
-            expression.Arguments[0],
-            functions,
-            bindings,
-            allowPrintCall: false,
-            allowReadIntCall,
-            allowFlowBindingTarget: false);
+        var argumentType = IsIntegerType(function.InputType.Value)
+            && IsIntegerLiteralExpression(expression.Arguments[0])
+                ? function.InputType.Value
+                : InferExpression(
+                    expression.Arguments[0],
+                    functions,
+                    bindings,
+                    allowPrintCall: false,
+                    allowReadIntCall,
+                    allowFlowBindingTarget: false);
+        if (argumentType == function.InputType.Value
+            && IsIntegerLiteralExpression(expression.Arguments[0]))
+        {
+            ValidateNumericLiteralConversion(
+                expression.Arguments[0],
+                function.InputType.Value,
+                FormatType(function.InputType.Value));
+        }
         if (!CanPassFunctionArgument(argumentType, function.InputType.Value))
         {
             throw Error(
@@ -4792,7 +4868,10 @@ internal sealed class SemanticCompiler
             return;
         }
 
-        if (function.Kind == BoundFunctionKind.User && function.IsAsync)
+        if ((function.Kind == BoundFunctionKind.User
+                && (!function.IsStandardLibrary
+                    || function.Name is "sys.time.milliseconds" or "sys.time.seconds"))
+            || function.Kind == BoundFunctionKind.RuntimeSleep)
         {
             return;
         }
@@ -4894,7 +4973,12 @@ internal sealed class SemanticCompiler
                 throw Error(declaration.Line, declaration.Column, $"type name '{declaration.Name}' is reserved");
             }
 
-            var id = (TypeId)nextTypeId++;
+            var id = string.Equals(
+                declaration.Name,
+                "sys.time.Duration",
+                StringComparison.Ordinal)
+                ? TypeId.Duration
+                : (TypeId)nextTypeId++;
             if (!names.TryAdd(declaration.Name, id))
             {
                 throw Error(declaration.Line, declaration.Column, $"type '{declaration.Name}' already exists");
@@ -4931,7 +5015,9 @@ internal sealed class SemanticCompiler
             .ToArray();
         foreach (var (name, elementType) in boxableTypes)
         {
-            var id = (TypeId)nextTypeId++;
+            var id = elementType == TypeId.Duration
+                ? TypeId.BoxDuration
+                : (TypeId)nextTypeId++;
             names.Add("box " + name, id);
             boxes.Add(id, new BoundBoxDefinition(id, elementType, Size: 0, Alignment: 1));
         }
@@ -5510,6 +5596,16 @@ internal sealed class SemanticCompiler
             || (expectedType == BoundType.IntSlice && IsReadonlyIntViewCompatible(actualType))
             || (expectedType == BoundType.IntDictionaryView && actualType == BoundType.IntDictionary);
     }
+
+    private static bool IsIntegerLiteralExpression(Expression expression) => expression switch
+    {
+        NumberExpression number => !number.Text.Contains('.', StringComparison.Ordinal)
+            && !number.Text.Contains('e', StringComparison.OrdinalIgnoreCase),
+        NegateExpression { Value: NumberExpression number } =>
+            !number.Text.Contains('.', StringComparison.Ordinal)
+            && !number.Text.Contains('e', StringComparison.OrdinalIgnoreCase),
+        _ => false
+    };
 
     private bool IsOwnedHeapType(BoundType type)
     {

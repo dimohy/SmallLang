@@ -32,6 +32,7 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare i32 @munmap(ptr, i64)");
         functions.AppendLine("declare i32 @msync(ptr, i64, i32)");
         functions.AppendLine("declare i32 @clock_gettime(i32, ptr)");
+        functions.AppendLine("declare i32 @nanosleep(ptr, ptr)");
         functions.AppendLine("declare ptr @getenv(ptr)");
         functions.AppendLine("declare i32 @posix_spawnp(ptr, ptr, ptr, ptr, ptr, ptr)");
         functions.AppendLine("declare i32 @waitpid(i32, ptr, i32)");
@@ -59,6 +60,27 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               %nsec_ms = udiv i64 %nsec, 1000000
               %millis = add i64 %sec_ms, %nsec_ms
               ret i64 %millis
+            }
+
+            define internal void @smalllang_wait_millis(i64 %millis) #0 {
+            entry:
+              %positive = icmp sgt i64 %millis, 0
+              br i1 %positive, label %wait, label %done
+
+            wait:
+              %ts = alloca [2 x i64], align 8
+              %seconds = sdiv i64 %millis, 1000
+              %remaining = srem i64 %millis, 1000
+              %nanoseconds = mul i64 %remaining, 1000000
+              %sec_ptr = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 0
+              %nsec_ptr = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 1
+              store i64 %seconds, ptr %sec_ptr, align 8
+              store i64 %nanoseconds, ptr %nsec_ptr, align 8
+              %ignored = call i32 @nanosleep(ptr %ts, ptr null)
+              br label %done
+
+            done:
+              ret void
             }
 
             """);

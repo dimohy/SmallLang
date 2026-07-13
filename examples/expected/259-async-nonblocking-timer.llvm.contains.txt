@@ -1,0 +1,10 @@
+@smalllang_task_timer_head
+@smalllang_timer_park
+@smalllang_timer_wait_next
+@smalllang_task_park_on
+@smalllang_task_wake_waiter
+@smalllang_sleep_worker
+@smalllang_wait_millis
+@Sleep
+store i32 4
+store i32 5

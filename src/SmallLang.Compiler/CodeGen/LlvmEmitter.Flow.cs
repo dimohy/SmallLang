@@ -93,6 +93,13 @@ internal sealed partial class LlvmEmitter
                 {
                     throw new SmallLangException($"function value-flow target '{path}' does not accept additional arguments in this slice");
                 }
+                if (i == 0
+                    && function.InputType is { } contextualInput
+                    && IsIntegerType(contextualInput)
+                    && TryGetIntegerLiteralText(expression.Source, out var integerLiteral))
+                {
+                    current = new RuntimeInt(contextualInput, integerLiteral);
+                }
 
                 switch (function.Kind)
                 {
@@ -154,6 +161,9 @@ internal sealed partial class LlvmEmitter
                         current = current is RuntimeDynamicInlineArray argv
                             ? EmitRuntimeRunProcessIntrinsic(function, argv)
                             : throw new SmallLangException($"{path} expects a dynamic Text argv array");
+                        continue;
+                    case BoundFunctionKind.RuntimeSleep:
+                        current = EmitRuntimeSleepIntrinsic(function, current, path);
                         continue;
                     case BoundFunctionKind.User:
                         current = EmitFlowFunctionCall(function, current, expression.Source);

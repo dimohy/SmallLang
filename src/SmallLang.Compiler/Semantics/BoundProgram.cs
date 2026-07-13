@@ -87,6 +87,7 @@ internal enum BoundFunctionKind
     RuntimeClosestInt,
     RuntimeCloseIntReader,
     RuntimeNowMillis,
+    RuntimeSleep,
     RuntimeArguments,
     RuntimeEnvironment,
     RuntimeRunProcess,
@@ -123,6 +124,8 @@ internal enum TypeId
     IntDictionaryView,
     IntDictionary,
     TaskInt,
+    Duration,
+    BoxDuration,
     GenericParameter = 512,
     SecondaryGenericParameter = 513,
     FirstUserDefined = 1024

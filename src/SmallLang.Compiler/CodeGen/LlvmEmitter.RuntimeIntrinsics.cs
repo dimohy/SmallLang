@@ -63,6 +63,85 @@ internal sealed partial class LlvmEmitter
         return new RuntimeInt(BoundType.Int64, value);
     }
 
+    private RuntimeTask EmitRuntimeSleepIntrinsic(
+        BoundFunction function,
+        RuntimeValue argument,
+        string path)
+    {
+        EnsureRuntimeType(argument, function.InputType!.Value, path);
+        if (argument is not RuntimeStruct duration)
+        {
+            throw new SmallLangException($"{path} expects Duration");
+        }
+
+        var millis = NextTemp("sleep_millis");
+        EmitAssign(
+            millis,
+            $"extractvalue {LlvmStructType(duration.Type)} {duration.ValueName}, 0");
+        var positive = NextTemp("sleep_positive");
+        EmitCompare(positive, "sgt", "i64", millis, "0");
+        var normalized = NextTemp("sleep_normalized");
+        EmitAssign(normalized, $"select i1 {positive}, i64 {millis}, i64 0");
+        var now = NextTemp("sleep_now");
+        EmitCall(now, "i64", "smalllang_now_millis", "");
+        var maximumRemaining = NextTemp("sleep_maximum_remaining");
+        EmitAssign(maximumRemaining, $"sub i64 9223372036854775807, {now}");
+        var tooLarge = NextTemp("sleep_too_large");
+        EmitCompare(tooLarge, "sgt", "i64", normalized, maximumRemaining);
+        var finiteDeadline = NextTemp("sleep_finite_deadline");
+        EmitAssign(finiteDeadline, $"add i64 {now}, {normalized}");
+        var deadline = NextTemp("sleep_deadline");
+        EmitAssign(
+            deadline,
+            $"select i1 {tooLarge}, i64 9223372036854775807, i64 {finiteDeadline}");
+
+        var context = NextTemp("sleep_context");
+        EmitCall(context, "ptr", "smalllang_alloc", $"i64 {AsyncContextSize(null, BoundType.Unit)}");
+        var allocated = NextTemp("sleep_context_allocated");
+        EmitCompare(allocated, "ne", "ptr", context, "null");
+        var initializeLabel = NextLabel("sleep_initialize");
+        var allocationFailedLabel = NextLabel("sleep_allocation_failed");
+        EmitConditionalBranch(allocated, initializeLabel, allocationFailedLabel);
+        EmitLabel(allocationFailedLabel);
+        EmitTrap();
+        EmitLabel(initializeLabel);
+
+        var resultAddress = AsyncContextField(
+            context,
+            null,
+            BoundType.Unit,
+            6,
+            "sleep_result_address");
+        EmitStore("i8", "0", resultAddress, 1);
+        var handle = NextTemp("sleep_handle");
+        EmitCall(
+            handle,
+            "ptr",
+            "smalllang_task_start",
+            $"ptr @smalllang_sleep_worker, ptr @smalllang_free, ptr @smalllang_sleep_cancel, ptr {context}");
+        var started = NextTemp("sleep_started");
+        EmitCompare(started, "ne", "ptr", handle, "null");
+        var readyLabel = NextLabel("sleep_ready");
+        var startFailedLabel = NextLabel("sleep_start_failed");
+        EmitConditionalBranch(started, readyLabel, startFailedLabel);
+        EmitLabel(startFailedLabel);
+        EmitCall(target: null, "void", "smalllang_free", $"ptr {context}");
+        EmitTrap();
+        EmitLabel(readyLabel);
+        var deadlineAddress = NextTemp("sleep_deadline_address");
+        EmitAssign(
+            deadlineAddress,
+            $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 8");
+        EmitStore("i64", deadline, deadlineAddress, 8);
+
+        return new RuntimeTask(
+            _program.Types.GetOrAddTask(BoundType.Unit),
+            null,
+            BoundType.Unit,
+            handle,
+            context);
+    }
+
     private void EmitReturnIfReadFailed(string readOk)
     {
         var isOk = NextTemp("read_is_ok");

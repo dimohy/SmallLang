@@ -606,6 +606,11 @@ internal sealed partial class LlvmEmitter
         EmitAsyncContextStore(
             "%context", function.InputType, function.ReturnType, 8,
             "ptr", child.ContextName, 8);
+        EmitCall(
+            target: null,
+            "void",
+            "smalllang_task_park_on",
+            $"ptr %control, ptr {child.HandleName}");
     }
 
     private RuntimeValue EmitStoredChildAwait(BoundFunction function, RuntimeTask child)

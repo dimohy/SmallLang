@@ -80,6 +80,16 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeNowMillisIntrinsic(path);
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeSleep)
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SmallLangException($"{path} expects exactly one Duration argument");
+            }
+
+            return EmitRuntimeSleepIntrinsic(function, EmitExpression(expression.Arguments[0]), path);
+        }
+
         if (function.Kind == BoundFunctionKind.RuntimeArguments)
         {
             if (expression.Arguments.Count != 0)
@@ -182,7 +192,9 @@ internal sealed partial class LlvmEmitter
             }
             else
             {
-                argument = EmitExpression(expression.Arguments[0]);
+                argument = EmitFunctionArgumentExpression(
+                    expression.Arguments[0],
+                    function.InputType.Value);
                 EnsureFunctionArgumentRuntimeType(argument, function.InputType.Value, path);
             }
         }
@@ -257,6 +269,17 @@ internal sealed partial class LlvmEmitter
         var value = EmitFunctionCall(function, functionArgument);
         RemoveOwnedParameterFlowSourceIfNeeded(function, source);
         return value;
+    }
+
+    private RuntimeValue EmitFunctionArgumentExpression(Expression expression, BoundType expectedType)
+    {
+        if (IsIntegerType(expectedType)
+            && TryGetIntegerLiteralText(expression, out var integerLiteral))
+        {
+            return new RuntimeInt(expectedType, integerLiteral);
+        }
+
+        return EmitExpression(expression);
     }
 
     private bool TryEmitNumericConversion(CallExpression expression, out RuntimeValue value)
@@ -575,6 +598,16 @@ internal sealed partial class LlvmEmitter
             }
 
             return EmitRuntimeNowMillisIntrinsic(function.Name);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeSleep)
+        {
+            if (argument is null)
+            {
+                throw new SmallLangException($"{function.Name} expects exactly one Duration argument");
+            }
+
+            return EmitRuntimeSleepIntrinsic(function, argument, function.Name);
         }
 
         if (function.Kind == BoundFunctionKind.RuntimeArguments)

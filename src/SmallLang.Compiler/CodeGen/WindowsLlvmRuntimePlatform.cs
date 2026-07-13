@@ -38,6 +38,7 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport ptr @HeapAlloc(ptr, i32, i64)");
         functions.AppendLine("declare dllimport i32 @HeapFree(ptr, i32, ptr)");
         functions.AppendLine("declare dllimport i64 @GetTickCount64()");
+        functions.AppendLine("declare dllimport void @Sleep(i32)");
         functions.AppendLine("declare dllimport ptr @GetCommandLineW()");
         functions.AppendLine("declare dllimport ptr @CommandLineToArgvW(ptr, ptr)");
         functions.AppendLine("declare dllimport i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)");
@@ -60,6 +61,22 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
             entry:
               %millis = call i64 @GetTickCount64()
               ret i64 %millis
+            }
+
+            define internal void @smalllang_wait_millis(i64 %requested) #0 {
+            entry:
+              %positive = icmp sgt i64 %requested, 0
+              br i1 %positive, label %clamp, label %done
+
+            clamp:
+              %too_large = icmp ugt i64 %requested, 4294967294
+              %bounded = select i1 %too_large, i64 4294967294, i64 %requested
+              %millis = trunc i64 %bounded to i32
+              call void @Sleep(i32 %millis)
+              br label %done
+
+            done:
+              ret void
             }
 
             """);

@@ -633,8 +633,25 @@ ordinary synchronous functions because neither has a resumable Task frame.
 For a `move` input, each suspension state records whether the original input
 owner is still live; cancellation drops either that context owner or the owner
 to which it was transferred, never both.
-Task groups, closure-capture analysis, failure propagation, and nonblocking I/O
-registration follow.
+
+Time suspension uses the public `Duration` value type and the affine
+`sleep: Duration -> async Unit` intrinsic. `milliseconds` and `seconds` build a
+duration without losing the unit at the call site:
+
+```smalllang
+250 -> milliseconds -> sleep -> await
+```
+
+Integer literals are contextually checked as the constructor's `Long` input,
+so the concise spelling keeps the full 64-bit range without an explicit cast.
+
+`sleep` registers its Task in the executor's deadline-ordered timer queue. It
+does not allocate an OS thread and does not remain in the runnable queue. When
+there is no ready work, the executor waits only until the nearest monotonic
+deadline, then moves every due timer to the FIFO ready tail. Zero and negative
+durations complete immediately. Canceling a sleeping Task unlinks it from the
+timer queue and destroys its context exactly once. File-descriptor readiness,
+task groups, closure-capture analysis, and failure propagation follow.
 
 ## Local Functions
 

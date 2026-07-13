@@ -3774,4 +3774,49 @@ References: [Swift Task.yield](https://developer.apple.com/documentation/swift/t
 [Kotlin cancellation and yield](https://kotlinlang.org/docs/cancellation-and-timeouts.html),
 [Tokio task yield](https://docs.rs/tokio/latest/tokio/task/fn.yield_now.html).
 
+## D125 - Typed Duration Sleeps Park Tasks Outside The Ready Queue
+
+Status: reference compiler, native runtime, and self-host planning implemented
+Date: 2026-07-14
+
+SL represents elapsed time with the public `sys.time.Duration` value type.
+`milliseconds` and `seconds` are ordinary pure constructors, and
+`sleep: Duration -> async Unit` returns an affine Task. The intended surface is
+therefore `250 -> milliseconds -> sleep -> await`: the unit is visible,
+the suspension is explicit, and cancellation uses the same Task ownership rule
+as user async functions.
+
+The executor has a deadline-ordered timer wait queue in addition to its FIFO
+ready queue. A sleep worker that is not due marks its Task waiting and inserts
+it by monotonic deadline instead of returning to the runnable tail. When no
+work is ready, the executor waits until the nearest deadline and wakes all due
+timers at the ready tail. This performs no busy polling and creates no OS thread
+per timer. Non-positive durations are immediately ready. Cancellation can
+unlink either a ready or timer-waiting Task and invokes exactly one context
+destroy path.
+
+An async parent awaiting a child is likewise removed from the ready queue. The
+child stores its unique affine waiter and wakes that parent exactly once on
+completion. Canceling the parked parent first detaches this wake edge, then
+recursively cancels the stored child. This prevents a slow child timer from
+making an unrelated fast Task wait behind a nested blocking join.
+
+This adopts Swift's typed Duration and monotonic Clock separation, Kotlin's
+nonblocking cancellable delay behavior, and Rust's rule that pending work must
+register how it will become runnable again. Tokio's timer future additionally
+confirms that dropping a sleep should require no resource-specific cleanup.
+The SL timer node lives in the existing affine Task control, so cancellation is
+an ordinary ownership operation rather than a separate timer handle protocol.
+
+Example 259 covers ordered 1ms/25ms timers, a canceled 1-second waiter,
+zero/negative immediate completion, and elapsed-time behavior. Example 260
+proves self-host multi-file module/call resolution for `sys.time` and preserves
+the await suspension state.
+
+References: [Swift Task.sleep](https://developer.apple.com/documentation/swift/task/sleep%28for%3Atolerance%3Aclock%3A%29),
+[Swift Duration](https://developer.apple.com/documentation/swift/duration),
+[Kotlin delay](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/delay.html),
+[Rust Poll](https://doc.rust-lang.org/stable/std/task/enum.Poll.html),
+[Tokio sleep](https://docs.rs/tokio/latest/tokio/time/fn.sleep.html).
+
 

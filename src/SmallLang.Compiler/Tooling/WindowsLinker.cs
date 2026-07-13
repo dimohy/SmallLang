@@ -67,6 +67,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             FlushViewOfFile
             UnmapViewOfFile
             GetTickCount64
+            Sleep
             GetCommandLineW
             WideCharToMultiByte
             MultiByteToWideChar
