@@ -136,6 +136,14 @@ their value dependencies would otherwise allow topological reordering.
 Nested value conditionals compose by using the innermost result-producing merge
 block as the predecessor of an enclosing `phi` input.
 
+Self-hosted mutable scalar loops use an explicit memory form before LLVM
+optimization: one non-escaping entry-block `alloca` represents each mutable
+binding chain, rebinds are ordered stores, and reads are ordered loads. A
+`while` comparison is regenerated in the header so every iteration observes
+the latest stored value. LLVM may then promote the slot to SSA and synthesize
+the loop-carried `phi`; the language semantics do not require a heap allocation
+or expose this intermediate representation.
+
 ## First Program
 
 The first valid SmallLang program is:

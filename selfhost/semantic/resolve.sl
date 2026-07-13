@@ -44,6 +44,17 @@ public resolve source: Text -> [ResolvedName; ~] {
             lexicalScope! => searchScope!
             false => scopesDone!
             (resolvedSymbol! < 0 and not scopesDone!) -> while {
+                -1 => nearestSymbol!
+                UIntSize(0) => nearestStart!
+                -1 => bindingOwnerAst!
+                nameAst.parent => referenceOwnerAst!
+                (referenceOwnerAst! >= 0 and bindingOwnerAst! < 0) -> while {
+                    nodes![referenceOwnerAst!].kind == 9 -> if {
+                        referenceOwnerAst! => bindingOwnerAst!
+                    } else {
+                        nodes![referenceOwnerAst!].parent => referenceOwnerAst!
+                    }
+                }
                 0 => candidateSymbolIndex!
                 candidateSymbolIndex! < symbolCount -> while {
                     table![candidateSymbolIndex!] => candidate
@@ -59,14 +70,19 @@ public resolve source: Text -> [ResolvedName; ~] {
                             nameByte! + UIntSize(1) => nameByte!
                         }
                         namesEqual! -> if {
-                            candidateSymbolIndex! => resolvedSymbol!
-                            symbolCount => candidateSymbolIndex!
-                        } else {
-                            candidateSymbolIndex! + 1 => candidateSymbolIndex!
+                            nodes![candidate.astNode].start => candidateStart
+                            ((candidate.kind == 35 or candidateStart < nameAst.start) and candidate.astNode != bindingOwnerAst!) -> if {
+                                (nearestSymbol! < 0 or candidateStart >= nearestStart!) -> if {
+                                    candidateSymbolIndex! => nearestSymbol!
+                                    candidateStart => nearestStart!
+                                }
+                            }
                         }
-                    } else {
-                        candidateSymbolIndex! + 1 => candidateSymbolIndex!
                     }
+                    candidateSymbolIndex! + 1 => candidateSymbolIndex!
+                }
+                nearestSymbol! >= 0 -> if {
+                    nearestSymbol! => resolvedSymbol!
                 }
                 resolvedSymbol! < 0 -> if {
                     searchScope! >= 0 -> if {

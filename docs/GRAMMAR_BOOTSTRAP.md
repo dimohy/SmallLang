@@ -354,9 +354,15 @@ Flow `while` now crosses the same structured boundary as kind 20. The AST keeps
 its condition and body region, typed IR links them explicitly, and LLVM emits
 deterministic `header`, `body`, and `exit` blocks with a body-to-header
 back-edge. The region work stack also composes a while nested inside an if.
-This first executable loop slice covers invariant Bool conditions in functions
-and `main`; loop-carried mutable scalar `phi` nodes and condition recomputation
-from mutable state remain the next loop slice.
+Mutable scalar bindings now survive the bootstrap boundary as flagged binding
+nodes. Resolution selects the nearest preceding rebind, while a rebind's own
+right-hand side still observes the previous value. The LLVM text backend hoists
+one stack slot per mutable scalar, emits ordered `load`/`store` operations, and
+recomputes integer comparison conditions in every loop header for functions and
+`main`. LLVM's normal `mem2reg`/SROA pipeline can promote these non-escaping
+slots to SSA `phi` nodes without making the source semantics depend on emitter
+predecessor bookkeeping. Compound Bool and call-valued mutable conditions,
+`break`/`continue`, and ownership cleanup on loop exits remain.
 
 The first self-hosted LLVM text backend lives in `selfhost/llvm/text.sl`. It
 emits stable `sl_m<module>_s<symbol>` function names, `i32`/`i1` signatures,

@@ -452,11 +452,15 @@ The self-hosted grammar no longer treats `while` as a generic block call. A
 dedicated AST target and typed-IR kind 20 retain the Bool condition and body
 region. LLVM lowering emits `header`/`body`/`exit` blocks and a real back-edge
 in functions and `main`; the explicit region task stack also handles while
-nested inside if. An executable false-loop regression proves the body is not
-run, while an uncalled true-loop function is assembled to prove the body and
-back-edge are structurally valid. Loop-carried mutable scalar `phi` nodes,
-mutable condition recomputation, `break`/`continue`, and ownership cleanup on
-loop exits remain before general self-hosted loops are complete.
+nested inside if. Mutable scalar declarations and rebinds now retain their `!`
+flag, name resolution selects the closest preceding definition, and LLVM
+hoists one stack slot per mutable scalar. Integer comparison conditions reload
+that slot in every header, while body rebinds store the next value before the
+back-edge. This memory-form lowering is valid for nested CFGs and is designed
+for LLVM `mem2reg`/SROA promotion to SSA `phi` nodes. Native regressions execute
+terminating mutable loops in both a function and `main`. Compound Bool and
+call-valued conditions, `break`/`continue`, and ownership cleanup on loop exits
+remain before general self-hosted loops are complete.
 
 Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA

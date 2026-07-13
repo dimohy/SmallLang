@@ -530,10 +530,20 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 }
                                 regionSearch! + 1 => regionSearch!
                             }
+                            (conditionIr! < 0 and control!.parent >= expressionIrStart and results![control!.parent].kind != 19) -> if {
+                                control!.parent => enclosingConditionIr!
+                                results![enclosingConditionIr!].parent => control!.parent
+                                enclosingConditionIr! => conditionIr!
+                            }
                             conditionIr! => control!.operand0
                             thenRegion! => control!.operand1
                             control!.kind == 18 -> if { elseRegion! => control!.nextOperand } else { -1 => control!.nextOperand }
                             control! => results![controlIrIndex!]
+                            (control!.kind == 20 and conditionIr! >= 0) -> if {
+                                results![conditionIr!] => loopCondition!
+                                controlIrIndex! => loopCondition!.parent
+                                loopCondition! => results![conditionIr!]
+                            }
                         }
                         controlIrIndex! + 1 => controlIrIndex!
                     }
@@ -958,10 +968,20 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 }
                                 entryRegionSearch! + 1 => entryRegionSearch!
                             }
+                            (entryConditionIr! < 0 and entryControl!.parent >= entryExpressionStart and results![entryControl!.parent].kind != 19) -> if {
+                                entryControl!.parent => entryEnclosingConditionIr!
+                                results![entryEnclosingConditionIr!].parent => entryControl!.parent
+                                entryEnclosingConditionIr! => entryConditionIr!
+                            }
                             entryConditionIr! => entryControl!.operand0
                             entryThenRegion! => entryControl!.operand1
                             entryControl!.kind == 18 -> if { entryElseRegion! => entryControl!.nextOperand } else { -1 => entryControl!.nextOperand }
                             entryControl! => results![entryControlIrIndex!]
+                            (entryControl!.kind == 20 and entryConditionIr! >= 0) -> if {
+                                results![entryConditionIr!] => entryLoopCondition!
+                                entryControlIrIndex! => entryLoopCondition!.parent
+                                entryLoopCondition! => results![entryConditionIr!]
+                            }
                         }
                         entryControlIrIndex! + 1 => entryControlIrIndex!
                     }

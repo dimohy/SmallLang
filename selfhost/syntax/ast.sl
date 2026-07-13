@@ -126,7 +126,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
-            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 22 and (candidateOperator == grammar.tokenIdMinus or candidateOperator == grammar.tokenIdBang) -> if {
+            operatorPayloadToken! < 0 and operatorGroupDepth! == 0 and astKind! == 22 and operatorTokenIndex! == node.firstToken and (candidateOperator == grammar.tokenIdMinus or candidateOperator == grammar.tokenIdBang) -> if {
                 candidateOperator => operatorKind!
                 operatorTokenIndex! => operatorPayloadToken!
             }
@@ -369,6 +369,13 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                         bindingToken! + 1 => bindingToken!
                     }
                 }
+            }
+            declaration!.payloadToken + 1 => bindingSuffixToken!
+            (bindingSuffixToken! < bindingEnd! and (tokens![bindingSuffixToken!].kind == grammar.triviaIdWhitespace or tokens![bindingSuffixToken!].kind == grammar.triviaIdComment)) -> while {
+                bindingSuffixToken! + 1 => bindingSuffixToken!
+            }
+            (bindingSuffixToken! < bindingEnd! and tokens![bindingSuffixToken!].kind == grammar.tokenIdBang) -> if {
+                1 => declaration!.flags
             }
         }
         declaration!.kind == 32 -> if {

@@ -42,7 +42,9 @@ public analyze source: Text -> [SemanticDiagnostic; ~] {
                     nameByte! + UIntSize(1) => nameByte!
                 }
                 namesEqual! -> if {
-                    candidateIndex! => duplicateOf!
+                    not (current.kind == 9 and candidate.kind == 9 and current.flags == 1 and candidate.flags == 1) -> if {
+                        candidateIndex! => duplicateOf!
+                    }
                 }
             }
             candidateIndex! + 1 => candidateIndex!
