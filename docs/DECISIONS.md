@@ -3476,12 +3476,10 @@ module, and symbol. Example 242 now proves two suspension states and the live
 slot for each state. This is the metadata required for the self-host LLVM emitter
 to reproduce the reference compiler's typed frame layout.
 
-Await inside branch/loop regions, mutable live bindings, heap-owning live
-values, borrowed `Text`, and multiple simultaneously live child tasks still use
-the older whole-body path. Those shapes require control-flow liveness, drop and
-initialization flags, and more than one child-task frame slot. Cancellation must
-also destroy a pending spill frame before this representation can support task
-cancellation safely.
+Await inside branch/loop regions and borrowed values still use the older
+whole-body path. Those shapes require control-flow liveness and borrow-region
+proofs. Cancellation must also destroy a pending spill frame before this
+representation can support task cancellation safely.
 
 References: [LLVM coroutine frames](https://llvm.org/docs/Coroutines.html),
 [Rust await expressions](https://doc.rust-lang.org/reference/expressions/await-expr.html),
@@ -3527,5 +3525,40 @@ contract needed by its future LLVM destroy emitter.
 References: [LLVM coroutine cleanup and destroy](https://llvm.org/docs/Coroutines.html),
 [Rust destructors](https://doc.rust-lang.org/reference/destructors.html),
 [Swift cooperative task cancellation](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#Task-Cancellation).
+
+## D118 - Live Child Tasks Are Affine Coroutine-Frame Owners
+
+Status: reference compiler and self-host ownership metadata implemented
+Date: 2026-07-14
+
+Starting more than one async function does not implicitly await either child.
+If one child remains live while another child is awaited, its `%smalllang.task`
+pair of handle and context moves into the coroutine spill frame. Ordinary local
+cleanup can no longer observe that Task while the parent is pending. Resume
+extracts the same pair, reconstructs exactly one `RuntimeTask` owner with its
+original input/result type metadata, frees only the spill allocation, and later
+`await` consumes and releases the child exactly once.
+
+Consumed affine bindings are absent from the semantic function's final binding
+map. Coroutine planning therefore recovers the type of a live Task from its
+async declaration expression when necessary; it must not mistake disappearance
+from the final map for absence at an earlier suspension point. Mutable Task
+slots remain forbidden because Task ownership moves rather than aliases.
+
+Self-host `CoroutineFrameSlot.flags` now uses bit 2 for an affine Task in
+addition to bit 0 for mutability and bit 1 for obvious heap ownership. Example
+242 proves that metadata for two children started before the first suspension.
+Example 250 proves the runtime path with two already-started children, three
+resume states, `%smalllang.task` store/load, and deterministic result `102` on
+Windows and Linux.
+
+This is structured concurrency at the ownership boundary: every started child
+is either explicitly awaited or deterministically consumed by scope cleanup.
+Cancellation and task groups remain separate future work because they require
+a destroy path for pending child and spill-frame owners.
+
+References: [LLVM coroutine frames](https://llvm.org/docs/Coroutines.html),
+[Rust destructors](https://doc.rust-lang.org/reference/destructors.html),
+[Swift concurrency](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html).
 
 

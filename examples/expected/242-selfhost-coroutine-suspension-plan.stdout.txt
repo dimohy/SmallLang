@@ -1,1 +1,1 @@
-suspensions=2,states=1/2,slots=4,ownedFlags=3/3
+suspensions=2,states=1/2,slots=6,taskSlots=1,ownedSlots=2

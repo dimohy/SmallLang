@@ -11,10 +11,10 @@ main {
             value * 2 => base
             [1, 2, 3, ~] => values!
             value -> child => firstTask
+            value -> child => secondTask
             firstTask -> await => first
-            first -> child => secondTask
             secondTask -> await => second
-            base + second + (values! -> len)
+            base + first + second + (values! -> len)
         }
 
         main { }
@@ -24,5 +24,13 @@ main {
 
     sources! -> typedIr.suspensions => points!
     sources! -> typedIr.frameSlots => slots!
-    "suspensions=$(points! -> len),states=$(points![0].state)/$(points![1].state),slots=$(slots! -> len),ownedFlags=$(slots![1].flags)/$(slots![3].flags)" -> println
+    0 => taskSlots!
+    0 => ownedSlots!
+    0 => slotIndex!
+    slotIndex! < (slots! -> len) -> while {
+        ((slots![slotIndex!].flags / 4) % 2 == 1) -> if { taskSlots! + 1 => taskSlots! }
+        ((slots![slotIndex!].flags / 2) % 2 == 1) -> if { ownedSlots! + 1 => ownedSlots! }
+        slotIndex! + 1 => slotIndex!
+    }
+    "suspensions=$(points! -> len),states=$(points![0].state)/$(points![1].state),slots=$(slots! -> len),taskSlots=$(taskSlots!),ownedSlots=$(ownedSlots!)" -> println
 }

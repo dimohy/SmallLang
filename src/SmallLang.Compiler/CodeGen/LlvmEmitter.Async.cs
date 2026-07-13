@@ -269,7 +269,8 @@ internal sealed partial class LlvmEmitter
                 alignment,
                 materialized.TypeName,
                 materialized.ValueName,
-                spill.IsMutable));
+                spill.IsMutable,
+                value));
             offset = checked(offset + Math.Max(_program.Types.InlineSizeOf(spill.Type), 1));
         }
 
@@ -319,7 +320,9 @@ internal sealed partial class LlvmEmitter
             EmitAssign(address, $"getelementptr i8, ptr {frame}, i64 {spill.Offset}");
             var loaded = NextTemp("async_spill_value");
             EmitLoad(loaded, spill.LlvmType, address, spill.Alignment);
-            var value = DematerializeAggregateValue(spill.Type, loaded);
+            var value = spill.Template is RuntimeTask task
+                ? DematerializeTask(task, loaded)
+                : DematerializeAggregateValue(spill.Type, loaded);
             _locals[spill.Name] = value;
             if (spill.IsMutable)
             {
@@ -328,6 +331,19 @@ internal sealed partial class LlvmEmitter
         }
         EmitCall(target: null, "void", "smalllang_free", $"ptr {frame}");
         EmitStore("ptr", "null", frameAddress, 8);
+    }
+
+    private RuntimeTask DematerializeTask(RuntimeTask template, string aggregate)
+    {
+        var handle = NextTemp("async_spill_task_handle");
+        EmitAssign(handle, $"extractvalue %smalllang.task {aggregate}, 0");
+        var context = NextTemp("async_spill_task_context");
+        EmitAssign(context, $"extractvalue %smalllang.task {aggregate}, 1");
+        return template with
+        {
+            HandleName = handle,
+            ContextName = context
+        };
     }
 
     private void EmitTailAwaitWorker(
@@ -486,7 +502,11 @@ internal sealed partial class LlvmEmitter
                     continue;
                 }
                 if (!bindingTypes.TryGetValue(binding.Name, out var type)
-                    || !IsAsyncSpillType(type))
+                    && !TryGetAsyncTaskBindingType(binding.Value, out type))
+                {
+                    return false;
+                }
+                if (!IsAsyncSpillType(type))
                 {
                     return false;
                 }
@@ -505,6 +525,36 @@ internal sealed partial class LlvmEmitter
         }
 
         plan = new AsyncStateMachinePlan(awaitPlans);
+        return true;
+    }
+
+    private bool TryGetAsyncTaskBindingType(Expression expression, out BoundType taskType)
+    {
+        BoundFunction? function = null;
+        if (expression is CallExpression call)
+        {
+            _program.ResolvedGenericCalls.TryGetValue(call, out function);
+            if (function is null)
+            {
+                TryResolveFunction(call.Path, out function);
+            }
+        }
+        else if (expression is NameExpression name)
+        {
+            TryResolveFunction([name.Name], out function);
+        }
+        else if (expression is FlowExpression { Targets.Count: > 0 } flow)
+        {
+            TryResolveFunction(flow.Targets[^1].Path, out function);
+        }
+
+        if (function is not { IsAsync: true })
+        {
+            taskType = default;
+            return false;
+        }
+
+        taskType = _program.Types.GetOrAddTask(function.ReturnType);
         return true;
     }
 
@@ -528,6 +578,7 @@ internal sealed partial class LlvmEmitter
             || IsFloatType(type)
             || type is BoundType.Bool or BoundType.Text
             || _program.Types.IsBox(type)
+            || _program.Types.IsTask(type)
             || type == BoundType.DynamicIntArray
             || type == BoundType.IntDictionary
             || _program.Types.IsDynamicArray(type)
@@ -745,5 +796,6 @@ internal sealed partial class LlvmEmitter
         int Alignment,
         string LlvmType,
         string ValueName,
-        bool IsMutable);
+        bool IsMutable,
+        RuntimeValue Template);
 }

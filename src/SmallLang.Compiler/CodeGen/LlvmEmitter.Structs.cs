@@ -146,6 +146,7 @@ internal sealed partial class LlvmEmitter
             RuntimeInt integer => (LlvmType(integer.Type), integer.ValueName),
             RuntimeFloat floating => (LlvmType(floating.Type), floating.ValueName),
             RuntimeBool boolean => ("i1", boolean.ValueName),
+            RuntimeTask task => ("%smalllang.task", BuildTaskAggregate(task)),
             RuntimeText text => ("%smalllang.text", BuildTextAggregate(text)),
             RuntimeStruct structure => (LlvmStructType(structure.Type), structure.ValueName),
             RuntimeEnum enumeration => (LlvmEnumType(enumeration.Type), enumeration.ValueName),
@@ -164,6 +165,15 @@ internal sealed partial class LlvmEmitter
                 BuildDictionaryAggregate(dictionary.PointerName, dictionary.LengthName, dictionary.CapacityName)),
             _ => throw new SmallLangException($"type {value.Type} is not supported in an inline struct field")
         };
+    }
+
+    private string BuildTaskAggregate(RuntimeTask task)
+    {
+        var withHandle = NextTemp("task_with_handle");
+        EmitAssign(withHandle, $"insertvalue %smalllang.task poison, ptr {task.HandleName}, 0");
+        var aggregate = NextTemp("task_with_context");
+        EmitAssign(aggregate, $"insertvalue %smalllang.task {withHandle}, ptr {task.ContextName}, 1");
+        return aggregate;
     }
 
     private RuntimeValue DematerializeAggregateValue(BoundType type, string valueName)

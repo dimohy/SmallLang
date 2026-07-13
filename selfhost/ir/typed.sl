@@ -62,7 +62,9 @@ public struct CoroutineSuspendPoint {
 
 # One frame slot records a binding that is defined before a suspension and
 # referenced after it inside the same async function. Parameters stay in the
-# function context and therefore do not appear in this side table.
+# function context and therefore do not appear in this side table. In flags,
+# bit 0 marks mutable storage, bit 1 marks an obvious heap owner, and bit 2
+# marks an affine Task whose handle and context must move into the frame.
 public struct CoroutineFrameSlot {
     functionIr: Int
     state: Int
@@ -1441,6 +1443,23 @@ public frameSlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
                     (definition.typeOrigin == 13 or definition.typeOrigin == 15 or definition.typeOrigin == 16) -> if {
                         frameFlags! + 2 => frameFlags!
                     }
+                    false => isTaskSlot!
+                    0 => taskSearch!
+                    (taskSearch! < (ir! -> len) and not isTaskSlot!) -> while {
+                        ir![taskSearch!] => taskCandidate
+                        ((taskCandidate.flags / 8) % 2 == 1 and taskCandidate.sourceModule == point.sourceModule and taskCandidate.astNode >= 0) -> if {
+                            taskCandidate.astNode => taskAncestor!
+                            false => belongsToDefinition!
+                            (taskAncestor! >= 0 and not belongsToDefinition!) -> while {
+                                taskAncestor! == definition.astNode -> if { true => belongsToDefinition! } else {
+                                    astNodes![taskAncestor!].parent => taskAncestor!
+                                }
+                            }
+                            belongsToDefinition! -> if { true => isTaskSlot! }
+                        }
+                        taskSearch! + 1 => taskSearch!
+                    }
+                    isTaskSlot! -> if { frameFlags! + 4 => frameFlags! }
                     slots! -> push(CoroutineFrameSlot {
                         functionIr: point.functionIr
                         state: point.state
