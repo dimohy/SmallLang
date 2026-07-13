@@ -9,6 +9,7 @@ internal sealed record BoundProgram(
     IReadOnlyDictionary<object, BoundFunction> ResolvedGenericCalls,
     IReadOnlyList<Statement> MainStatements,
     IReadOnlyDictionary<string, BoundType> MainBindings,
+    IReadOnlyDictionary<BoundFunction, IReadOnlyDictionary<string, BoundType>> FunctionBindings,
     StackFramePlan MainStackFrame,
     IReadOnlyDictionary<BoundFunction, StackFramePlan> FunctionStackFrames);
 

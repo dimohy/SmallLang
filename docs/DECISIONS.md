@@ -3445,4 +3445,46 @@ References: [LLVM coroutine lowering](https://llvm.org/docs/Coroutines.html),
 [Rust await expressions](https://doc.rust-lang.org/reference/expressions/await-expr.html),
 [Swift concurrency](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html).
 
+## D116 - Async Frames Spill Typed Live Values Across Multiple Await States
+
+Status: reference compiler and self-host plan implemented
+Date: 2026-07-14
+
+The semantic compiler now preserves each validated function's binding types for
+backend planning. For every direct awaited-task binding in an async body, the
+LLVM emitter finds immutable bindings defined before that await and referenced
+after it. Only those live values receive frame slots; dead bindings are not
+stored. Slots use the exact LLVM type, inline size, and runtime alignment rather
+than an `Any` box or a fixed-size buffer. Numeric and Boolean values plus
+structs/enums recursively composed from those value types are supported in this
+slice.
+
+One resume switch covers every recognized await in source order. State zero
+runs the first segment; each suspension stores its live values and child task,
+writes the next state, and returns pending. The corresponding resume state
+reloads and frees the spill storage, consumes the child result, and continues
+with the next segment. This permits ordinary expressions and branches after an
+await and permits sequential state 0/1/2/... suspension without retaining a
+native SmallLang call frame. Examples 244, 245, and 246 cover exact liveness,
+multiple awaits, scalar-only struct layout, and post-resume branching on Windows
+and Linux.
+
+The self-hosted typed IR exports `CoroutineFrameSlot` and `frameSlots`. It pairs
+each stable `CoroutineSuspendPoint` state with every earlier binding symbol
+referenced later in the same async function, including its resolved type origin,
+module, and symbol. Example 242 now proves two suspension states and the live
+slot for each state. This is the metadata required for the self-host LLVM emitter
+to reproduce the reference compiler's typed frame layout.
+
+Await inside branch/loop regions, mutable live bindings, heap-owning live
+values, borrowed `Text`, and multiple simultaneously live child tasks still use
+the older whole-body path. Those shapes require control-flow liveness, drop and
+initialization flags, and more than one child-task frame slot. Cancellation must
+also destroy a pending spill frame before this representation can support task
+cancellation safely.
+
+References: [LLVM coroutine frames](https://llvm.org/docs/Coroutines.html),
+[Rust await expressions](https://doc.rust-lang.org/reference/expressions/await-expr.html),
+[Swift concurrency](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html).
+
 

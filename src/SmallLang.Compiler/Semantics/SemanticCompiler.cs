@@ -12,6 +12,8 @@ internal sealed class SemanticCompiler
     private readonly IReadOnlyDictionary<string, BoundTraitDefinition> _traits;
     private readonly Dictionary<object, BoundFunction> _resolvedGenericCalls = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BoundFunction> _validatingGenericSpecializations = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundFunction, IReadOnlyDictionary<string, BoundType>> _functionBindings =
+        new(ReferenceEqualityComparer.Instance);
     private Dictionary<string, BoundFunction>? _boundFunctions;
     private string _currentModuleName = "";
     private string? _currentTypeScopeName;
@@ -43,6 +45,7 @@ internal sealed class SemanticCompiler
             _resolvedGenericCalls,
             _program.Statements,
             mainBindings,
+            _functionBindings,
             storagePlacement.MainFrame,
             storagePlacement.FunctionFrames);
     }
@@ -605,6 +608,10 @@ internal sealed class SemanticCompiler
                     scopedFunctions);
             }
         }
+
+        _functionBindings[function] = new Dictionary<string, BoundType>(
+            bodyBindings,
+            StringComparer.Ordinal);
 
     }
 

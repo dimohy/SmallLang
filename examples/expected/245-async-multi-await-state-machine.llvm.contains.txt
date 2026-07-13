@@ -1,0 +1,8 @@
+define internal i1 @smalllang_fn_combine_async_worker(ptr %control)
+i32 0, label %async_state_start
+i32 1, label %async_state_resume
+i32 2, label %async_state_resume
+store i32 1, ptr %async_resume_state_slot
+store i32 2, ptr %async_resume_state_slot
+ret i1 false
+call i1 @smalllang_task_join(ptr %async_child_handle

@@ -1,0 +1,5 @@
+define internal i1 @smalllang_fn_score_async_worker(ptr %control)
+call ptr @smalllang_alloc(i64 8)
+store %smalllang.struct.1024
+load %smalllang.struct.1024
+br i1

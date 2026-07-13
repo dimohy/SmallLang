@@ -1108,6 +1108,12 @@ internal static class StoragePlacementAnalyzer
         };
     }
 
+    internal static bool ReferencesName(Statement statement, string name) =>
+        ContainsOwner(statement, name);
+
+    internal static bool ReferencesName(Expression expression, string name) =>
+        ContainsOwner(expression, name);
+
     private static bool ContainsOwner(BlockBody body, string ownerName)
     {
         return body.Statements.Any(statement => ContainsOwner(statement, ownerName))

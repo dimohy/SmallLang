@@ -1,1 +1,1 @@
-suspensions=1,state=1
+suspensions=2,states=1/2,slots=2,slotStates=1/2

@@ -60,6 +60,19 @@ public struct CoroutineSuspendPoint {
     state: Int
 }
 
+# One frame slot records a binding that is defined before a suspension and
+# referenced after it inside the same async function. Parameters stay in the
+# function context and therefore do not appear in this side table.
+public struct CoroutineFrameSlot {
+    functionIr: Int
+    state: Int
+    sourceModule: Int
+    symbol: Int
+    typeOrigin: Int
+    typeModule: Int
+    typeSymbol: Int
+}
+
 public lower sources: [Text; ~] -> [TypedIrNode; ~] {
     sources -> expressionTypes.infer => inferred!
     sources -> nominalTypes.resolve => nominal!
@@ -1379,4 +1392,64 @@ public suspensions sources: [Text; ~] -> [CoroutineSuspendPoint; ~] {
         sourceIndex! + 1 => sourceIndex!
     }
     points!
+}
+
+public frameSlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
+    sources -> lower => ir!
+    sources -> suspensions => points!
+    [CoroutineFrameSlot; ~] => slots!
+    0 => pointIndex!
+    pointIndex! < (points! -> len) -> while {
+        points![pointIndex!] => point
+        sources[point.sourceModule] -> ast.lower => astNodes!
+        ir![point.functionIr].astNode => functionAst
+        astNodes![point.awaitAst].start => awaitStart
+        point.awaitAst => awaitBindingAst!
+        (awaitBindingAst! >= 0 and astNodes![awaitBindingAst!].kind != 9) -> while {
+            astNodes![awaitBindingAst!].parent => awaitBindingAst!
+        }
+        0 => definitionIndex!
+        definitionIndex! < (ir! -> len) -> while {
+            ir![definitionIndex!] => definition
+            false => belongsToFunction!
+            definition.astNode => definitionAncestor!
+            (definitionAncestor! >= 0 and not belongsToFunction!) -> while {
+                definitionAncestor! == functionAst -> if { true => belongsToFunction! } else {
+                    astNodes![definitionAncestor!].parent => definitionAncestor!
+                }
+            }
+            (definition.kind == 17 and definition.sourceModule == point.sourceModule and definition.symbol >= 0 and definition.astNode != awaitBindingAst! and belongsToFunction! and astNodes![definition.astNode].start < awaitStart) -> if {
+                false => usedAfterAwait!
+                0 => useIndex!
+                (useIndex! < (ir! -> len) and not usedAfterAwait!) -> while {
+                    ir![useIndex!] => use
+                    (use.kind == 5 and use.sourceModule == point.sourceModule and use.symbol == definition.symbol and use.astNode >= 0 and astNodes![use.astNode].start > awaitStart) -> if {
+                        false => useBelongsToFunction!
+                        use.astNode => useAncestor!
+                        (useAncestor! >= 0 and not useBelongsToFunction!) -> while {
+                            useAncestor! == functionAst -> if { true => useBelongsToFunction! } else {
+                                astNodes![useAncestor!].parent => useAncestor!
+                            }
+                        }
+                        useBelongsToFunction! -> if { true => usedAfterAwait! }
+                    }
+                    useIndex! + 1 => useIndex!
+                }
+                usedAfterAwait! -> if {
+                    slots! -> push(CoroutineFrameSlot {
+                        functionIr: point.functionIr
+                        state: point.state
+                        sourceModule: point.sourceModule
+                        symbol: definition.symbol
+                        typeOrigin: definition.typeOrigin
+                        typeModule: definition.typeModule
+                        typeSymbol: definition.typeSymbol
+                    })
+                }
+            }
+            definitionIndex! + 1 => definitionIndex!
+        }
+        pointIndex! + 1 => pointIndex!
+    }
+    slots!
 }

@@ -590,13 +590,18 @@ runtime boundary. Both native targets now use one cooperative FIFO ready queue;
 `await` pumps ready work until its affine target completes, and release invokes
 the context destroy entry exactly once. There is no OS thread per task and Linux
 does not require pthread linkage. Resume entries return `false` while pending
-and `true` when complete. A single-binding tail await already lowers to a real
-two-state machine: the parent stores its child task in the owned frame, returns
-to the scheduler, then reloads and consumes the child on resume. Other async
-bodies still run their whole CPU-pure body once. The self-hosted IR assigns
-stable one-based states to every source `await`; general liveness analysis and
-typed frame spilling are the next lowering slice. Cooperative cancellation,
-task groups, closure-capture analysis, and nonblocking I/O registration follow.
+and `true` when complete. Tail await and sequential direct await bindings lower
+to real state machines: the parent stores its child task, spills only immutable
+values referenced after the suspension using their exact LLVM size/alignment,
+returns to the scheduler, and reloads those values on resume. Numeric/Boolean
+values and scalar-only structs/enums can cross multiple state 0/1/2/... awaits;
+ordinary control flow may execute after the final resume. The self-hosted IR
+assigns stable one-based states and exports typed `CoroutineFrameSlot` records
+for the same live binding symbols. Await nested inside control-flow regions,
+mutable or heap-owning live values, and simultaneously live child tasks still
+use whole-body lowering until CFG liveness and initialized-drop flags exist.
+Cooperative cancellation, task groups, closure-capture analysis, and
+nonblocking I/O registration follow.
 
 ## Local Functions
 

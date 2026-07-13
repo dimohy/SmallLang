@@ -1,3 +1,4 @@
+using System.Globalization;
 using SmallLang.Compiler.Diagnostics;
 using SmallLang.Compiler.Semantics;
 using SmallLang.Compiler.Syntax;
@@ -21,6 +22,7 @@ internal sealed partial class LlvmEmitter
         {
             var workerName = AsyncWorkerSymbol(function);
             var hasTailAwait = TryGetTailAwaitBinding(function, out var tailAwaitBinding);
+            var hasStatefulAwait = TryGetStatefulAwaitPlan(function, out var statefulAwaitPlan);
             EmitFunctionLine($"define internal i1 @{workerName}(ptr %control) #0 {{");
             EmitLabel("entry");
             EmitStackFrameAllocations();
@@ -46,7 +48,11 @@ internal sealed partial class LlvmEmitter
 
             var functionLocals = CaptureLocals();
             BindFunctionParameter(function);
-            if (hasTailAwait)
+            if (hasStatefulAwait)
+            {
+                EmitStatefulAwaitWorker(function, statefulAwaitPlan!, functionLocals);
+            }
+            else if (hasTailAwait)
             {
                 EmitTailAwaitWorker(function, tailAwaitBinding!, functionLocals);
             }
@@ -80,6 +86,9 @@ internal sealed partial class LlvmEmitter
                 "ptr", "null", 8);
             EmitAsyncContextStore(
                 context, function.InputType, function.ReturnType, 8,
+                "ptr", "null", 8);
+            EmitAsyncContextStore(
+                context, function.InputType, function.ReturnType, 9,
                 "ptr", "null", 8);
 
             var handle = NextTemp("async_handle");
@@ -115,7 +124,15 @@ internal sealed partial class LlvmEmitter
 
     private void EmitAsyncWorkerCompletion(BoundFunction function, LocalScope functionLocals)
     {
-        EmitStatements(function.BlockBody);
+        EmitAsyncWorkerCompletion(function, functionLocals, function.BlockBody);
+    }
+
+    private void EmitAsyncWorkerCompletion(
+        BoundFunction function,
+        LocalScope functionLocals,
+        IReadOnlyList<Statement> statements)
+    {
+        EmitStatements(statements);
         var movedBodySourceName = function.Body is null
             ? null
             : GetMoveConsumingContainerSourceName(function.Body);
@@ -134,6 +151,173 @@ internal sealed partial class LlvmEmitter
         DropOwnedLocalsCreatedSince(functionLocals, transferredOwnerName);
         StoreAsyncResult(function, value);
         EmitRet("i1", "true");
+    }
+
+    private void EmitStatefulAwaitWorker(
+        BoundFunction function,
+        AsyncStateMachinePlan plan,
+        LocalScope functionLocals)
+    {
+        var resumeBaseLocals = CaptureLocals();
+        var stateSlot = NextTemp("async_resume_state_slot");
+        EmitAssign(
+            stateSlot,
+            "getelementptr %smalllang.task_control, ptr %control, i32 0, i32 5");
+        var state = NextTemp("async_resume_state");
+        EmitLoad(state, "i32", stateSlot, 4);
+        var stateLabels = Enumerable.Range(0, plan.Awaits.Count + 1)
+            .Select(index => NextLabel(index == 0 ? "async_state_start" : "async_state_resume"))
+            .ToArray();
+        var invalidLabel = NextLabel("async_state_invalid");
+        var switchCases = string.Join(" ", stateLabels.Select((label, index) =>
+            $"i32 {index}, label %{label}"));
+        EmitInstruction(
+            $"switch i32 {state}, label %{invalidLabel} [ {switchCases} ]");
+        _currentBlockTerminated = true;
+
+        EmitLabel(invalidLabel);
+        EmitTrap();
+
+        RuntimeTask? suspendedChild = null;
+        IReadOnlyList<RuntimeAsyncSpill> previousSpills = [];
+        var segmentStart = 0;
+        for (var awaitIndex = 0; awaitIndex < plan.Awaits.Count; awaitIndex++)
+        {
+            var awaitPoint = plan.Awaits[awaitIndex];
+            RestoreLocals(resumeBaseLocals);
+            EmitLabel(stateLabels[awaitIndex]);
+            if (awaitIndex > 0)
+            {
+                LoadAsyncSpills(function, previousSpills);
+                var resumedValue = EmitStoredChildAwait(function, suspendedChild!);
+                _locals.Add(plan.Awaits[awaitIndex - 1].ResultName, resumedValue);
+            }
+
+            EmitStatements(function.BlockBody
+                .Skip(segmentStart)
+                .Take(awaitPoint.StatementIndex - segmentStart)
+                .ToArray());
+            suspendedChild = ResolveLocal(awaitPoint.TaskName) as RuntimeTask
+                ?? throw new SmallLangException(
+                    $"await in async function '{function.Name}' did not produce Task<T>");
+            previousSpills = BuildRuntimeAsyncSpills(awaitPoint.Spills);
+            StoreAsyncSpills(function, previousSpills);
+            StoreSuspendedChild(function, suspendedChild);
+            RemoveLocal(awaitPoint.TaskName);
+            DropOwnedLocalsCreatedSince(resumeBaseLocals, transferredOwnerName: null);
+            EmitStore("i32", (awaitIndex + 1).ToString(CultureInfo.InvariantCulture), stateSlot, 4);
+            EmitRet("i1", "false");
+            segmentStart = awaitPoint.StatementIndex + 1;
+        }
+
+        RestoreLocals(resumeBaseLocals);
+        EmitLabel(stateLabels[^1]);
+        LoadAsyncSpills(function, previousSpills);
+        var finalAwaitValue = EmitStoredChildAwait(function, suspendedChild!);
+        _locals.Add(plan.Awaits[^1].ResultName, finalAwaitValue);
+        var remainingStatements = function.BlockBody.Skip(segmentStart).ToArray();
+        EmitAsyncWorkerCompletion(function, functionLocals, remainingStatements);
+    }
+
+    private void StoreSuspendedChild(BoundFunction function, RuntimeTask child)
+    {
+        EmitAsyncContextStore(
+            "%context", function.InputType, function.ReturnType, 7,
+            "ptr", child.HandleName, 8);
+        EmitAsyncContextStore(
+            "%context", function.InputType, function.ReturnType, 8,
+            "ptr", child.ContextName, 8);
+    }
+
+    private RuntimeValue EmitStoredChildAwait(BoundFunction function, RuntimeTask child)
+    {
+        var childHandleAddress = AsyncContextField(
+            "%context", function.InputType, function.ReturnType, 7, "async_child_handle_address");
+        var childHandle = NextTemp("async_child_handle");
+        EmitLoad(childHandle, "ptr", childHandleAddress, 8);
+        var childContextAddress = AsyncContextField(
+            "%context", function.InputType, function.ReturnType, 8, "async_child_context_address");
+        var childContext = NextTemp("async_child_context");
+        EmitLoad(childContext, "ptr", childContextAddress, 8);
+        return EmitAwaitTask(child with
+        {
+            HandleName = childHandle,
+            ContextName = childContext
+        });
+    }
+
+    private IReadOnlyList<RuntimeAsyncSpill> BuildRuntimeAsyncSpills(
+        IReadOnlyList<AsyncSpillPlan> spillPlans)
+    {
+        var spills = new List<RuntimeAsyncSpill>(spillPlans.Count);
+        var offset = 0;
+        foreach (var spill in spillPlans)
+        {
+            var value = ResolveLocal(spill.Name);
+            EnsureRuntimeType(value, spill.Type, spill.Name);
+            var materialized = MaterializeAggregateValue(value);
+            var alignment = RuntimeAlignment(spill.Type);
+            offset = AlignAsyncSize(offset, alignment);
+            spills.Add(new RuntimeAsyncSpill(
+                spill.Name,
+                spill.Type,
+                offset,
+                alignment,
+                materialized.TypeName,
+                materialized.ValueName));
+            offset = checked(offset + Math.Max(_program.Types.InlineSizeOf(spill.Type), 1));
+        }
+
+        return spills;
+    }
+
+    private void StoreAsyncSpills(
+        BoundFunction function,
+        IReadOnlyList<RuntimeAsyncSpill> spills)
+    {
+        if (spills.Count == 0)
+        {
+            return;
+        }
+
+        var size = spills.Max(spill =>
+            checked(spill.Offset + Math.Max(_program.Types.InlineSizeOf(spill.Type), 1)));
+        var frame = NextTemp("async_spill_frame");
+        EmitCall(frame, "ptr", "smalllang_alloc", $"i64 {size}");
+        EmitAsyncContextStore(
+            "%context", function.InputType, function.ReturnType, 9,
+            "ptr", frame, 8);
+        foreach (var spill in spills)
+        {
+            var address = NextTemp("async_spill_address");
+            EmitAssign(address, $"getelementptr i8, ptr {frame}, i64 {spill.Offset}");
+            EmitStore(spill.LlvmType, spill.ValueName, address, spill.Alignment);
+        }
+    }
+
+    private void LoadAsyncSpills(
+        BoundFunction function,
+        IReadOnlyList<RuntimeAsyncSpill> spills)
+    {
+        if (spills.Count == 0)
+        {
+            return;
+        }
+
+        var frameAddress = AsyncContextField(
+            "%context", function.InputType, function.ReturnType, 9, "async_spill_frame_address");
+        var frame = NextTemp("async_spill_frame");
+        EmitLoad(frame, "ptr", frameAddress, 8);
+        foreach (var spill in spills)
+        {
+            var address = NextTemp("async_spill_address");
+            EmitAssign(address, $"getelementptr i8, ptr {frame}, i64 {spill.Offset}");
+            var loaded = NextTemp("async_spill_value");
+            EmitLoad(loaded, spill.LlvmType, address, spill.Alignment);
+            _locals[spill.Name] = DematerializeAggregateValue(spill.Type, loaded);
+        }
+        EmitCall(target: null, "void", "smalllang_free", $"ptr {frame}");
+        EmitStore("ptr", "null", frameAddress, 8);
     }
 
     private void EmitTailAwaitWorker(
@@ -231,6 +415,132 @@ internal sealed partial class LlvmEmitter
         return true;
     }
 
+    private bool TryGetStatefulAwaitPlan(
+        BoundFunction function,
+        out AsyncStateMachinePlan? plan)
+    {
+        plan = null;
+        if (function.InputType is { } inputType
+            && _program.Types.ContainsOwnedStorage(inputType))
+        {
+            return false;
+        }
+        if (!_program.FunctionBindings.TryGetValue(function, out var bindingTypes))
+        {
+            return false;
+        }
+
+        if (function.BlockBody.Any(statement =>
+            statement is not (BindingStatement or ExpressionStatement)))
+        {
+            return false;
+        }
+
+        var awaits = new List<(int Index, BindingStatement Binding, string TaskName)>();
+        for (var index = 0; index < function.BlockBody.Count; index++)
+        {
+            if (function.BlockBody[index] is not BindingStatement
+                {
+                    IsMutable: false,
+                    Value: FlowExpression
+                    {
+                        Source: NameExpression source,
+                        Targets.Count: 1
+                    } flow
+                } awaitBinding
+                || flow.Targets[0].Path.Count != 1
+                || !string.Equals(flow.Targets[0].Path[0], "await", StringComparison.Ordinal)
+                || flow.Targets[0].Arguments.Count != 0)
+            {
+                continue;
+            }
+
+            awaits.Add((index, awaitBinding, source.Name));
+        }
+        if (awaits.Count == 0)
+        {
+            return false;
+        }
+
+        var awaitPlans = new List<AsyncAwaitPoint>(awaits.Count);
+        foreach (var (index, awaitBinding, taskName) in awaits)
+        {
+            var priorBindings = function.BlockBody.Take(index).OfType<BindingStatement>();
+            var postStatements = function.BlockBody.Skip(index + 1).ToArray();
+            var spillPlans = new List<AsyncSpillPlan>();
+            foreach (var binding in priorBindings)
+            {
+                if (string.Equals(binding.Name, taskName, StringComparison.Ordinal)
+                    || !IsNameReferencedAfterAwait(binding.Name, postStatements, function.Body))
+                {
+                    continue;
+                }
+                if (binding.IsMutable
+                    || !bindingTypes.TryGetValue(binding.Name, out var type)
+                    || !IsAsyncSpillType(type))
+                {
+                    return false;
+                }
+                spillPlans.Add(new AsyncSpillPlan(binding.Name, type));
+            }
+
+            awaitPlans.Add(new AsyncAwaitPoint(
+                index,
+                awaitBinding.Name,
+                taskName,
+                spillPlans));
+        }
+
+        plan = new AsyncStateMachinePlan(awaitPlans);
+        return true;
+    }
+
+    private static bool IsNameReferencedAfterAwait(
+        string name,
+        IReadOnlyList<Statement> statements,
+        Expression? body)
+    {
+        return statements.Any(statement => StoragePlacementAnalyzer.ReferencesName(statement, name))
+            || (body is not null && StoragePlacementAnalyzer.ReferencesName(body, name));
+    }
+
+    private bool IsAsyncSpillType(BoundType type)
+    {
+        return IsAsyncSpillType(type, new HashSet<BoundType>());
+    }
+
+    private bool IsAsyncSpillType(BoundType type, HashSet<BoundType> visiting)
+    {
+        if (IsIntegerType(type) || IsFloatType(type) || type == BoundType.Bool)
+        {
+            return true;
+        }
+        if (!visiting.Add(type))
+        {
+            return true;
+        }
+
+        try
+        {
+            if (_program.Types.IsStruct(type))
+            {
+                return _program.Types.GetStruct(type).Fields.All(field =>
+                    IsAsyncSpillType(field.Type, visiting));
+            }
+            if (_program.Types.IsEnum(type))
+            {
+                return _program.Types.GetEnum(type).Variants.All(variant =>
+                    variant.PayloadType is null
+                    || IsAsyncSpillType(variant.PayloadType.Value, visiting));
+            }
+            return false;
+        }
+        finally
+        {
+            visiting.Remove(type);
+        }
+    }
+
     private RuntimeTask EmitAsyncFunctionCall(BoundFunction function, RuntimeValue? argument)
     {
         var aggregate = NextTemp("task_call");
@@ -306,7 +616,7 @@ internal sealed partial class LlvmEmitter
     }
 
     private string AsyncContextType(BoundType? inputType, BoundType resultType) =>
-        $"{{ ptr, ptr, ptr, ptr, ptr, {AsyncStorageLlvmType(inputType)}, {AsyncStorageLlvmType(resultType)}, ptr, ptr }}";
+        $"{{ ptr, ptr, ptr, ptr, ptr, {AsyncStorageLlvmType(inputType)}, {AsyncStorageLlvmType(resultType)}, ptr, ptr, ptr }}";
 
     private string AsyncStorageLlvmType(BoundType? type) =>
         type is null or BoundType.Unit ? "i8" : LlvmType(type.Value);
@@ -343,7 +653,7 @@ internal sealed partial class LlvmEmitter
         var resultOffset = AlignAsyncSize(inputOffset + inputSize, resultAlignment);
         var resultSize = Math.Max(_program.Types.InlineSizeOf(resultType), 1);
         var childTaskOffset = AlignAsyncSize(resultOffset + resultSize, 8);
-        return childTaskOffset + 16;
+        return childTaskOffset + 24;
     }
 
     private static int AlignAsyncSize(int value, int alignment) =>
@@ -351,4 +661,22 @@ internal sealed partial class LlvmEmitter
 
     private static string AsyncWorkerSymbol(BoundFunction function) =>
         SymbolForFunction(function.Name)[1..] + "_async_worker";
+
+    private sealed record AsyncStateMachinePlan(IReadOnlyList<AsyncAwaitPoint> Awaits);
+
+    private sealed record AsyncAwaitPoint(
+        int StatementIndex,
+        string ResultName,
+        string TaskName,
+        IReadOnlyList<AsyncSpillPlan> Spills);
+
+    private sealed record AsyncSpillPlan(string Name, BoundType Type);
+
+    private sealed record RuntimeAsyncSpill(
+        string Name,
+        BoundType Type,
+        int Offset,
+        int Alignment,
+        string LlvmType,
+        string ValueName);
 }
