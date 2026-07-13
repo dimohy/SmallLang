@@ -1,0 +1,1 @@
+binding 'owned' has inconsistent ownership across async branch paths

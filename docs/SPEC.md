@@ -616,10 +616,13 @@ removed before cleanup, and resume reconstructs one owner (plus a fresh mutable
 slot when needed). Async containers are never stack-promoted because their
 buffers must outlive a native resume invocation. The current state number
 selects the exact active frame layout and cancel path; the pending-frame destroy
-entry cancels the active child and drops initialized owners. `break` and
-`continue` inside a suspending loop are temporarily rejected until those early
-edges carry explicit initialized-owner flags. Cancellation observation, task
-groups, closure-capture analysis, and nonblocking I/O registration follow.
+entry cancels the active child and drops initialized owners. `break`,
+`continue`, and their compact guarded forms work inside suspending loops. Each
+early edge drops body-local owners first, captures the surviving loop-carried
+representation, and joins either the continue or exit phi. Consuming a required
+outer owner on only one edge is rejected as inconsistent ownership.
+Cancellation observation, task groups, closure-capture analysis, and
+nonblocking I/O registration follow.
 
 ## Local Functions
 

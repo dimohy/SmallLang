@@ -1,1 +1,1 @@
-loopSuspensions=2,stateTotal=3,slots=6
+loopSuspensions=2,stateTotal=3,slots=6,edges=2,targeted=2,opcodes=1

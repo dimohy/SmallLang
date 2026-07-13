@@ -158,6 +158,10 @@ internal sealed partial class LlvmEmitter
         }
 
         DropOwnedLocalsCreatedSince(loop.OuterScope, transferredOwnerName: null);
+        var edges = statement.Kind == LoopControlKind.Break
+            ? loop.BreakEdges
+            : loop.ContinueEdges;
+        edges?.Add((CaptureLocals(), _currentBlockLabel));
         EmitBranch(statement.Kind == LoopControlKind.Break ? loop.BreakLabel : loop.ContinueLabel);
     }
 
@@ -203,6 +207,10 @@ internal sealed partial class LlvmEmitter
         EmitLabel(exitLabel);
         _currentBlockLabel = exitLabel;
         DropOwnedLocalsCreatedSince(loop.OuterScope, transferredOwnerName: null);
+        var edges = statement.Kind == LoopControlKind.Break
+            ? loop.BreakEdges
+            : loop.ContinueEdges;
+        edges?.Add((CaptureLocals(), exitLabel));
         EmitBranch(statement.Kind == LoopControlKind.Break ? loop.BreakLabel : loop.ContinueLabel);
 
         EmitLabel(nextLabel);
@@ -213,9 +221,16 @@ internal sealed partial class LlvmEmitter
         IReadOnlyList<Statement> statements,
         LocalScope outerScope,
         string continueLabel,
-        string breakLabel)
+        string breakLabel,
+        List<(LocalScope Scope, string Label)>? continueEdges = null,
+        List<(LocalScope Scope, string Label)>? breakEdges = null)
     {
-        _loopContexts.Push(new LoopContext(continueLabel, breakLabel, outerScope));
+        _loopContexts.Push(new LoopContext(
+            continueLabel,
+            breakLabel,
+            outerScope,
+            continueEdges,
+            breakEdges));
         try
         {
             EmitStatements(statements);
@@ -601,14 +616,13 @@ internal sealed partial class LlvmEmitter
         {
             throw new SmallLangException("async while lowering requires an active CFG plan");
         }
-        if (ContainsLoopControl(statement.Body))
-        {
-            throw new SmallLangException(
-                "break and continue inside an await-suspending while body require loop-edge ownership flags");
-        }
-
         var entryLabel = _currentBlockLabel;
         var initialScope = CaptureLocals();
+        var continueEdges = new List<(LocalScope Scope, string Label)>
+        {
+            (initialScope, entryLabel)
+        };
+        var breakEdges = new List<(LocalScope Scope, string Label)>();
         var carriedNames = initialScope.Locals.Keys
             .Where(name => !lowering.ResumeBaseLocals.Locals.ContainsKey(name))
             .ToArray();
@@ -670,7 +684,10 @@ internal sealed partial class LlvmEmitter
         var bodyLabel = NextLabel("async_while_body");
         var continueLabel = NextLabel("async_while_continue");
         var endLabel = NextLabel("async_while_end");
-        EmitBranch(conditionLabel);
+        // The statically-false edge makes the continue block a valid CFG
+        // predecessor even when every source path breaks on its first
+        // iteration. LLVM removes it, while the phi shape stays uniform.
+        EmitConditionalBranch("false", continueLabel, conditionLabel);
 
         EmitLabel(conditionLabel);
         _currentBlockLabel = conditionLabel;
@@ -744,45 +761,51 @@ internal sealed partial class LlvmEmitter
         LocalScope bodyExitScope;
         try
         {
-            EmitLoopBody(statement.Body, loopBodyScope, continueLabel, endLabel);
+            EmitLoopBody(
+                statement.Body,
+                loopBodyScope,
+                continueLabel,
+                endLabel,
+                continueEdges,
+                breakEdges);
             bodyExitScope = CaptureLocals();
         }
         finally
         {
             _asyncScopeSnapshots.Pop();
         }
-        if (_currentBlockTerminated)
+        if (!_currentBlockTerminated)
         {
-            throw new SmallLangException(
-                "await-suspending while body must reach its loop back-edge");
+            var bodyExitLabel = _currentBlockLabel;
+            RestoreLocals(headerScope);
+            foreach (var name in carriedNames)
+            {
+                if (!bodyExitScope.Locals.TryGetValue(name, out var value))
+                {
+                    throw new SmallLangException(
+                        $"loop-carried binding '{name}' is consumed on the back-edge");
+                }
+                _locals[name] = value;
+                if (headerScope.MutableScalarSlots.ContainsKey(name))
+                {
+                    _mutableScalarSlots[name] = bodyExitScope.MutableScalarSlots[name];
+                }
+                if (headerScope.MutableStructSlots.ContainsKey(name))
+                {
+                    _mutableStructSlots[name] = bodyExitScope.MutableStructSlots[name];
+                }
+                if (headerScope.MutableContainerSlots.ContainsKey(name))
+                {
+                    _mutableContainerSlots[name] = bodyExitScope.MutableContainerSlots[name];
+                }
+            }
+            continueEdges.Add((CaptureLocals(), bodyExitLabel));
+            EmitBranch(continueLabel);
         }
-
-        RestoreLocals(headerScope);
-        foreach (var name in carriedNames)
-        {
-            if (!bodyExitScope.Locals.TryGetValue(name, out var value))
-            {
-                throw new SmallLangException(
-                    $"loop-carried binding '{name}' is consumed on the back-edge");
-            }
-            _locals[name] = value;
-            if (headerScope.MutableScalarSlots.ContainsKey(name))
-            {
-                _mutableScalarSlots[name] = bodyExitScope.MutableScalarSlots[name];
-            }
-            if (headerScope.MutableStructSlots.ContainsKey(name))
-            {
-                _mutableStructSlots[name] = bodyExitScope.MutableStructSlots[name];
-            }
-            if (headerScope.MutableContainerSlots.ContainsKey(name))
-            {
-                _mutableContainerSlots[name] = bodyExitScope.MutableContainerSlots[name];
-            }
-        }
-        EmitBranch(continueLabel);
 
         EmitLabel(continueLabel);
         _currentBlockLabel = continueLabel;
+        MergeAsyncOuterScope(headerScope, continueEdges);
         foreach (var carry in immutableCarries)
         {
             var current = MaterializeAggregateValue(ResolveLocal(carry.Name));
@@ -813,24 +836,18 @@ internal sealed partial class LlvmEmitter
 
         EmitLabel(endLabel);
         _currentBlockLabel = endLabel;
-        RestoreLocals(headerScope);
-    }
-
-    private static bool ContainsLoopControl(IReadOnlyList<Statement> statements)
-    {
-        return statements.Any(statement => statement switch
+        if (breakEdges.Count == 0)
         {
-            LoopControlStatement or GuardLoopControlStatement => true,
-            BlockFunctionCallStatement block => ContainsLoopControl(block.Body),
-            ExpressionStatement { Expression: IfExpression conditional } =>
-                ContainsLoopControl(conditional.Then.Statements)
-                || (conditional.Else is not null
-                    && ContainsLoopControl(conditional.Else.Statements)),
-            ExpressionStatement { Expression: WhenExpression selection } =>
-                selection.Arms.Any(arm => ContainsLoopControl(arm.Body.Statements))
-                || ContainsLoopControl(selection.Else.Statements),
-            _ => false
-        });
+            RestoreLocals(headerScope);
+            return;
+        }
+
+        var exitEdges = new List<(LocalScope Scope, string Label)>
+        {
+            (headerScope, conditionLabel)
+        };
+        exitEdges.AddRange(breakEdges);
+        MergeAsyncOuterScope(headerScope, exitEdges);
     }
 
     private void EmitDictionaryEachBlockFunctionCall(

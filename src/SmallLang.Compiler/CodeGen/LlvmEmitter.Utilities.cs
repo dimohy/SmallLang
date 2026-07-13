@@ -1007,7 +1007,12 @@ internal sealed partial class LlvmEmitter
         Dictionary<string, string> MutableStructSlots,
         Dictionary<string, string> MutableScalarSlots);
 
-    private sealed record LoopContext(string ContinueLabel, string BreakLabel, LocalScope OuterScope);
+    private sealed record LoopContext(
+        string ContinueLabel,
+        string BreakLabel,
+        LocalScope OuterScope,
+        List<(LocalScope Scope, string Label)>? ContinueEdges,
+        List<(LocalScope Scope, string Label)>? BreakEdges);
 
     private sealed record RuntimeBlockInvocation(
         string ItemName,

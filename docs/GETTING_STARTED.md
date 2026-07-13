@@ -218,9 +218,20 @@ sum count: Int -> async Int {
 ```
 
 The compiler carries mutable storage pointers through loop-header phis and
-spills live values only while the child is pending. `break` and `continue` in a
-suspending loop remain a compile-time error until early loop edges carry their
-own initialized-owner state.
+spills live values only while the child is pending. `break`, `continue`, and
+their compact guarded forms preserve that state across early loop edges:
+
+```smalllang
+pending -> await => next
+index! + 1 => index!
+index! == 2 -> if continue
+total! + next => total!
+index! == 4 -> if break
+```
+
+Body-local owners are dropped before either transfer. An outer owner required
+by the next iteration or after loop exit must remain initialized on every
+incoming edge; inconsistent consumption is a compile-time error.
 
 Browser WebAssembly output is available through the `wasm32-browser` target. The
 generated module exports `smalllang_start` and `memory`, and imports
@@ -277,11 +288,13 @@ dotnet run --project tests\SmallLang.ExampleTests\SmallLang.ExampleTests.csproj 
   -c Release --no-build -- --filter 219 --filter 220 --skip-bootstrap
 ```
 
-The runner uses up to four isolated test workers by default. Use `--jobs 1` for
-deterministic sequential diagnosis or an explicit positive worker count when
-measuring another machine. Compiler bootstrap and grammar-table determinism are
-still checked once before the parallel section. An unfiltered run always remains
-the commit-gate regression check.
+The runner uses up to eight isolated test workers by default. It starts the
+expensive self-host LLVM cases first and uses a load-balancing partitioner so a
+worker that finishes a short case immediately takes the next remaining case.
+Use `--jobs 1` for deterministic sequential diagnosis or an explicit positive
+worker count when measuring another machine. Compiler bootstrap and
+grammar-table determinism are still checked once before the parallel section.
+An unfiltered run always remains the commit-gate regression check.
 
 Multiple user source files may form one compilation unit. Declarations from all
 files are merged after each file independently resolves its namespace and import

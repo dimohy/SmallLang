@@ -3681,4 +3681,59 @@ References: [LLVM coroutines](https://llvm.org/docs/Coroutines.html),
 [LLVM phi nodes](https://llvm.org/docs/LangRef.html#phi-instruction),
 [Kotlin coroutine state machines](https://kotlinlang.org/spec/asynchronous-programming-with-coroutines.html).
 
+## D122 - Suspending Loop Controls Carry Edge Scopes
+
+Status: reference compiler and self-host loop-target metadata implemented
+Date: 2026-07-14
+
+`break`, `continue`, `condition -> if break`, and
+`condition -> if continue` are valid after an `await` in a `while` body. A loop
+control edge first drops owners created inside that body scope, then records the
+surviving local representation and its LLVM predecessor label. It never routes
+through ordinary fallthrough cleanup a second time.
+
+All continue edges merge at the explicit continue block. Immutable values use
+value phis; mutable scalar, struct, and container state uses storage-pointer
+phis. The resulting representation supplies the loop-header back-edge. Break
+edges merge with the header's condition-false edge at loop exit, so values
+restored after suspension dominate code following either exit form.
+
+The streaming LLVM emitter gives the continue block a statically false
+preheader edge. This keeps the header's two-predecessor phi shape valid even
+when every source path breaks during its first iteration; LLVM removes the dead
+edge. A required outer owner must exist on every incoming edge. If one control
+path consumes it while another preserves it, the compiler rejects inconsistent
+ownership instead of inventing a runtime initialization flag.
+
+Example 254 covers guarded continue, explicit break, body-local box cleanup,
+mutable scalar and dynamic-owner transport, an all-break loop, an all-continue
+loop, repeated suspension, and cancellation. Example 255 proves self-host typed
+IR still links direct and guarded exits to their structured while. The negative
+diagnostic proves path-dependent consumption of a loop-carried owner is
+rejected.
+
+References: [LLVM phi nodes](https://llvm.org/docs/LangRef.html#phi-instruction),
+[LLVM coroutines](https://llvm.org/docs/Coroutines.html),
+[Kotlin coroutine state machines](https://kotlinlang.org/spec/asynchronous-programming-with-coroutines.html).
+
+## D123 - Expensive Tests Run First With Dynamic Load Balancing
+
+Status: implemented
+Date: 2026-07-14
+
+The example runner no longer gives a statically partitioned, lexically ordered
+array to its eight workers. Self-host LLVM cases take roughly a minute while
+ordinary examples take fractions of a second; contiguous range partitioning
+therefore left most workers idle near the end of a full run.
+
+Known `selfhost-llvm-` cases are now ordered first and a load-balancing
+partitioner hands out the next case whenever a worker becomes free. Artifact
+paths remain isolated per example, bootstrap and grammar determinism still run
+once, and no overlapping top-level runners are introduced.
+
+On the same machine and adjacent compiler commits, the complete 343-case run
+dropped from 793.8 seconds to 382.8 seconds, a 51.8% reduction, with all cases
+passing. This fixes scheduling starvation. Reusing fingerprinted self-host
+modules or native objects remains a separate future optimization.
+
 

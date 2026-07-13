@@ -1,5 +1,7 @@
 async_while_condition
 async_while_continue
+guard_exit
+br i1 false, label %async_while_continue
 async_loop_index_slot
 async_loop_total_slot
 async_loop_values_ptr_slot

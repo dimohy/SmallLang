@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 
@@ -115,6 +116,8 @@ var allDiagnosticFiles = Directory.Exists(diagnosticDir)
     : [];
 var expectedFiles = allExpectedFiles
     .Where(file => MatchesFilters(Path.GetFileName(file)[..^".stdout.txt".Length], filters))
+    .OrderByDescending(IsExpensiveSelfHostLlvmTest)
+    .ThenBy(file => file, StringComparer.Ordinal)
     .ToArray();
 var diagnosticFiles = allDiagnosticFiles
     .Where(file => MatchesFilters("diagnostic/" + Path.GetFileNameWithoutExtension(file), filters))
@@ -133,7 +136,10 @@ if (filters.Count > 0 && expectedFiles.Length + diagnosticFiles.Length == 0)
 
 var failures = 0;
 Console.WriteLine($"Running {expectedFiles.Length + diagnosticFiles.Length} tests with {jobs} worker(s).");
-Parallel.ForEach(expectedFiles, new ParallelOptions { MaxDegreeOfParallelism = jobs }, expectedFile =>
+Parallel.ForEach(
+    Partitioner.Create(expectedFiles, loadBalance: true),
+    new ParallelOptions { MaxDegreeOfParallelism = jobs },
+    expectedFile =>
 {
     var stopwatch = Stopwatch.StartNew();
     var name = Path.GetFileName(expectedFile)[..^".stdout.txt".Length];
@@ -404,6 +410,10 @@ static string FindRepositoryRoot(string startPath)
 
 static bool MatchesFilters(string name, IReadOnlyList<string> filters) => filters.Count == 0
     || filters.Any(filter => name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+static bool IsExpensiveSelfHostLlvmTest(string path) => Path
+    .GetFileName(path)
+    .Contains("selfhost-llvm-", StringComparison.Ordinal);
 
 static ProcessResult Run(
     string fileName,

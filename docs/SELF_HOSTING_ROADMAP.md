@@ -120,9 +120,10 @@ Loop headers add value and mutable-storage phis so a back-edge can revisit the
 same suspension state over many iterations, including iterations that branch
 around the await. The self-host grammar now parses braced multi-line `when` arms
 consistently with the reference parser, and typed IR assigns nested suspension
-states per async function. This advances the async gate but does not change the
-formal score:
-early `break`/`continue` edges in suspending loops, nonblocking I/O,
+states per async function. Suspending-loop `break`/`continue` edges now drop
+body-local owners, capture their surviving loop scope, and join dedicated
+continue/exit phis; guarded forms use the same edge transport. This advances
+the async gate but does not change the formal score: nonblocking I/O,
 cancellation observation, failure propagation, captures, and task groups remain
 partial.
 Straight-line states now carry heap owners and
@@ -132,6 +133,13 @@ flags preserve mutable, composite-owner, and affine-Task bits for destroy
 lowering. State-specific branch frames avoid reading sibling-path slots that
 were never initialized; loop back-edges use explicit initialization-dominating
 phis for persistent loop-carried state.
+
+The coordinated regression runner now schedules known self-host LLVM cases
+first and uses a dynamically load-balanced partitioner across eight workers.
+On the same checkout and machine, an unfiltered 343-case run fell from 793.8 to
+382.8 seconds while retaining grammar determinism and isolated artifacts. This
+removes worker starvation; compiler/module fingerprint caching remains the next
+test-performance boundary.
 
 ## Gate Inventory
 
