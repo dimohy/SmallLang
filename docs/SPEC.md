@@ -1352,6 +1352,8 @@ opened -> when {
         writer -> writeAt<UInt16>(1027, 3) => contextual
         writer -> writeAtAsync(UInt16(2049), 8) => pending
         pending -> await => asynchronous
+        writer -> syncAsync => syncing
+        syncing -> await => durable
     }
     Result<file.FileWriter, Text>.Err(error) => error
 }
@@ -1369,7 +1371,16 @@ uses `pwrite` without append mode.
 the writer's native handle into the affine Task; it never borrows caller stack
 storage or the original writer. Completion and cancellation therefore retain
 independent exactly-once close obligations. The shared file worker dispatches
-both reads and writes. Async open/flush/close and a future IOCP/io_uring
+both reads and writes.
+
+`syncAsync: -> async Result<Unit, Text>` is a durability barrier. It waits for
+file data and metadata to reach the filesystem through `FlushFileBuffers` on
+Windows and `fsync` on Linux. The operation owns a duplicate writer handle and
+shares the same FIFO worker, so earlier submitted writes complete before the
+barrier. SL deliberately calls this `sync`, not `flush`: random-access writers
+have no hidden language buffer to empty. Deterministic scope drop closes the
+original handle immediately and does not await Tasks because every pending
+operation owns its own duplicate. Async open and a future IOCP/io_uring
 completion backend remain before the general file-I/O gate is complete.
 
 Double-quoted UTF-8 literals decode `\n`, `\r`, `\t`, and `\\` in text

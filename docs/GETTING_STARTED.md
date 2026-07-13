@@ -315,6 +315,8 @@ opened -> when {
         writer -> writeAt(UInt16(513), 0)
         writer -> writeAtAsync<UInt16>(1027, 3) => pending
         pending -> await => written
+        writer -> syncAsync => syncing
+        syncing -> await => durable
     }
     Result<file.FileWriter, Text>.Err(error) => error
 }
@@ -324,7 +326,8 @@ The first form infers `UInt16`; the second contextually types the literal.
 Every write is position-based and all-or-error. An asynchronous write copies
 the scalar and owns a duplicated OS handle, so the original writer can close
 independently; `await` returns `Result<Unit, Text>`. The writer closes
-automatically at owner-scope exit.
+automatically at owner-scope exit. `syncAsync` is the explicit durability
+barrier for data and metadata already submitted to the shared file worker.
 
 Browser WebAssembly output is available through the `wasm32-browser` target. The
 generated module exports `smalllang_start` and `memory`, and imports

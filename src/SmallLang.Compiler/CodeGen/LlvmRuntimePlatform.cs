@@ -147,6 +147,10 @@ internal abstract class LlvmRuntimePlatform
             inspect_owned_operation:
               %operation_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 20
               %operation = load i32, ptr %operation_slot, align 4
+              %is_sync = icmp eq i32 %operation, 2
+              br i1 %is_sync, label %perform_owned_sync, label %inspect_owned_transfer
+
+            inspect_owned_transfer:
               %is_write = icmp eq i32 %operation, 1
               br i1 %is_write, label %perform_owned_write, label %perform_owned_read
 
@@ -166,8 +170,16 @@ internal abstract class LlvmRuntimePlatform
               %write_result = call %smalllang.file_count_result @smalllang_platform_write_owned_file_at(i64 %write_handle, ptr %data_slot, i64 %size64, i64 %write_offset)
               br label %record_read
 
+            perform_owned_sync:
+              %sync_handle_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 17
+              %sync_handle = load i64, ptr %sync_handle_slot, align 8
+              %sync_ok = call i32 @smalllang_platform_sync_owned_file(i64 %sync_handle)
+              %sync_result0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
+              %sync_result = insertvalue %smalllang.file_count_result %sync_result0, i32 %sync_ok, 1
+              br label %record_read
+
             record_read:
-              %result = phi %smalllang.file_count_result [ %compatibility_result, %perform_compatibility_read ], [ %owned_result, %perform_owned_read ], [ %write_result, %perform_owned_write ]
+              %result = phi %smalllang.file_count_result [ %compatibility_result, %perform_compatibility_read ], [ %owned_result, %perform_owned_read ], [ %write_result, %perform_owned_write ], [ %sync_result, %perform_owned_sync ]
               %count = extractvalue %smalllang.file_count_result %result, 0
               %ok = extractvalue %smalllang.file_count_result %result, 1
               %count_slot = getelementptr %smalllang.task_control, ptr %request, i32 0, i32 14
@@ -347,7 +359,7 @@ internal abstract class LlvmRuntimePlatform
               ret void
             }
 
-            define internal i1 @smalllang_file_read_task_worker(ptr %control) #0 {
+            define internal i1 @smalllang_file_operation_task_worker(ptr %control) #0 {
             entry:
               %phase_slot = getelementptr %smalllang.task_control, ptr %control, i32 0, i32 12
               %phase = load atomic i32, ptr %phase_slot acquire, align 4

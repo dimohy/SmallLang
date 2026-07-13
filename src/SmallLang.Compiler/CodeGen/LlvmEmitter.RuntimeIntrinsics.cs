@@ -179,7 +179,7 @@ internal sealed partial class LlvmEmitter
             handle,
             "ptr",
             "smalllang_task_start",
-            $"ptr @smalllang_file_read_task_worker, ptr @smalllang_free, " +
+            $"ptr @smalllang_file_operation_task_worker, ptr @smalllang_free, " +
             $"ptr @smalllang_file_read_task_cancel, ptr {context}");
         var started = NextTemp("file_async_started");
         EmitCompare(started, "ne", "ptr", handle, "null");
@@ -280,7 +280,7 @@ internal sealed partial class LlvmEmitter
             handle,
             "ptr",
             "smalllang_task_start",
-            $"ptr @smalllang_file_read_task_worker, ptr @smalllang_free, " +
+            $"ptr @smalllang_file_operation_task_worker, ptr @smalllang_free, " +
             $"ptr @smalllang_file_read_task_cancel, ptr {context}");
         var started = NextTemp("file_async_write_started");
         EmitCompare(started, "ne", "ptr", handle, "null");
@@ -320,6 +320,75 @@ internal sealed partial class LlvmEmitter
         var operationAddress = NextTemp("file_async_write_operation_address");
         EmitAssign(operationAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 20");
         EmitStore("i32", "1", operationAddress, 4);
+
+        return new RuntimeTask(
+            _program.Types.GetOrAddTask(function.ReturnType),
+            null,
+            function.ReturnType,
+            handle,
+            context,
+            function);
+    }
+
+    private RuntimeTask EmitRuntimeSyncFileAsync(
+        BoundFunction function,
+        RuntimeStruct writer)
+    {
+        if (!_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || resultTypes.Ok != BoundType.Unit
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid asynchronous sync result");
+        }
+
+        var contextSize = AsyncContextSize(null, function.ReturnType);
+        var context = NextTemp("file_async_sync_context");
+        EmitCall(context, "ptr", "smalllang_alloc", $"i64 {contextSize}");
+        var allocated = NextTemp("file_async_sync_context_allocated");
+        EmitCompare(allocated, "ne", "ptr", context, "null");
+        var initializeLabel = NextLabel("file_async_sync_initialize");
+        var allocationFailedLabel = NextLabel("file_async_sync_allocation_failed");
+        EmitConditionalBranch(allocated, initializeLabel, allocationFailedLabel);
+        EmitLabel(allocationFailedLabel);
+        EmitTrap();
+        EmitLabel(initializeLabel);
+
+        var handle = NextTemp("file_async_sync_handle");
+        EmitCall(
+            handle,
+            "ptr",
+            "smalllang_task_start",
+            $"ptr @smalllang_file_operation_task_worker, ptr @smalllang_free, " +
+            $"ptr @smalllang_file_read_task_cancel, ptr {context}");
+        var started = NextTemp("file_async_sync_started");
+        EmitCompare(started, "ne", "ptr", handle, "null");
+        var readyLabel = NextLabel("file_async_sync_ready");
+        var startFailedLabel = NextLabel("file_async_sync_start_failed");
+        EmitConditionalBranch(started, readyLabel, startFailedLabel);
+        EmitLabel(startFailedLabel);
+        EmitCall(target: null, "void", "smalllang_free", $"ptr {context}");
+        EmitTrap();
+        EmitLabel(readyLabel);
+
+        var sizeAddress = NextTemp("file_async_sync_size_address");
+        EmitAssign(sizeAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 11");
+        EmitStore("i32", "0", sizeAddress, 4);
+        var sourceHandle = ExtractOwnedFileHandle(writer, "sys.file.FileWriter");
+        var ownedHandle = NextTemp("file_async_sync_owned_handle");
+        EmitCall(
+            ownedHandle,
+            "i64",
+            "smalllang_platform_duplicate_owned_file",
+            $"i64 {sourceHandle}");
+        var handleAddress = NextTemp("file_async_sync_owned_handle_address");
+        EmitAssign(handleAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 17");
+        EmitStore("i64", ownedHandle, handleAddress, 8);
+        var explicitAddress = NextTemp("file_async_sync_explicit_address");
+        EmitAssign(explicitAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 19");
+        EmitStore("i32", "1", explicitAddress, 4);
+        var operationAddress = NextTemp("file_async_sync_operation_address");
+        EmitAssign(operationAddress, $"getelementptr %smalllang.task_control, ptr {handle}, i32 0, i32 20");
+        EmitStore("i32", "2", operationAddress, 4);
 
         return new RuntimeTask(
             _program.Types.GetOrAddTask(function.ReturnType),
@@ -705,6 +774,25 @@ internal sealed partial class LlvmEmitter
             count,
             platformOk,
             RuntimeScalarByteSize(scalarType));
+    }
+
+    private RuntimeEnum EmitRuntimeCompletedSyncFile(
+        BoundFunction function,
+        string completedTaskControl)
+    {
+        if (!_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || resultTypes.Ok != BoundType.Unit
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw new SmallLangException($"{function.Name} has an invalid completed sync result");
+        }
+        var okSlot = NextTemp("file_async_sync_ok_slot");
+        EmitAssign(
+            okSlot,
+            $"getelementptr %smalllang.task_control, ptr {completedTaskControl}, i32 0, i32 15");
+        var platformOk = NextTemp("file_async_sync_ok");
+        EmitLoad(platformOk, "i32", okSlot, 4);
+        return EmitRuntimeWriteScalarResult(function, "0", platformOk, 0);
     }
 
     private RuntimeEnum EmitRuntimeReadScalar(

@@ -3529,6 +3529,43 @@ internal sealed class SemanticCompiler
     {
         result = new FlowResult(BoundType.Unit, FlowEffect.None);
 
+        if (IsFileWriterType(currentType) && path == "syncAsync")
+        {
+            if (target.TypeArgument is not null
+                || target.CompileTimeValueArgument is not null
+                || target.Arguments.Count != 0)
+            {
+                throw Error(target.Line, target.Column, "syncAsync takes no arguments or type arguments");
+            }
+
+            var returnType = _types.GetOrAddResult(
+                BoundType.Unit,
+                BoundType.Text,
+                "Result<Unit, Text>");
+            var function = new BoundFunction(
+                Name: "sys.file.syncAsync",
+                InputName: "writer",
+                InputType: currentType,
+                InputOwnership: BoundFunctionInputOwnership.Default,
+                ReturnType: returnType,
+                BlockInputName: null,
+                BlockInputType: null,
+                LocalFunctions: new Dictionary<string, BoundFunction>(StringComparer.Ordinal),
+                Body: null,
+                BlockBody: [],
+                Line: target.Line,
+                Column: target.Column,
+                Kind: BoundFunctionKind.RuntimeSyncFileAsync,
+                IsStandardLibrary: true,
+                IsLocal: false,
+                ModuleName: "sys.file",
+                IsPublic: true,
+                IsAsync: true);
+            _resolvedGenericCalls[target] = function;
+            result = new FlowResult(_types.GetOrAddTask(returnType), FlowEffect.None);
+            return true;
+        }
+
         if (IsFileWriterType(currentType) && path is "writeAt" or "writeAtAsync")
         {
             if (target.CompileTimeValueArgument is not null || target.Arguments.Count != 2)

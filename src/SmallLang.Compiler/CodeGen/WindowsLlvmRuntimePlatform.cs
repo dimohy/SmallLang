@@ -43,6 +43,7 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare dllimport ptr @MapViewOfFile(ptr, i32, i32, i32, i64)");
         functions.AppendLine("declare dllimport i32 @UnmapViewOfFile(ptr)");
         functions.AppendLine("declare dllimport i32 @FlushViewOfFile(ptr, i64)");
+        functions.AppendLine("declare dllimport i32 @FlushFileBuffers(ptr)");
         functions.AppendLine("declare dllimport ptr @GetProcessHeap()");
         functions.AppendLine("declare dllimport ptr @HeapAlloc(ptr, i32, i64)");
         functions.AppendLine("declare dllimport i32 @HeapFree(ptr, i32, ptr)");
@@ -941,6 +942,20 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
               %fail0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
               %fail1 = insertvalue %smalllang.file_count_result %fail0, i32 0, 1
               ret %smalllang.file_count_result %fail1
+            }
+
+            define internal i32 @smalllang_platform_sync_owned_file(i64 %handle_value) #0 {
+            entry:
+              %valid = icmp ne i64 %handle_value, -1
+              br i1 %valid, label %sync, label %fail
+
+            sync:
+              %handle = inttoptr i64 %handle_value to ptr
+              %ok = call i32 @FlushFileBuffers(ptr %handle)
+              ret i32 %ok
+
+            fail:
+              ret i32 0
             }
 
             define internal void @smalllang_platform_close_owned_file(i64 %handle_value) #0 {

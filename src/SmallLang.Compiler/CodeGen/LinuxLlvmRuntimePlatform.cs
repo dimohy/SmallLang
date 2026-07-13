@@ -35,6 +35,7 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
         functions.AppendLine("declare i32 @open(ptr, i32, i32)");
         functions.AppendLine("declare i32 @close(i32)");
         functions.AppendLine("declare i32 @dup(i32)");
+        functions.AppendLine("declare i32 @fsync(i32)");
         functions.AppendLine("declare i64 @lseek(i32, i64, i32)");
         functions.AppendLine("declare i32 @ftruncate(i32, i64)");
         functions.AppendLine("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)");
@@ -591,6 +592,22 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               %fail0 = insertvalue %smalllang.file_count_result poison, i64 0, 0
               %fail1 = insertvalue %smalllang.file_count_result %fail0, i32 0, 1
               ret %smalllang.file_count_result %fail1
+            }
+
+            define internal i32 @smalllang_platform_sync_owned_file(i64 %handle) #0 {
+            entry:
+              %fd = trunc i64 %handle to i32
+              %valid = icmp sge i32 %fd, 0
+              br i1 %valid, label %sync_file, label %fail
+
+            sync_file:
+              %status = call i32 @fsync(i32 %fd)
+              %ok = icmp eq i32 %status, 0
+              %ok32 = zext i1 %ok to i32
+              ret i32 %ok32
+
+            fail:
+              ret i32 0
             }
 
             define internal void @smalllang_platform_close_owned_file(i64 %handle) #0 {

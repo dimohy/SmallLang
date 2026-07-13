@@ -68,6 +68,7 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             CreateFileMappingA
             MapViewOfFile
             FlushViewOfFile
+            FlushFileBuffers
             UnmapViewOfFile
             GetTickCount64
             Sleep

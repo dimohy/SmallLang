@@ -1,0 +1,5 @@
+call i64 @smalllang_platform_duplicate_owned_file
+call i32 @smalllang_platform_sync_owned_file
+call i32 @FlushFileBuffers
+smalllang_file_operation_task_worker
+call void @smalllang_platform_close_owned_file

@@ -10,6 +10,7 @@ public struct File {
 
 # FileWriter is a separate affine capability, so read-only and write-only
 # handles cannot be mixed accidentally. openWrite creates or truncates a file.
+# Its syncAsync flow member is a durable-data barrier, not a user-buffer flush.
 public struct FileWriter {
     token: UInt64
 }

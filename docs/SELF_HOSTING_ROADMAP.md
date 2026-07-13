@@ -151,8 +151,11 @@ UInt64)` infers its scalar type, optionally accepts an explicit type context,
 requires an all-or-error full scalar write, and lowers to overlapped `WriteFile`
 or Linux `pwrite`. `writeAtAsync<T>` copies its scalar into the Task, duplicates
 the writer handle, and shares the existing file worker and completion queue;
-self-host call and suspension analysis retain its generic flow target. Async
-open/flush/close, failure propagation, captures, and task groups remain partial.
+self-host call and suspension analysis retain its generic flow target.
+`syncAsync` adds a durable-data barrier through Windows `FlushFileBuffers` and
+Linux `fsync`, also with a Task-owned duplicate. Scope drop remains the close
+operation because pending Tasks never borrow the source handle. Async open,
+failure propagation, captures, and task groups remain partial.
 Straight-line states now carry heap owners and
 mutable locals safely: frame storage temporarily owns the value, resume restores
 one owner, and async container stack promotion is disabled. Self-host frame-slot
@@ -245,8 +248,8 @@ test-performance boundary.
   owners and position-based `readAt<T>`/`readAtAsync<T>` remove shared-cursor
   races. Affine `FileWriter` and scalar `writeAt<T>` now provide the symmetric
   output path; `writeAtAsync<T>` owns copied bytes and a duplicate handle while
-  it is pending. Async open/flush/close and explicit user-value serialization
-  remain.
+  it is pending, and `syncAsync` provides an explicit durability barrier. Async
+  open and explicit user-value serialization remain.
 - Missing (3): portable path/filesystem library, package/build command, formatter
   and language server based on the real parser.
 

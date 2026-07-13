@@ -3997,4 +3997,47 @@ References: [tokio-uring](https://docs.rs/tokio-uring/latest/tokio_uring/),
 [Rust FileExt write_all_at](https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html),
 [.NET RandomAccess.WriteAsync](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess.writeasync).
 
+## D130 - File Durability Is Async Sync, Not Buffered Flush
+
+Status: portable asynchronous durability barrier implemented
+Date: 2026-07-14
+
+SL random-access writers issue complete positional scalar writes and have no
+hidden language-level output buffer. Calling the durability operation `flush`
+would therefore imply state that does not exist. The public flow member is:
+
+```smalllang
+writer -> syncAsync => pending
+pending -> await => result
+```
+
+`syncAsync: -> async Result<Unit, Text>` synchronizes file data and metadata to
+the filesystem. This follows Tokio's `File.sync_all`, while retaining the
+cancellation-aware Task shape of .NET `FileStream.FlushAsync`. Windows calls
+`FlushFileBuffers`; Linux calls `fsync`. A platform failure becomes `Err("io")`.
+
+The Task owns a duplicated writer handle and runs on the shared FIFO file
+worker. Consequently a sync request submitted after write requests observes
+those writes before reporting success. Cancellation consumes the Task and
+closes its duplicate exactly once; an operation already owned by the worker may
+finish, but its former waiter is never resumed.
+
+SL does not add `closeAsync` merely to mirror object-oriented stream APIs.
+Pending random-access Tasks never borrow the source handle, and lexical affine
+drop closes that source immediately. An explicit asynchronous close becomes
+necessary only if a future buffered writer owns unfinished internal work or if
+observable close errors enter the language contract.
+
+Example 268 covers two asynchronous writes, the durability barrier, queued
+sync cancellation, read-back, and Windows/Linux execution. Example 269 proves
+self-host flow-call resolution and await suspension discovery. A diagnostic
+rejects arguments and type arguments.
+
+References: [Tokio File sync_all](https://docs.rs/tokio/latest/tokio/fs/struct.File.html#method.sync_all),
+[Tokio filesystem implementation](https://docs.rs/tokio/latest/src/tokio/fs/file.rs.html),
+[.NET FileStream](https://learn.microsoft.com/en-us/dotnet/api/system.io.filestream),
+[.NET async dispose pattern](https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-disposeasync),
+[Windows FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers),
+[Linux fsync](https://man7.org/linux/man-pages/man2/fsync.2.html).
+
 
