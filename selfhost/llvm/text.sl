@@ -5,6 +5,7 @@ import smalllang.compiler.ir.interpolation as interpolation
 import smalllang.compiler.ir.typed as typedIr
 import smalllang.compiler.lexer as lexer
 import smalllang.compiler.llvm.target as llvmTarget
+import smalllang.compiler.semantic.composite_types as compositeTypes
 import smalllang.compiler.semantic.modules as modules
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.symbols as symbols
@@ -39,7 +40,114 @@ struct OwnedDropRequest {
     transferredSymbol: Int
 }
 
+struct DropGlueRequest {
+    typeOrigin: Int
+    typeModule: Int
+    typeSymbol: Int
+    valueKind: Int
+    valueIndex: Int
+    nameRoot: Int
+    pathCode: Int
+}
+
 emitCore sources: move [Text; ~] -> Unit {
+    emitDropValueName request: DropGlueRequest -> Unit {
+        request.valueKind == 0 -> if { "%v$(request.valueIndex)" -> print } else {
+            request.valueKind == 1 -> if { "%arg" -> print } else { "%dropg$(request.nameRoot)_p$(request.pathCode)" -> print }
+        }
+    }
+    emitDropPathName request: DropGlueRequest -> Unit {
+        "%dropg$(request.nameRoot)_p$(request.pathCode)" -> print
+    }
+    emitDropGlue request: DropGlueRequest -> Unit {
+        [request, ~] => dropTasks!
+        sources -> nominalTypes.resolve => dropNominal!
+        sources -> compositeTypes.resolve => dropComposite!
+        0 => dropTaskIndex!
+        dropTaskIndex! < (dropTasks! -> len) -> while {
+        dropTasks![dropTaskIndex!] => dropTask
+        dropTask.typeOrigin == 13 -> if {
+            "  " -> print
+            dropTask -> emitDropPathName
+            "_data = extractvalue %sl.array.i32 " -> print
+            dropTask -> emitDropValueName
+            ", 0" -> println
+            "  call void @free(ptr " -> print
+            dropTask -> emitDropPathName
+            "_data)" -> println
+        } else {
+        dropTask.typeOrigin == 15 -> if {
+            "  " -> print
+            dropTask -> emitDropPathName
+            "_keys = extractvalue %sl.dict " -> print
+            dropTask -> emitDropValueName
+            ", 0" -> println
+            "  call void @free(ptr " -> print
+            dropTask -> emitDropPathName
+            "_keys)" -> println
+            "  " -> print
+            dropTask -> emitDropPathName
+            "_values = extractvalue %sl.dict " -> print
+            dropTask -> emitDropValueName
+            ", 1" -> println
+            "  call void @free(ptr " -> print
+            dropTask -> emitDropPathName
+            "_values)" -> println
+        } else {
+        (dropTask.typeOrigin == 0 or dropTask.typeOrigin == 2) -> if {
+            sources[dropTask.typeModule] -> symbols.collect => dropStructTable!
+            0 => dropFieldOrdinal!
+            0 => dropFieldIndex!
+            dropFieldIndex! < (dropStructTable! -> len) -> while {
+                dropStructTable![dropFieldIndex!] => dropField
+                (dropField.kind == 26 and dropField.parent == dropTask.typeSymbol) -> if {
+                    -1 => dropFieldOrigin!
+                    -1 => dropFieldModule!
+                    -1 => dropFieldSymbol!
+                    0 => dropCompositeIndex!
+                    dropCompositeIndex! < (dropComposite! -> len) -> while {
+                        dropComposite![dropCompositeIndex!] => dropCompositeType
+                        (dropCompositeType.sourceModule == dropTask.typeModule and dropCompositeType.typeAst == dropField.typeNode) -> if {
+                            dropCompositeType.kind == 3 -> if { 13 => dropFieldOrigin! }
+                            dropCompositeType.kind == 5 -> if { 15 => dropFieldOrigin! }
+                        }
+                        dropCompositeIndex! + 1 => dropCompositeIndex!
+                    }
+                    0 => dropNominalIndex!
+                    dropNominalIndex! < (dropNominal! -> len) -> while {
+                        dropNominal![dropNominalIndex!] => dropNominalType
+                        (dropNominalType.sourceModule == dropTask.typeModule and dropNominalType.typeAst == dropField.typeNode and (dropNominalType.origin == 0 or dropNominalType.origin == 2)) -> if {
+                            dropNominalType.origin => dropFieldOrigin!
+                            dropNominalType.targetModule => dropFieldModule!
+                            dropNominalType.targetSymbol => dropFieldSymbol!
+                        }
+                        dropNominalIndex! + 1 => dropNominalIndex!
+                    }
+                    dropFieldOrigin! >= 0 -> if {
+                        dropTasks! -> len => dropFieldPath
+                        "  %dropg$(dropTask.nameRoot)_p$dropFieldPath = extractvalue %sl.struct.m$(dropTask.typeModule)_s$(dropTask.typeSymbol) " -> print
+                        dropTask -> emitDropValueName
+                        ", $(dropFieldOrdinal!)" -> println
+                        dropTasks! -> push(DropGlueRequest {
+                            typeOrigin: dropFieldOrigin!
+                            typeModule: dropFieldModule!
+                            typeSymbol: dropFieldSymbol!
+                            valueKind: 2
+                            valueIndex: -1
+                            nameRoot: dropTask.nameRoot
+                            pathCode: dropFieldPath
+                        })
+                    }
+                    dropFieldOrdinal! + 1 => dropFieldOrdinal!
+                }
+                dropFieldIndex! + 1 => dropFieldIndex!
+            }
+        }
+        }
+        }
+        dropTaskIndex! + 1 => dropTaskIndex!
+        }
+    }
     llvmType symbol: Int -> Text => when {
         symbol == 1 => "%sl.text"
         symbol == 2 => "i32"
@@ -372,7 +480,7 @@ emitCore sources: move [Text; ~] -> Unit {
                 dropAst![ownedDropCandidate.astNode].start >= dropBeforeStart! -> if { false => ownedDropBeforeEdge! }
             }
             false => ownedDropMoved!
-            (ownedDropCandidate.kind == 17 and (ownedDropCandidate.typeOrigin == 13 or ownedDropCandidate.typeOrigin == 15)) -> if {
+            (ownedDropCandidate.kind == 17 and (ownedDropCandidate.typeOrigin == 13 or ownedDropCandidate.typeOrigin == 15 or ownedDropCandidate.typeOrigin == 0 or ownedDropCandidate.typeOrigin == 2)) -> if {
                 0 => ownedMoveIndex!
                 (ownedMoveIndex! < (dropMoveEvents! -> len) and not ownedDropMoved!) -> while {
                     dropMoveEvents![ownedMoveIndex!] => ownedMove
@@ -396,6 +504,17 @@ emitCore sources: move [Text; ~] -> Unit {
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_keys)" -> println
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values = extractvalue %sl.dict %v$(ownedDropCandidate.operand0), 1" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values)" -> println
+            }
+            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate.typeOrigin == 0 or ownedDropCandidate.typeOrigin == 2) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
+                DropGlueRequest {
+                    typeOrigin: ownedDropCandidate.typeOrigin
+                    typeModule: ownedDropCandidate.typeModule
+                    typeSymbol: ownedDropCandidate.typeSymbol
+                    valueKind: 0
+                    valueIndex: ownedDropCandidate.operand0
+                    nameRoot: request.edgeIndex * 1000 + ownedDropIndex!
+                    pathCode: 0
+                } -> emitDropGlue
             }
         }
     }
@@ -1057,6 +1176,7 @@ emitCore sources: move [Text; ~] -> Unit {
     sources -> typedIr.lower => ir!
     ir! -> typedIr.movesFrom => moveEvents!
     sources -> nominalTypes.resolve => nominal!
+    sources -> compositeTypes.resolve => composite!
     sources -> modules.identities => moduleIdentities!
     0 => structSourceIndex!
     structSourceIndex! < (sources -> len) -> while {
@@ -1086,6 +1206,16 @@ emitCore sources: move [Text; ~] -> Unit {
                             } else {
                                 fieldType.targetSymbol -> llvmType -> print
                             }
+                        } else {
+                            0 => fieldCompositeIndex!
+                            fieldCompositeIndex! < (composite! -> len) -> while {
+                                composite![fieldCompositeIndex!] => fieldComposite
+                                (fieldComposite.sourceModule == structSourceIndex! and fieldComposite.typeAst == fieldSymbol.typeNode) -> if {
+                                    fieldComposite.kind == 3 -> if { "%sl.array.i32" -> print }
+                                    fieldComposite.kind == 5 -> if { "%sl.dict" -> print }
+                                }
+                                fieldCompositeIndex! + 1 => fieldCompositeIndex!
+                            }
                         }
                         false => firstField!
                     }
@@ -1103,6 +1233,11 @@ emitCore sources: move [Text; ~] -> Unit {
         ir![arrayTypeSearch!].typeOrigin == 13 -> if { true => usesDynamicArray! }
         arrayTypeSearch! + 1 => arrayTypeSearch!
     }
+    0 => arrayCompositeSearch!
+    arrayCompositeSearch! < (composite! -> len) -> while {
+        composite![arrayCompositeSearch!].kind == 3 -> if { true => usesDynamicArray! }
+        arrayCompositeSearch! + 1 => arrayCompositeSearch!
+    }
     usesDynamicArray! -> if {
         "%sl.array.i32 = type { ptr, i64, i64 }" -> println
         "declare ptr @malloc(i64)" -> println
@@ -1113,6 +1248,11 @@ emitCore sources: move [Text; ~] -> Unit {
     dictionaryTypeSearch! < (ir! -> len) -> while {
         ir![dictionaryTypeSearch!].typeOrigin == 15 -> if { true => usesDictionary! }
         dictionaryTypeSearch! + 1 => dictionaryTypeSearch!
+    }
+    0 => dictionaryCompositeSearch!
+    dictionaryCompositeSearch! < (composite! -> len) -> while {
+        composite![dictionaryCompositeSearch!].kind == 5 -> if { true => usesDictionary! }
+        dictionaryCompositeSearch! + 1 => dictionaryCompositeSearch!
     }
     usesDictionary! -> if {
         "%sl.dict = type { ptr, ptr, i64, i64 }" -> println
@@ -2008,7 +2148,7 @@ emitCore sources: move [Text; ~] -> Unit {
             dropIndex! < functionEnd! -> while {
                 ir![dropIndex!] => dropCandidate
                 false => dropCandidateMoved!
-                (dropCandidate.kind == 17 and (dropCandidate.typeOrigin == 13 or dropCandidate.typeOrigin == 15)) -> if {
+                (dropCandidate.kind == 17 and (dropCandidate.typeOrigin == 13 or dropCandidate.typeOrigin == 15 or dropCandidate.typeOrigin == 0 or dropCandidate.typeOrigin == 2)) -> if {
                     0 => dropMoveIndex!
                     (dropMoveIndex! < (moveEvents! -> len) and not dropCandidateMoved!) -> while {
                         moveEvents![dropMoveIndex!] => dropMove
@@ -2030,6 +2170,17 @@ emitCore sources: move [Text; ~] -> Unit {
                     "  %drop$(dropIndex!)_values = extractvalue %sl.dict %v$(dropIndex!), 1" -> println
                     "  call void @free(ptr %drop$(dropIndex!)_values)" -> println
                 }
+                (dropCandidate.kind == 12 and (dropCandidate.typeOrigin == 0 or dropCandidate.typeOrigin == 2) and dropCandidate.parent == function.operand0 and dropIndex! != returnNode.operand0) -> if {
+                    DropGlueRequest {
+                        typeOrigin: dropCandidate.typeOrigin
+                        typeModule: dropCandidate.typeModule
+                        typeSymbol: dropCandidate.typeSymbol
+                        valueKind: 0
+                        valueIndex: dropIndex!
+                        nameRoot: dropIndex!
+                        pathCode: 0
+                    } -> emitDropGlue
+                }
                 (dropCandidate.kind == 17 and dropCandidate.typeOrigin == 13 and not dropCandidateMoved! and not (returnOperand.kind == 5 and returnOperand.symbol == dropCandidate.symbol)) -> if {
                     "  %drop$(dropIndex!) = extractvalue %sl.array.i32 %v$(dropCandidate.operand0), 0" -> println
                     "  call void @free(ptr %drop$(dropIndex!))" -> println
@@ -2039,6 +2190,17 @@ emitCore sources: move [Text; ~] -> Unit {
                     "  call void @free(ptr %drop$(dropIndex!)_keys)" -> println
                     "  %drop$(dropIndex!)_values = extractvalue %sl.dict %v$(dropCandidate.operand0), 1" -> println
                     "  call void @free(ptr %drop$(dropIndex!)_values)" -> println
+                }
+                (dropCandidate.kind == 17 and (dropCandidate.typeOrigin == 0 or dropCandidate.typeOrigin == 2) and not dropCandidateMoved! and not (returnOperand.kind == 5 and returnOperand.symbol == dropCandidate.symbol)) -> if {
+                    DropGlueRequest {
+                        typeOrigin: dropCandidate.typeOrigin
+                        typeModule: dropCandidate.typeModule
+                        typeSymbol: dropCandidate.typeSymbol
+                        valueKind: 0
+                        valueIndex: dropCandidate.operand0
+                        nameRoot: dropIndex!
+                        pathCode: 0
+                    } -> emitDropGlue
                 }
                 dropIndex! + 1 => dropIndex!
             }
@@ -2056,6 +2218,19 @@ emitCore sources: move [Text; ~] -> Unit {
                         "  call void @free(ptr %drop_arg_keys)" -> println
                         "  %drop_arg_values = extractvalue %sl.dict %arg, 1" -> println
                         "  call void @free(ptr %drop_arg_values)" -> println
+                    }
+                }
+                ((ownedParameter.typeOrigin == 0 or ownedParameter.typeOrigin == 2) and ownedParameter.flags % 2 == 1) -> if {
+                    not (returnOperand.kind == 5 and returnOperand.symbol == ownedParameter.symbol) -> if {
+                        DropGlueRequest {
+                            typeOrigin: ownedParameter.typeOrigin
+                            typeModule: ownedParameter.typeModule
+                            typeSymbol: ownedParameter.typeSymbol
+                            valueKind: 1
+                            valueIndex: -1
+                            nameRoot: functionIndex!
+                            pathCode: 0
+                        } -> emitDropGlue
                     }
                 }
             }

@@ -3170,7 +3170,33 @@ is after the binding, before the cleanup edge, and in that same region. A move
 inside a nested conditional therefore cannot suppress cleanup on the parent's
 sibling path. This follows rustc's separation of move analysis from drop
 elaboration and Swift's declaration-level consuming contract without importing
-Rust's complete place tree into the first slice. Field-level partial moves and
-recursive aggregate drop glue remain explicit later gates.
+Rust's complete place tree into the first slice. Recursive aggregate drop glue
+is completed by D107; field-level partial moves remain a later gate.
+
+## D107 - Struct Drop Glue Is A Static Obligation Tree
+
+Status: first recursive self-hosted slice implemented
+Date: 2026-07-13
+
+An owned struct does not need a monolithic runtime destructor record. Its
+self-hosted LLVM drop glue walks declaration metadata and expands only fields
+that establish static drop obligations: dynamic arrays, dictionaries, and
+nested structs containing either. Scalar fields produce no cleanup work.
+Composite field types also participate in emitted LLVM struct layouts, so the
+same type information drives ABI and destruction.
+
+The implementation uses an explicit compiler work queue rather than recursive
+inline SL calls. Each task carries a structural path encoded into deterministic
+SSA names. This mirrors rustc's move-path/drop-obligation tree while fitting the
+current bootstrap runtime, which intentionally rejects recursive inline local
+functions. Normal function exit, early return, and consuming struct parameters
+all use the same glue. A whole-owner move suppresses caller cleanup and the
+callee recursively releases its fields exactly once.
+
+Example 231 assembles, links, and executes LLVM for `Outer -> Inner -> [Int; ~]`
+on normal, moved, and early-return paths. The next ownership layer is a field
+move mask: moving one field must release that path's obligation, preserve its
+siblings, and reject whole-value use until the field is reinitialized or the
+remaining owner is destroyed.
 
 

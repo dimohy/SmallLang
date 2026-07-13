@@ -479,7 +479,9 @@ routes `break`/`continue` through explicit cleanup blocks; normal back-edges
 perform the same reverse-order frees. Consuming calls now produce typed-IR move
 events attached to their nearest structured region, so cleanup edges after the
 call omit the transferred array or dictionary without incorrectly suppressing
-cleanup on sibling paths. Recursively owned aggregates and field-level partial
+cleanup on sibling paths. Struct drop obligations now recurse through nested
+struct fields into owned arrays and dictionaries on normal, moved-parameter,
+and early-return edges. Inline local-function returns and field-level partial
 moves remain before the structured early-exit gate is complete.
 
 Guard-flow loop control is also cumulative: `condition -> if continue` and
@@ -493,8 +495,8 @@ type, transfers a returned owner, and drops every other active owner before
 `ret`. The self-hosted AST and typed IR carry a dedicated return terminator;
 the LLVM slice executes an early scalar return from an `if` region and frees a
 function-local dynamic array on both the early and fallthrough paths. Inline
-local-function returns, field-level partial-move masks, and recursively owned
-aggregate cleanup keep the structured early-exit gate partial.
+local-function returns and field-level partial-move masks keep the structured
+early-exit gate partial.
 
 Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA
@@ -516,7 +518,7 @@ returning consumer releases a `move` parameter exactly once. Branch-sensitive
 liveness now covers region-local Int arrays and dictionaries on normal and
 loop-exit edges. Whole-binding consuming calls now suppress only later cleanup
 within the same structured region. Field-level partial moves and nested owned
-aggregate drop glue remain.
+aggregate member mutation remain.
 
 Self-hosted LLVM text selects descriptors implemented in the file module
 `smalllang.compiler.llvm.target`. Windows x64/COFF, Linux x64/ELF, and
@@ -590,14 +592,16 @@ Nominal struct ABI now uses deterministic module/symbol LLVM type names.
 Struct-literal fields form a general typed-IR sibling chain and lower through
 ordered `insertvalue` operations; parameters, returns, and imported calls pass
 the aggregate by value without losing its declaring-module identity. Local and
-cross-file struct executables assemble, link, and run. Nested owned fields,
-member extraction, moves, and drop glue remain.
+cross-file struct executables assemble, link, and run. Dynamic-array and
+dictionary fields now participate in emitted struct layouts and recursive drop
+glue. Field-level moves and mutable aggregate updates remain.
 
 Struct member reads now lower through typed IR to LLVM `extractvalue`. Field
 ordinals come from the declaring module's symbol order rather than caller-local
 layout guesses, so imported member access retains the same ABI. Local/imported
-member executables pass assembly, link, and execution validation. Moves,
-mutable field updates, nested owned fields, and drop glue remain.
+member executables pass assembly, link, and execution validation. Nested owned
+fields are recursively released; partial field moves and mutable field updates
+remain.
 
 Owned dynamic Int arrays now cross LLVM as `{ data, length, capacity }`.
 Literals allocate and initialize storage, move parameters/returns transfer the
@@ -610,7 +614,8 @@ unreturned dynamic-array temporaries and unused move parameters. Directly
 returned literals and move parameters are recognized as transfers and are not
 freed, preventing the first class of double-free errors. Snapshots assert both
 the positive drop cases and the absence of drops on transfer. Conditional
-paths, early exits, nested owned aggregates, and general liveness remain.
+paths, early exits, and nested owned struct fields now share the same recursive
+drop obligations. Field-level partial moves and general liveness remain.
 
 Owned dictionaries now have a common self-hosted `%sl.dict` LLVM ABI with
 separate key/value stores plus length/capacity, while typed IR drives concrete

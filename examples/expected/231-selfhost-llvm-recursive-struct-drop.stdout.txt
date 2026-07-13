@@ -1,0 +1,92 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { %sl.array.i32 }
+%sl.struct.m0_s2 = type { %sl.struct.m0_s0, i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s5(%sl.struct.m0_s2 %arg) {
+entry:
+  %dropg0_p1 = extractvalue %sl.struct.m0_s2 %arg, 0
+  %dropg0_p2 = extractvalue %sl.struct.m0_s0 %dropg0_p1, 0
+  %dropg0_p2_data = extractvalue %sl.array.i32 %dropg0_p2, 0
+  call void @free(ptr %dropg0_p2_data)
+  ret i32 7
+}
+define i32 @sl_m0_s6(i1 %arg) {
+entry:
+  %slot7 = alloca %sl.struct.m0_s2, align 4
+  %v10_data = call ptr @malloc(i64 8)
+  %v10_ptr0 = getelementptr i32, ptr %v10_data, i64 0
+  store i32 1, ptr %v10_ptr0, align 4
+  %v10_ptr1 = getelementptr i32, ptr %v10_data, i64 1
+  store i32 2, ptr %v10_ptr1, align 4
+  %v10_0 = insertvalue %sl.array.i32 poison, ptr %v10_data, 0
+  %v10_1 = insertvalue %sl.array.i32 %v10_0, i64 2, 1
+  %v10 = insertvalue %sl.array.i32 %v10_1, i64 2, 2
+  %v9 = insertvalue %sl.struct.m0_s0 poison, %sl.array.i32 %v10, 0
+  %v8_f0 = insertvalue %sl.struct.m0_s2 poison, %sl.struct.m0_s0 %v9, 0
+  %v8 = insertvalue %sl.struct.m0_s2 %v8_f0, i32 3, 1
+  store %sl.struct.m0_s2 %v8, ptr %slot7, align 4
+  %dropg7_p1 = extractvalue %sl.struct.m0_s2 %v8, 0
+  %dropg7_p2 = extractvalue %sl.struct.m0_s0 %dropg7_p1, 0
+  %dropg7_p2_data = extractvalue %sl.array.i32 %dropg7_p2, 0
+  call void @free(ptr %dropg7_p2_data)
+  ret i32 11
+}
+define i32 @sl_m0_s8(i1 %arg) {
+entry:
+  %slot18 = alloca %sl.struct.m0_s2, align 4
+  %v22_data = call ptr @malloc(i64 8)
+  %v22_ptr0 = getelementptr i32, ptr %v22_data, i64 0
+  store i32 4, ptr %v22_ptr0, align 4
+  %v22_ptr1 = getelementptr i32, ptr %v22_data, i64 1
+  store i32 5, ptr %v22_ptr1, align 4
+  %v22_0 = insertvalue %sl.array.i32 poison, ptr %v22_data, 0
+  %v22_1 = insertvalue %sl.array.i32 %v22_0, i64 2, 1
+  %v22 = insertvalue %sl.array.i32 %v22_1, i64 2, 2
+  %v21 = insertvalue %sl.struct.m0_s0 poison, %sl.array.i32 %v22, 0
+  %v20_f0 = insertvalue %sl.struct.m0_s2 poison, %sl.struct.m0_s0 %v21, 0
+  %v20 = insertvalue %sl.struct.m0_s2 %v20_f0, i32 6, 1
+  store %sl.struct.m0_s2 %v20, ptr %slot18, align 4
+  %v27 = load %sl.struct.m0_s2, ptr %slot18, align 4
+  %v26 = call i32 @sl_m0_s5(%sl.struct.m0_s2 %v27)
+  %v28 = freeze i32 %v26
+  ret i32 %v28
+}
+define i32 @sl_m0_s11(i1 %arg) {
+entry:
+  %slot32 = alloca %sl.struct.m0_s2, align 4
+  %v35_data = call ptr @malloc(i64 8)
+  %v35_ptr0 = getelementptr i32, ptr %v35_data, i64 0
+  store i32 8, ptr %v35_ptr0, align 4
+  %v35_ptr1 = getelementptr i32, ptr %v35_data, i64 1
+  store i32 9, ptr %v35_ptr1, align 4
+  %v35_0 = insertvalue %sl.array.i32 poison, ptr %v35_data, 0
+  %v35_1 = insertvalue %sl.array.i32 %v35_0, i64 2, 1
+  %v35 = insertvalue %sl.array.i32 %v35_1, i64 2, 2
+  %v34 = insertvalue %sl.struct.m0_s0 poison, %sl.array.i32 %v35, 0
+  %v33_f0 = insertvalue %sl.struct.m0_s2 poison, %sl.struct.m0_s0 %v34, 0
+  %v33 = insertvalue %sl.struct.m0_s2 %v33_f0, i32 10, 1
+  store %sl.struct.m0_s2 %v33, ptr %slot32, align 4
+  br i1 %arg, label %if41_then, label %if41_merge
+if41_then:
+  %dropg437032_p1 = extractvalue %sl.struct.m0_s2 %v33, 0
+  %dropg437032_p2 = extractvalue %sl.struct.m0_s0 %dropg437032_p1, 0
+  %dropg437032_p2_data = extractvalue %sl.array.i32 %dropg437032_p2, 0
+  call void @free(ptr %dropg437032_p2_data)
+  ret i32 13
+if41_merge:
+  %dropg32_p1 = extractvalue %sl.struct.m0_s2 %v33, 0
+  %dropg32_p2 = extractvalue %sl.struct.m0_s0 %dropg32_p1, 0
+  %dropg32_p2_data = extractvalue %sl.array.i32 %dropg32_p2, 0
+  call void @free(ptr %dropg32_p2_data)
+  ret i32 14
+}
+define i32 @main() {
+entry:
+  %v50 = call i32 @sl_m0_s6(i1 1)
+  %v52 = call i32 @sl_m0_s8(i1 1)
+  %v54 = call i32 @sl_m0_s11(i1 1)
+  ret i32 0
+}
