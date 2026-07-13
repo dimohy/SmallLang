@@ -180,9 +180,43 @@ public emit sources: [Text; ~] -> Unit {
             }
             ") {" -> println
             "entry:" -> println
-            functionEnd! - 1 => expressionIndex!
             function.operand0 + 1 => expressionStart
-            expressionIndex! >= expressionStart -> while {
+            [Bool; ~] => expressionScheduled!
+            0 => scheduledInit!
+            scheduledInit! < (ir! -> len) -> while {
+                expressionScheduled! -> push(false)
+                scheduledInit! + 1 => scheduledInit!
+            }
+            [Int; ~] => expressionOrder!
+            true => scheduleProgress!
+            scheduleProgress! -> while {
+                false => scheduleProgress!
+                expressionStart => scheduleCandidate!
+                scheduleCandidate! < functionEnd! -> while {
+                    not expressionScheduled![scheduleCandidate!] -> if {
+                        ir![scheduleCandidate!] => scheduleNode
+                        true => scheduleReady!
+                        (scheduleNode.operand0 >= expressionStart and scheduleNode.operand0 < functionEnd! and not expressionScheduled![scheduleNode.operand0]) -> if { false => scheduleReady! }
+                        (scheduleNode.operand1 >= expressionStart and scheduleNode.operand1 < functionEnd! and not expressionScheduled![scheduleNode.operand1]) -> if { false => scheduleReady! }
+                        (scheduleReady! and (scheduleNode.kind == 12 or scheduleNode.kind == 14 or scheduleNode.kind == 16)) -> if {
+                            scheduleNode.operand0 => scheduleSibling!
+                            scheduleSibling! >= 0 -> while {
+                                not expressionScheduled![scheduleSibling!] -> if { false => scheduleReady! }
+                                ir![scheduleSibling!].nextOperand => scheduleSibling!
+                            }
+                        }
+                        scheduleReady! -> if {
+                            expressionOrder! -> push(scheduleCandidate!)
+                            true => expressionScheduled![scheduleCandidate!]
+                            true => scheduleProgress!
+                        }
+                    }
+                    scheduleCandidate! + 1 => scheduleCandidate!
+                }
+            }
+            0 => expressionOrderIndex!
+            expressionOrderIndex! < (expressionOrder! -> len) -> while {
+                expressionOrder![expressionOrderIndex!] => expressionIndex!
                 ir![expressionIndex!] => expression
                 (expression.kind == 5 and not (function.operand1 >= 0 and expression.symbol == ir![function.operand1].symbol)) -> if {
                     -1 => bindingValueIr!
@@ -514,7 +548,7 @@ public emit sources: [Text; ~] -> Unit {
                     }
                     ")" -> println
                 }
-                expressionIndex! - 1 => expressionIndex!
+                expressionOrderIndex! + 1 => expressionOrderIndex!
             }
             ir![function.operand0] => returnNode
             ir![returnNode.operand0] => returnOperand
@@ -572,8 +606,35 @@ public emit sources: [Text; ~] -> Unit {
                 (entryEnd! < (ir! -> len) and ir![entryEnd!].kind != 0 and ir![entryEnd!].kind != 11) -> while { entryEnd! + 1 => entryEnd! }
                 "define i32 @main() {" -> println
                 "entry:" -> println
-                entryEnd! - 1 => entryExpressionIndex!
-                entryExpressionIndex! > functionIndex! -> while {
+                [Bool; ~] => entryScheduled!
+                0 => entryScheduleInit!
+                entryScheduleInit! < (ir! -> len) -> while {
+                    entryScheduled! -> push(false)
+                    entryScheduleInit! + 1 => entryScheduleInit!
+                }
+                [Int; ~] => entryOrder!
+                true => entryScheduleProgress!
+                entryScheduleProgress! -> while {
+                    false => entryScheduleProgress!
+                    functionIndex! + 1 => entryScheduleCandidate!
+                    entryScheduleCandidate! < entryEnd! -> while {
+                        not entryScheduled![entryScheduleCandidate!] -> if {
+                            ir![entryScheduleCandidate!] => entryScheduleNode
+                            true => entryScheduleReady!
+                            (entryScheduleNode.operand0 > functionIndex! and entryScheduleNode.operand0 < entryEnd! and not entryScheduled![entryScheduleNode.operand0]) -> if { false => entryScheduleReady! }
+                            (entryScheduleNode.operand1 > functionIndex! and entryScheduleNode.operand1 < entryEnd! and not entryScheduled![entryScheduleNode.operand1]) -> if { false => entryScheduleReady! }
+                            entryScheduleReady! -> if {
+                                entryOrder! -> push(entryScheduleCandidate!)
+                                true => entryScheduled![entryScheduleCandidate!]
+                                true => entryScheduleProgress!
+                            }
+                        }
+                        entryScheduleCandidate! + 1 => entryScheduleCandidate!
+                    }
+                }
+                0 => entryOrderIndex!
+                entryOrderIndex! < (entryOrder! -> len) -> while {
+                    entryOrder![entryOrderIndex!] => entryExpressionIndex!
                     ir![entryExpressionIndex!] => entryExpression
                     entryExpression.kind == 5 -> if {
                         -1 => entryBindingValueIr!
@@ -597,6 +658,50 @@ public emit sources: [Text; ~] -> Unit {
                             "" -> println
                         }
                     }
+                    (entryExpression.kind == 7 or entryExpression.kind == 8) -> if {
+                        ir![entryExpression.operand0] => entryLeft
+                        "" => entryOperation!
+                        entryExpression.kind == 7 -> if {
+                            entryExpression.opcode == -26 -> if { "xor" => entryOperation! } else { "sub" => entryOperation! }
+                        } else {
+                            entryExpression.opcode == grammar.tokenIdPlus -> if { "add" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdMinus -> if { "sub" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdStar -> if { "mul" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdSlash -> if { "sdiv" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdPercent -> if { "srem" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdEqualEqual -> if { "icmp eq" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdBangEqual -> if { "icmp ne" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdLess -> if { "icmp slt" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdLessEqual -> if { "icmp sle" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdGreater -> if { "icmp sgt" => entryOperation! }
+                            entryExpression.opcode == grammar.tokenIdGreaterEqual -> if { "icmp sge" => entryOperation! }
+                            entryExpression.opcode == -24 -> if { "or" => entryOperation! }
+                            entryExpression.opcode == -25 -> if { "and" => entryOperation! }
+                        }
+                        "  %v$(entryExpressionIndex!) = $(entryOperation!) " -> print
+                        entryLeft -> writeType
+                        " " -> print
+                        (entryLeft.kind == 3 or entryLeft.kind == 4) -> if {
+                            sources[entryLeft.sourceModule] -> lexer.lex => entryLeftTokens!
+                            entryLeftTokens![entryLeft.payloadToken] => entryLeftToken
+                            entryLeft.kind == 3 -> if { sources[entryLeft.sourceModule] -> slice(entryLeftToken.span.start, entryLeftToken.span.length) -> print } else {
+                                ((sources[entryLeft.sourceModule] -> byte(entryLeftToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> print
+                            }
+                        } else { "%v$(entryExpression.operand0)" -> print }
+                        ", " -> print
+                        entryExpression.kind == 7 -> if {
+                            entryExpression.opcode == -26 -> if { "true" -> println } else { "0" -> println }
+                        } else {
+                            ir![entryExpression.operand1] => entryRight
+                            (entryRight.kind == 3 or entryRight.kind == 4) -> if {
+                                sources[entryRight.sourceModule] -> lexer.lex => entryRightTokens!
+                                entryRightTokens![entryRight.payloadToken] => entryRightToken
+                                entryRight.kind == 3 -> if { sources[entryRight.sourceModule] -> slice(entryRightToken.span.start, entryRightToken.span.length) -> println } else {
+                                    ((sources[entryRight.sourceModule] -> byte(entryRightToken.span.start)) == UInt8(116)) -> if { "1" } else { "0" } -> println
+                                }
+                            } else { "%v$(entryExpression.operand1)" -> println }
+                        }
+                    }
                     entryExpression.kind == 6 -> if {
                         "  %v$(entryExpressionIndex!) = call " -> print
                         entryExpression -> writeType
@@ -617,7 +722,7 @@ public emit sources: [Text; ~] -> Unit {
                         }
                         ")" -> println
                     }
-                    entryExpressionIndex! - 1 => entryExpressionIndex!
+                    entryOrderIndex! + 1 => entryOrderIndex!
                 }
                 "  ret i32 0" -> println
                 "}" -> println

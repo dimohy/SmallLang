@@ -5,11 +5,11 @@ main {
         """
         identity value: Int -> Int => value
         compute: -> Int {
-            1 => value
+            identity(1) => value
             value
         }
         main {
-            0 => code
+            1 + 2 => code
             identity(code)
         }
         """,

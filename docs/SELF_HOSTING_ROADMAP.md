@@ -413,8 +413,10 @@ Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA
 values in both functions and `main`, so bound values can be returned or passed
 to calls instead of every name being mistaken for `%arg`. General topological
-scheduling, aggregate/call-valued bindings, mutation, and ownership-sensitive
-binding drops remain.
+scheduling now uses a stable operand-readiness pass, so call-valued and
+operator-valued scalar bindings are emitted before their uses in functions and
+`main`. Aggregate/container dependencies, mutation, branch joins, cycle
+diagnostics, and ownership-sensitive binding drops remain.
 
 Text now crosses the self-hosted LLVM boundary as `{ ptr, i64 }`. UTF-8
 literals become immutable globals with byte-accurate lengths and LLVM `\XX`

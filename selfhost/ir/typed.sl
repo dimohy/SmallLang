@@ -417,6 +417,22 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         siblingIrIndex! + 1 => siblingIrIndex!
                     }
 
+                    expressionIrStart => bindingNameIrIndex!
+                    bindingNameIrIndex! < expressionIrEnd -> while {
+                        results![bindingNameIrIndex!] => bindingName!
+                        bindingName!.kind == 5 -> if {
+                            expressionIrStart => bindingDefinitionSearch!
+                            bindingDefinitionSearch! < expressionIrEnd -> while {
+                                (results![bindingDefinitionSearch!].kind == 17 and results![bindingDefinitionSearch!].symbol == bindingName!.symbol) -> if {
+                                    bindingDefinitionSearch! => bindingName!.operand0
+                                }
+                                bindingDefinitionSearch! + 1 => bindingDefinitionSearch!
+                            }
+                            bindingName! => results![bindingNameIrIndex!]
+                        }
+                        bindingNameIrIndex! + 1 => bindingNameIrIndex!
+                    }
+
                     expressionIrStart => aggregateIrIndex!
                     aggregateIrIndex! < expressionIrEnd -> while {
                         results![aggregateIrIndex!] => aggregate!
@@ -679,6 +695,21 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             entryOperator! => results![entryOperandIr!]
                         }
                         entryOperandIr! + 1 => entryOperandIr!
+                    }
+                    entryExpressionStart => entryBindingNameIr!
+                    entryBindingNameIr! < entryExpressionEnd -> while {
+                        results![entryBindingNameIr!] => entryBindingName!
+                        entryBindingName!.kind == 5 -> if {
+                            entryExpressionStart => entryBindingDefinitionSearch!
+                            entryBindingDefinitionSearch! < entryExpressionEnd -> while {
+                                (results![entryBindingDefinitionSearch!].kind == 17 and results![entryBindingDefinitionSearch!].symbol == entryBindingName!.symbol) -> if {
+                                    entryBindingDefinitionSearch! => entryBindingName!.operand0
+                                }
+                                entryBindingDefinitionSearch! + 1 => entryBindingDefinitionSearch!
+                            }
+                            entryBindingName! => results![entryBindingNameIr!]
+                        }
+                        entryBindingNameIr! + 1 => entryBindingNameIr!
                     }
                     results![entryIr!] => entryNode!
                     entryAstToIr![inferred![entryResultTypeIndex!].astNode] => entryNode!.operand0

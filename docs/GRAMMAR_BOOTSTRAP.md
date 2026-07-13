@@ -312,8 +312,11 @@ symbol to its value operand. Later name nodes retain that symbol and LLVM
 materializes the immutable SSA value with `freeze`, both in ordinary functions
 and in `main`. The executable snapshot covers `1 => value; value` as a function
 result and `0 => code; identity(code)` in the process entry. General dependency
-ordering for call/operator/container-valued bindings and mutable rebinding
-remain.
+ordering is now dependency-driven rather than reverse-AST-driven: literal,
+call, operator, binding, name, and consuming call nodes are emitted only after
+their operands. Snapshots cover both `identity(1) => value; value` and
+`1 + 2 => code; identity(code)`. Container-valued binding scheduling, mutable
+rebinding, branch joins, and ownership-aware drop ordering remain.
 
 The backend now defines Text as `%sl.text = { ptr, i64 }`. Plain UTF-8
 literals become immutable byte globals and are assembled into aggregate return
