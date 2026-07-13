@@ -11,7 +11,7 @@ import syntax.generated.smalllang as grammar
 
 # First LLVM text backend slice. Names are derived only from stable module and
 # symbol indexes; SSA registers are derived from typed-IR indexes.
-public emit sources: [Text; ~] -> Unit {
+emitCore sources: move [Text; ~] -> Unit {
     llvmType symbol: Int -> Text => when {
         symbol == 1 => "%sl.text"
         symbol == 2 => "i32"
@@ -61,9 +61,6 @@ public emit sources: [Text; ~] -> Unit {
         }
         }
     }
-    llvmTarget.windowsX64 => targetDescriptor
-    targetDescriptor.dataLayoutLine -> println
-    targetDescriptor.tripleLine -> println
     sources -> typedIr.lower => ir!
     sources -> nominalTypes.resolve => nominal!
     sources -> modules.identities => moduleIdentities!
@@ -746,4 +743,25 @@ public emit sources: [Text; ~] -> Unit {
             }
         }
     }
+}
+
+public emit sources: move [Text; ~] -> Unit {
+    llvmTarget.windowsX64 => target
+    target.dataLayoutLine -> println
+    target.tripleLine -> println
+    emitCore(sources)
+}
+
+public emitLinux sources: move [Text; ~] -> Unit {
+    llvmTarget.linuxX64 => target
+    target.dataLayoutLine -> println
+    target.tripleLine -> println
+    emitCore(sources)
+}
+
+public emitWasm sources: move [Text; ~] -> Unit {
+    llvmTarget.wasm32Browser => target
+    target.dataLayoutLine -> println
+    target.tripleLine -> println
+    emitCore(sources)
 }

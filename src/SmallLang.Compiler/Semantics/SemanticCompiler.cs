@@ -3053,7 +3053,7 @@ internal sealed class SemanticCompiler
                 return new FlowResult(BoundType.Unit, FlowEffect.None);
             }
 
-            if (functions.TryGetValue(path, out var function)
+            if (TryGetFunction(path, functions, out var function)
                 || TryResolveInstanceMethod(currentType, path, functions, out function))
             {
                 EnsureFunctionVisible(function, target.Line, target.Column);
@@ -3620,7 +3620,7 @@ internal sealed class SemanticCompiler
         var path = string.Join('.', expression.Path);
         string? receiverName = null;
         BoundType? receiverType = null;
-        if (!functions.TryGetValue(path, out var function))
+        if (!TryGetFunction(path, functions, out var function))
         {
             if (!TryResolveInstanceMethodCall(
                 expression.Path,
@@ -3955,7 +3955,7 @@ internal sealed class SemanticCompiler
         bool allowRuntimeCall)
     {
         var path = string.Join('.', expression.Path);
-        if (!functions.TryGetValue(path, out var template))
+        if (!TryGetFunction(path, functions, out var template))
         {
             throw Error(expression.Line, expression.Column, $"unknown generic function '{path}'");
         }
@@ -4488,7 +4488,7 @@ internal sealed class SemanticCompiler
             return type;
         }
 
-        if (functions.TryGetValue(expression.Name, out var function))
+        if (TryGetFunction(expression.Name, functions, out var function))
         {
             EnsureFunctionVisible(function, expression.Line, expression.Column);
             if (function.InputType is not null)
@@ -5886,7 +5886,22 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundFunction> functions,
         out BoundFunction function)
     {
-        return functions.TryGetValue(string.Join('.', path), out function!);
+        return TryGetFunction(string.Join('.', path), functions, out function);
+    }
+
+    private bool TryGetFunction(
+        string path,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        out BoundFunction function)
+    {
+        if (functions.TryGetValue(path, out function!))
+        {
+            return true;
+        }
+
+        return !path.Contains('.', StringComparison.Ordinal)
+            && _currentModuleName.Length > 0
+            && functions.TryGetValue(_currentModuleName + "." + path, out function!);
     }
 
     private void EnsureFunctionVisible(BoundFunction function, int line, int column)

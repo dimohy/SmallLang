@@ -51,7 +51,15 @@ internal sealed partial class LlvmEmitter
 
     private bool TryResolveFunction(IReadOnlyList<string> path, out BoundFunction function)
     {
-        return _currentFunctions.TryGetValue(string.Join('.', path), out function!);
+        var name = string.Join('.', path);
+        if (_currentFunctions.TryGetValue(name, out function!))
+        {
+            return true;
+        }
+
+        return !name.Contains('.', StringComparison.Ordinal)
+            && _currentFunction is { ModuleName.Length: > 0 } currentFunction
+            && _currentFunctions.TryGetValue(currentFunction.ModuleName + "." + name, out function!);
     }
 
     private static IReadOnlyDictionary<string, BoundFunction> CreateFunctionScope(

@@ -342,20 +342,25 @@ Non-ASCII, quote, backslash, and control bytes use LLVM `\XX` escaping, with
 the byte length retained independently from Unicode scalar count. ASCII and
 Korean snapshots both assemble, link, and execute.
 
-Every self-hosted LLVM module now begins with the canonical Windows bootstrap
-target triple `x86_64-pc-windows-msvc`, matching the C# bootstrap platform
-contract and pinned Clang's `-dumpmachine` result. The triple is part of every
-LLVM snapshot rather than an implicit linker default. Target selection and
-data-layout emission remain to be parameterized before Linux/Wasm self-hosted
-output is enabled. Target metadata now lives in the ordinary SL module
+The self-hosted LLVM emitter now selects an explicit target descriptor before
+emitting the shared module body. `emit`, `emitLinux`, and `emitWasm` produce
+Windows x64, Linux x64, and Wasm32 modules respectively, so neither the triple
+nor data layout relies on an implicit linker default. Target metadata lives in
+the ordinary SL module
 `smalllang.compiler.llvm.target`: `TargetDescriptor` groups the preformatted
 triple/data-layout lines, pointer bit width, and object format. The LLVM emitter
-loads `windowsX64` from that module instead of embedding target text, and a
-standalone example verifies all four fields. The same module now provides
+loads descriptors from that module instead of embedding target text, and a
+standalone example verifies all four fields. The module provides
 `linuxX64` (ELF, 64-bit pointers) and `wasm32Browser` (WebAssembly, 32-bit
 pointers) using data layouts extracted from pinned Clang 22. Target headers for
-all three assemble with `llvm-as`; selecting the non-Windows descriptor in the
-full emitter still requires a target-aware request boundary.
+all three and complete modules produced by the current shared emitter assemble
+with `llvm-as`.
+
+Namespaced functions are stored under canonical qualified names. Call, flow,
+zero-input property, generic, and LLVM emission lookup now fall back from an
+unqualified name to the caller's current module, while local functions and
+explicitly qualified/imported names retain precedence. This lets public target
+entry points call the private shared emitter without duplicating it.
 
 The bootstrap type table now predeclares parametric dynamic-array identities
 used by struct fields before struct layouts are finalized. A field such as

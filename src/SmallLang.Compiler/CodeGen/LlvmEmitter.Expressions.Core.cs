@@ -217,7 +217,7 @@ internal sealed partial class LlvmEmitter
         {
             return ResolveLocal(expression.Name);
         }
-        if (_currentFunctions.TryGetValue(expression.Name, out var function)
+        if (TryResolveFunction([expression.Name], out var function)
             && function.InputType is null)
         {
             return EmitFunctionCall(function, argument: null);

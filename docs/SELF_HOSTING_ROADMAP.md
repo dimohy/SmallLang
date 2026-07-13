@@ -1,7 +1,7 @@
 # SmallLang Self-Hosting Roadmap
 
 Status: active
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 The end state is an SL compiler written in SL that reads a multi-file SL
 program, performs lexical, syntactic, type, ownership, and module analysis,
@@ -427,17 +427,17 @@ transfers its backing stores without producer-side frees, while a scalar-
 returning consumer releases a `move` parameter exactly once. Branch-sensitive
 liveness, partial moves, and nested owned aggregate drop glue remain.
 
-Self-hosted LLVM text now declares the canonical bootstrap target triple
-`x86_64-pc-windows-msvc` in every module. This matches the existing Windows
-runtime platform and pinned Clang machine contract instead of relying on an
-implicit host default. A target descriptor carrying triple, data layout, ABI,
-and runtime declarations is still required for Linux/Wasm self-host output.
-Target descriptors are now implemented in the file module
+Self-hosted LLVM text selects descriptors implemented in the file module
 `smalllang.compiler.llvm.target`. Windows x64/COFF, Linux x64/ELF, and
 Wasm32/WebAssembly values each own their pinned-Clang triple, data layout,
-pointer width, and object-format identity. All three headers assemble, while
-the LLVM text emitter currently consumes Windows through a normal file import.
-Selecting Linux/Wasm for a complete module remains. The bootstrap compiler now
+pointer width, and object-format identity. Public `emit`, `emitLinux`, and
+`emitWasm` entry points print the selected header and transfer their owned
+source array into one private shared emitter. Complete modules for all three
+targets assemble with `llvm-as`; Linux/Wasm regression examples prove that the
+body is not a header-only fixture. Namespaced same-module calls now resolve by
+falling back to the current canonical module name in semantic analysis and LLVM
+code generation, fixing the private shared-emitter catalog boundary without
+aliases or backend duplication. The bootstrap compiler now
 gives an owned `[Text; ~]` struct field a stable parametric identity, LLVM
 aggregate ABI, member access, and recursive backing-store drop. The remaining
 request boundary is ownership-specific: moving that field out of a moved
@@ -445,9 +445,9 @@ request now uses a conservative whole-owner-consuming extraction rule. A
 function may read copyable fields first, extract one owned field from its
 explicit `move` input, and then the original owner is invalidated and omitted
 from cleanup. This prevents double drop without silently allowing arbitrary
-partial moves. The remaining target-emitter blocker is call-catalog exposure
-for the large target-aware helper; general multi-field partial moves still need
-field-level move masks.
+partial moves. General multi-field partial moves still need field-level move
+masks. Target-specific runtime declarations and ABI lowering beyond the
+currently supported shared IR subset also remain.
 
 Text now crosses the self-hosted LLVM boundary as `{ ptr, i64 }`. UTF-8
 literals become immutable globals with byte-accurate lengths and LLVM `\XX`
