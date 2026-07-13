@@ -1,0 +1,86 @@
+%sl.dict.i32.i32 = type { ptr, ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define %sl.dict.i32.i32 @sl_m0_s0() {
+entry:
+  %v2_keys = call ptr @malloc(i64 8)
+  %v2_values = call ptr @malloc(i64 8)
+  %v2_keys_ptr0 = getelementptr i32, ptr %v2_keys, i64 0
+  store i32 1, ptr %v2_keys_ptr0, align 4
+  %v2_values_ptr0 = getelementptr i32, ptr %v2_values, i64 0
+  store i32 10, ptr %v2_values_ptr0, align 4
+  %v2_keys_ptr1 = getelementptr i32, ptr %v2_keys, i64 1
+  store i32 2, ptr %v2_keys_ptr1, align 4
+  %v2_values_ptr1 = getelementptr i32, ptr %v2_values, i64 1
+  store i32 20, ptr %v2_values_ptr1, align 4
+  %v2_0 = insertvalue %sl.dict.i32.i32 poison, ptr %v2_keys, 0
+  %v2_1 = insertvalue %sl.dict.i32.i32 %v2_0, ptr %v2_values, 1
+  %v2_2 = insertvalue %sl.dict.i32.i32 %v2_1, i64 2, 2
+  %v2 = insertvalue %sl.dict.i32.i32 %v2_2, i64 2, 3
+  ret %sl.dict.i32.i32 %v2
+}
+define %sl.dict.i32.i32 @sl_m0_s1(%sl.dict.i32.i32 %arg) {
+entry:
+  ret %sl.dict.i32.i32 %arg
+}
+define i32 @sl_m0_s2(%sl.dict.i32.i32 %arg) {
+entry:
+  %v14_keys = extractvalue %sl.dict.i32.i32 %arg, 0
+  %v14_values = extractvalue %sl.dict.i32.i32 %arg, 1
+  %v14_length = extractvalue %sl.dict.i32.i32 %arg, 2
+  br label %dict14_start
+dict14_start:
+  br label %dict14_loop
+dict14_loop:
+  %v14_slot = phi i64 [ 0, %dict14_start ], [ %v14_next, %dict14_advance ]
+  %v14_in_range = icmp ult i64 %v14_slot, %v14_length
+  br i1 %v14_in_range, label %dict14_check, label %dict14_missing
+dict14_check:
+  %v14_key_ptr = getelementptr i32, ptr %v14_keys, i64 %v14_slot
+  %v14_key = load i32, ptr %v14_key_ptr, align 4
+  %v14_found = icmp eq i32 %v14_key, 2
+  br i1 %v14_found, label %dict14_hit, label %dict14_advance
+dict14_advance:
+  %v14_next = add i64 %v14_slot, 1
+  br label %dict14_loop
+dict14_missing:
+  unreachable
+dict14_hit:
+  %v14_value_ptr = getelementptr i32, ptr %v14_values, i64 %v14_slot
+  %v14 = load i32, ptr %v14_value_ptr, align 4
+  ret i32 %v14
+}
+define i32 @sl_m0_s3() {
+entry:
+  %v19_keys = call ptr @malloc(i64 8)
+  %v19_values = call ptr @malloc(i64 8)
+  %v19_keys_ptr0 = getelementptr i32, ptr %v19_keys, i64 0
+  store i32 3, ptr %v19_keys_ptr0, align 4
+  %v19_values_ptr0 = getelementptr i32, ptr %v19_values, i64 0
+  store i32 30, ptr %v19_values_ptr0, align 4
+  %v19_keys_ptr1 = getelementptr i32, ptr %v19_keys, i64 1
+  store i32 4, ptr %v19_keys_ptr1, align 4
+  %v19_values_ptr1 = getelementptr i32, ptr %v19_values, i64 1
+  store i32 40, ptr %v19_values_ptr1, align 4
+  %v19_0 = insertvalue %sl.dict.i32.i32 poison, ptr %v19_keys, 0
+  %v19_1 = insertvalue %sl.dict.i32.i32 %v19_0, ptr %v19_values, 1
+  %v19_2 = insertvalue %sl.dict.i32.i32 %v19_1, i64 2, 2
+  %v19 = insertvalue %sl.dict.i32.i32 %v19_2, i64 2, 3
+  %drop19_keys = extractvalue %sl.dict.i32.i32 %v19, 0
+  call void @free(ptr %drop19_keys)
+  %drop19_values = extractvalue %sl.dict.i32.i32 %v19, 1
+  call void @free(ptr %drop19_values)
+  ret i32 0
+}
+define i32 @sl_m0_s4(%sl.dict.i32.i32 %arg) {
+entry:
+  %drop_arg_keys = extractvalue %sl.dict.i32.i32 %arg, 0
+  call void @free(ptr %drop_arg_keys)
+  %drop_arg_values = extractvalue %sl.dict.i32.i32 %arg, 1
+  call void @free(ptr %drop_arg_values)
+  ret i32 0
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

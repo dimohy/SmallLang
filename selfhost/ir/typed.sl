@@ -228,6 +228,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 expression.kind == 39 -> if { 12 => expressionKind! }
                                 expression.kind == 36 -> if { 13 => expressionKind! }
                                 expression.kind == 37 -> if { 14 => expressionKind! }
+                                expression.kind == 38 -> if { 16 => expressionKind! }
                                 expression.kind == 41 -> if { 15 => expressionKind! }
                                 results! -> len => expressionIr
                                 expressionIr => astToIr![expressionAstIndex!]
@@ -349,7 +350,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     expressionIrStart => aggregateIrIndex!
                     aggregateIrIndex! < expressionIrEnd -> while {
                         results![aggregateIrIndex!] => aggregate!
-                        (aggregate!.kind == 12 or aggregate!.kind == 14) -> if {
+                        (aggregate!.kind == 12 or aggregate!.kind == 14 or aggregate!.kind == 16) -> if {
                             -1 => firstFieldOperand!
                             expressionIrStart => fieldOperandSearch!
                             fieldOperandSearch! < expressionIrEnd -> while {

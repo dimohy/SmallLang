@@ -341,6 +341,15 @@ without a free. Parameter types are recovered from declarations even when the
 parameter is never referenced. Branch/path-sensitive exits and nested owned
 aggregates remain.
 
+Dynamic `Int -> Int` dictionaries now cross the same self-hosted LLVM boundary
+as `%sl.dict.i32.i32 = { keys, values, length, capacity }`. Literals allocate
+and initialize separate contiguous key/value stores, move parameters and
+returns transfer the aggregate, and readonly indexing emits a deterministic
+linear-search CFG with an unreachable missing-key path. Function-exit drop
+lowering frees both stores exactly once for discarded literals and consumed
+move parameters. Hash-table layout, checked lookup results, mutation, and
+generic key/value layouts remain.
+
 User-function ABI lowering now threads a hidden runtime I/O context containing
 stdin/stdout handles, read/write slots, and the cumulative ok state. This fixes
 function-local `print`/`println` and supplies the context that later file-backed
