@@ -439,10 +439,14 @@ CFGs and inserts a merge/`phi` only for matching Int/Bool value branches.
 Region descendants execute only beneath their branch labels. A native Windows
 regression proves parameter-driven function branches, source-ordered effects,
 a constant main branch, and an Int-producing conditional returning through a
-`phi`. The same work fixes two semantic leaks found during self-hosting: a
+`phi`. Nested statement and Int-producing conditionals now compose through an
+explicit work stack, and outer `phi` nodes name an inner merge block when that
+block is the actual predecessor. This avoids relying on recursive inline local
+functions, which the bootstrap runtime intentionally does not support. The same
+work fixes two semantic leaks found during self-hosting: a
 control flow can no longer inherit a nested branch call target, and Bool-typed
-names are no longer mistaken for Bool literals. Nested conditionals,
-branch-local owned aggregates, loop regions, and non-scalar joins remain.
+names are no longer mistaken for Bool literals. Branch-local owned aggregates,
+loop regions, and non-scalar joins remain.
 
 Typed IR now represents immutable local bindings explicitly and connects each
 name use by stable symbol id. LLVM materializes scalar literal bindings as SSA

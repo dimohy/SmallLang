@@ -484,6 +484,22 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 regionChildSearch! + 1 => regionChildSearch!
                             }
                             firstRegionChild! => control!.operand0
+                            (lastRegionChild! >= 0 and results![lastRegionChild!].kind == 9) -> while {
+                                -1 => nestedRegionResult!
+                                UIntSize(0) => nestedRegionResultStart!
+                                expressionIrStart => nestedResultSearch!
+                                nestedResultSearch! < expressionIrEnd -> while {
+                                    results![nestedResultSearch!].parent == lastRegionChild! -> if {
+                                        nodes![results![nestedResultSearch!].astNode].start => nestedResultStart
+                                        (nestedRegionResult! < 0 or nestedResultStart > nestedRegionResultStart!) -> if {
+                                            nestedResultSearch! => nestedRegionResult!
+                                            nestedResultStart => nestedRegionResultStart!
+                                        }
+                                    }
+                                    nestedResultSearch! + 1 => nestedResultSearch!
+                                }
+                                nestedRegionResult! >= 0 -> if { nestedRegionResult! => lastRegionChild! } else { -1 => lastRegionChild! }
+                            }
                             lastRegionChild! => control!.operand1
                             control! => results![controlIrIndex!]
                         }
@@ -895,6 +911,22 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                 entryRegionChildSearch! + 1 => entryRegionChildSearch!
                             }
                             entryFirstRegionChild! => entryControl!.operand0
+                            (entryLastRegionChild! >= 0 and results![entryLastRegionChild!].kind == 9) -> while {
+                                -1 => entryNestedRegionResult!
+                                UIntSize(0) => entryNestedRegionResultStart!
+                                entryExpressionStart => entryNestedResultSearch!
+                                entryNestedResultSearch! < entryExpressionEnd -> while {
+                                    results![entryNestedResultSearch!].parent == entryLastRegionChild! -> if {
+                                        nodes![results![entryNestedResultSearch!].astNode].start => entryNestedResultStart
+                                        (entryNestedRegionResult! < 0 or entryNestedResultStart > entryNestedRegionResultStart!) -> if {
+                                            entryNestedResultSearch! => entryNestedRegionResult!
+                                            entryNestedResultStart => entryNestedRegionResultStart!
+                                        }
+                                    }
+                                    entryNestedResultSearch! + 1 => entryNestedResultSearch!
+                                }
+                                entryNestedRegionResult! >= 0 -> if { entryNestedRegionResult! => entryLastRegionChild! } else { -1 => entryLastRegionChild! }
+                            }
                             entryLastRegionChild! => entryControl!.operand1
                             entryControl! => results![entryControlIrIndex!]
                         }

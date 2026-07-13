@@ -133,6 +133,8 @@ the conditional is value-producing. This keeps branch-local type, ownership,
 and lifetime analysis independent of target-specific CFG text emission.
 Independent effectful calls and control regions retain source order even when
 their value dependencies would otherwise allow topological reordering.
+Nested value conditionals compose by using the innermost result-producing merge
+block as the predecessor of an enclosing `phi` input.
 
 ## First Program
 

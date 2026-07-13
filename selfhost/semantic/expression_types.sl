@@ -906,23 +906,12 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     }
                     not regionInferred! -> if {
                         -1 => regionResultIndex!
-                        1000000 => regionResultDistance!
                         0 => regionResultSearch!
                         regionResultSearch! < (inferred! -> len) -> while {
                             inferred![regionResultSearch!] => regionCandidate
-                            regionCandidate.sourceModule == sourceIndex! -> if {
-                                nodes![regionCandidate.astNode].parent => regionAncestor!
-                                1 => regionDistance!
-                                false => belongsToRegion!
-                                (regionAncestor! >= 0 and not belongsToRegion!) -> while {
-                                    regionAncestor! == regionIndex! -> if { true => belongsToRegion! } else {
-                                        nodes![regionAncestor!].parent => regionAncestor!
-                                        regionDistance! + 1 => regionDistance!
-                                    }
-                                }
-                                (belongsToRegion! and (regionDistance! < regionResultDistance! or (regionDistance! == regionResultDistance! and (regionResultIndex! < 0 or nodes![regionCandidate.astNode].start > nodes![inferred![regionResultIndex!].astNode].start)))) -> if {
+                            (regionCandidate.sourceModule == sourceIndex! and nodes![regionCandidate.astNode].parent == regionIndex!) -> if {
+                                (regionResultIndex! < 0 or nodes![regionCandidate.astNode].start > nodes![inferred![regionResultIndex!].astNode].start) -> if {
                                     regionResultSearch! => regionResultIndex!
-                                    regionDistance! => regionResultDistance!
                                 }
                             }
                             regionResultSearch! + 1 => regionResultSearch!
@@ -1017,16 +1006,20 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                     }
                     not controlFlowInferred! -> if {
                         -1 => controlTargetTypeIndex!
-                        0 => controlTargetSearch!
-                        controlTargetSearch! < (nodes! -> len) -> while {
-                            (nodes![controlTargetSearch!].parent == controlFlowIndex! and nodes![controlTargetSearch!].kind == 42) -> if {
-                                0 => controlTargetTypeSearch!
-                                controlTargetTypeSearch! < (inferred! -> len) -> while {
-                                    (inferred![controlTargetTypeSearch!].sourceModule == sourceIndex! and inferred![controlTargetTypeSearch!].astNode == controlTargetSearch!) -> if { controlTargetTypeSearch! => controlTargetTypeIndex! }
-                                    controlTargetTypeSearch! + 1 => controlTargetTypeSearch!
-                                }
+                        -1 => directControlAst!
+                        0 => directControlSearch!
+                        directControlSearch! < (nodes! -> len) -> while {
+                            (nodes![directControlSearch!].parent == controlFlowIndex! and nodes![directControlSearch!].kind == 42) -> if { directControlSearch! => directControlAst! }
+                            directControlSearch! + 1 => directControlSearch!
+                        }
+                        0 => controlTargetTypeSearch!
+                        controlTargetTypeSearch! < (inferred! -> len) -> while {
+                            inferred![controlTargetTypeSearch!] => flowChildType
+                            (directControlAst! >= 0 and flowChildType.sourceModule == sourceIndex! and flowChildType.astNode == directControlAst!) -> if { controlTargetTypeSearch! => controlTargetTypeIndex! }
+                            (directControlAst! < 0 and nodes![controlFlowIndex!].parent >= 0 and nodes![nodes![controlFlowIndex!].parent].kind == 43 and flowChildType.sourceModule == sourceIndex! and nodes![flowChildType.astNode].parent == controlFlowIndex!) -> if {
+                                (controlTargetTypeIndex! < 0 or nodes![flowChildType.astNode].start > nodes![inferred![controlTargetTypeIndex!].astNode].start) -> if { controlTargetTypeSearch! => controlTargetTypeIndex! }
                             }
-                            controlTargetSearch! + 1 => controlTargetSearch!
+                            controlTargetTypeSearch! + 1 => controlTargetTypeSearch!
                         }
                         controlTargetTypeIndex! >= 0 -> if {
                             inferred![controlTargetTypeIndex!] => controlFlowResult

@@ -340,8 +340,12 @@ value; matching Int/Bool branches emit a `phi`. Top-level calls and controls
 also retain source order instead of being reordered merely because their data
 dependencies are independent. Call resolution excludes a flow whose direct
 target is control syntax, and Bool-typed names remain names rather than being
-misclassified as `true`/`false` literals. Nested control regions, branch-local
-owned aggregates, and non-scalar value joins remain later slices.
+misclassified as `true`/`false` literals. Nested regions are flattened through
+an explicit emitter task stack rather than recursive local-function inlining;
+this permits arbitrary nesting without consuming the bootstrap compiler's
+inline expansion stack. When a nested value conditional feeds an outer `phi`,
+the incoming predecessor is the inner merge block, not the outer branch label.
+Branch-local owned aggregates and non-scalar value joins remain later slices.
 
 The first self-hosted LLVM text backend lives in `selfhost/llvm/text.sl`. It
 emits stable `sl_m<module>_s<symbol>` function names, `i32`/`i1` signatures,
@@ -365,8 +369,9 @@ call in Windows x64 `i32 @main()`, and then returns process exit code zero. The
 multi-module backend test is no longer assembly-only: the runner assembles the
 stdout IR, links it with pinned Clang, executes the resulting `.exe`, and
 requires exit code zero with no unexpected output. Main bindings and scalar
-`if` control flow now execute; broader loops, nested control, ownership-aware
-branches, and complete statement sequencing still need full lowering.
+`if` control flow now execute and compose recursively; broader loops,
+ownership-aware branches, and complete statement sequencing still need full
+lowering.
 
 Scalar literal bindings now have an explicit typed-IR kind linking the binding
 symbol to its value operand. Later name nodes retain that symbol and LLVM

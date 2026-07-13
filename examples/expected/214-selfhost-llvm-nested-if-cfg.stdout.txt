@@ -59,50 +59,54 @@ emit:
   ret void
 }
 %sl.text = type { ptr, i64 }
-@sl_str_20 = private unnamed_addr constant [4 x i8] c"then"
-@sl_str_23 = private unnamed_addr constant [4 x i8] c"else"
-@sl_str_33 = private unnamed_addr constant [9 x i8] c"main-then"
-@sl_str_36 = private unnamed_addr constant [9 x i8] c"main-else"
-@sl_str_40 = private unnamed_addr constant [12 x i8] c"value=$value"
+@sl_str_31 = private unnamed_addr constant [11 x i8] c"wrong-inner"
+@sl_str_34 = private unnamed_addr constant [6 x i8] c"nested"
+@sl_str_37 = private unnamed_addr constant [11 x i8] c"wrong-outer"
+@sl_str_43 = private unnamed_addr constant [21 x i8] c"values=$first,$second"
 define i32 @sl_m0_s0(i1 %arg) {
 entry:
   br i1 %arg, label %if5_then, label %if5_else
 if5_then:
+  br i1 0, label %if9_then, label %if9_else
+if9_then:
+  br label %if9_merge
+if9_else:
+  br label %if9_merge
+if9_merge:
+  %v9 = phi i32 [ 1, %if9_then ], [ 2, %if9_else ]
   br label %if5_merge
 if5_else:
   br label %if5_merge
 if5_merge:
-  %v5 = phi i32 [ 7, %if5_then ], [ 9, %if5_else ]
+  %v5 = phi i32 [ %v9, %if9_merge ], [ 3, %if5_else ]
   ret i32 %v5
-}
-define void @sl_m0_s1(i1 %arg) {
-entry:
-  br i1 %arg, label %if17_then, label %if17_else
-if17_then:
-  call void @sl_runtime_print(ptr @sl_str_20, i64 4, i1 true)
-  br label %if17_merge
-if17_else:
-  call void @sl_runtime_print(ptr @sl_str_23, i64 4, i1 true)
-  br label %if17_merge
-if17_merge:
-  ret void
 }
 define i32 @main() {
 entry:
-  call void @sl_m0_s1(i1 0)
-  br i1 1, label %if30_then, label %if30_else
-if30_then:
-  call void @sl_runtime_print(ptr @sl_str_33, i64 9, i1 true)
-  br label %if30_merge
-if30_else:
-  call void @sl_runtime_print(ptr @sl_str_36, i64 9, i1 true)
-  br label %if30_merge
-if30_merge:
-  %v37 = call i32 @sl_m0_s0(i1 0)
-  %v39_interpolation_part0 = getelementptr i8, ptr @sl_str_40, i64 0
-  call void @sl_runtime_print(ptr %v39_interpolation_part0, i64 6, i1 false)
-  call void @sl_runtime_print_i32(i32 %v37, i1 false)
-  %v39_interpolation_suffix = getelementptr i8, ptr @sl_str_40, i64 12
-  call void @sl_runtime_print(ptr %v39_interpolation_suffix, i64 0, i1 true)
+  br i1 1, label %if24_then, label %if24_else
+if24_then:
+  br i1 0, label %if28_then, label %if28_else
+if28_then:
+  call void @sl_runtime_print(ptr @sl_str_31, i64 11, i1 true)
+  br label %if28_merge
+if28_else:
+  call void @sl_runtime_print(ptr @sl_str_34, i64 6, i1 true)
+  br label %if28_merge
+if28_merge:
+  br label %if24_merge
+if24_else:
+  call void @sl_runtime_print(ptr @sl_str_37, i64 11, i1 true)
+  br label %if24_merge
+if24_merge:
+  %v38 = call i32 @sl_m0_s0(i1 1)
+  %v40 = call i32 @sl_m0_s0(i1 0)
+  %v42_interpolation_part0 = getelementptr i8, ptr @sl_str_43, i64 0
+  call void @sl_runtime_print(ptr %v42_interpolation_part0, i64 7, i1 false)
+  call void @sl_runtime_print_i32(i32 %v38, i1 false)
+  %v42_interpolation_part1 = getelementptr i8, ptr @sl_str_43, i64 13
+  call void @sl_runtime_print(ptr %v42_interpolation_part1, i64 1, i1 false)
+  call void @sl_runtime_print_i32(i32 %v40, i1 false)
+  %v42_interpolation_suffix = getelementptr i8, ptr @sl_str_43, i64 21
+  call void @sl_runtime_print(ptr %v42_interpolation_suffix, i64 0, i1 true)
   ret i32 0
 }
