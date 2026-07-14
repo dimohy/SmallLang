@@ -381,6 +381,54 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
         indexedMemberFixup! + 1 => indexedMemberFixup!
     }
 
+    # The grammar keeps repeated infix operands flat. Normalize them into an
+    # explicit left-associative binary tree so typed IR never drops the third
+    # and later operands in expressions such as a or b or c.
+    ast! -> len => infixAstCount
+    0 => infixIndex!
+    infixIndex! < infixAstCount -> while {
+        ast![infixIndex!] => infixNode
+        (infixNode.kind >= 18 and infixNode.kind <= 25) -> if {
+            [Int; ~] => infixChildren!
+            0 => infixChildSearch!
+            infixChildSearch! < infixAstCount -> while {
+                ast![infixChildSearch!].parent == infixIndex! -> if { infixChildren! -> push(infixChildSearch!) }
+                infixChildSearch! + 1 => infixChildSearch!
+            }
+            (infixChildren! -> len) > 2 -> if {
+                infixChildren![0] => infixLeft!
+                1 => infixChildIndex!
+                infixChildIndex! < (infixChildren! -> len) - 1 -> while {
+                    infixChildren![infixChildIndex!] => infixRight
+                    ast![infixLeft!] => infixLeftNode!
+                    ast![infixRight] => infixRightNode!
+                    ast! -> len => nestedInfixIndex
+                    nestedInfixIndex => infixLeftNode!.parent
+                    nestedInfixIndex => infixRightNode!.parent
+                    infixLeftNode! => ast![infixLeft!]
+                    infixRightNode! => ast![infixRight]
+                    ast! -> push(AstNode {
+                        kind: infixNode.kind
+                        parent: infixIndex!
+                        cstRuleId: infixNode.cstRuleId
+                        operatorKind: infixNode.operatorKind
+                        payloadToken: infixNode.payloadToken
+                        secondaryToken: infixNode.secondaryToken
+                        tertiaryToken: infixNode.tertiaryToken
+                        flags: infixNode.flags
+                        firstToken: infixLeftNode!.firstToken
+                        tokenCount: infixRightNode!.firstToken + infixRightNode!.tokenCount - infixLeftNode!.firstToken
+                        start: infixLeftNode!.start
+                        length: infixRightNode!.start + infixRightNode!.length - infixLeftNode!.start
+                    })
+                    nestedInfixIndex => infixLeft!
+                    infixChildIndex! + 1 => infixChildIndex!
+                }
+            }
+        }
+        infixIndex! + 1 => infixIndex!
+    }
+
     # Resolve declaration payloads after every semantic parent/child index is
     # known. Path children provide qualified names; direct declarations scan
     # only their header token range.

@@ -1,0 +1,21 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+define i1 @sl_m0_s0(i32 %arg) {
+entry:
+  %v4 = icmp eq i32 %arg, 2
+  %v7 = icmp eq i32 %arg, 5
+  %v10 = icmp eq i32 %arg, 10
+  %v13 = icmp eq i32 %arg, 14
+  %v16 = icmp eq i32 %arg, 19
+  %v19 = icmp eq i32 %arg, 20
+  %v22 = or i1 %v4, %v7
+  %v23 = or i1 %v22, %v10
+  %v24 = or i1 %v23, %v13
+  %v25 = or i1 %v24, %v16
+  %v3 = or i1 %v25, %v19
+  ret i1 %v3
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

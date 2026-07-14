@@ -772,17 +772,33 @@ public lowerContext prepared: semanticContext.CompilationContext -> [TypedIrNode
                             prepared.nodes[sourceRange.astStart + control!.astNode].parent => controlFlowAst
                             -1 => conditionIr!
                             UIntSize(0) => conditionStart!
+                            1000000 => conditionDistance!
                             expressionIrStart => conditionSearch!
                             conditionSearch! < expressionIrEnd -> while {
                                 results![conditionSearch!] => conditionCandidate
-                                (prepared.nodes[sourceRange.astStart + conditionCandidate.astNode].parent == controlFlowAst and prepared.nodes[sourceRange.astStart + conditionCandidate.astNode].start < prepared.nodes[sourceRange.astStart + control!.astNode].start) -> if {
+                                prepared.nodes[sourceRange.astStart + conditionCandidate.astNode].parent => conditionAncestor!
+                                1 => candidateConditionDistance!
+                                false => conditionBelongsToFlow!
+                                (conditionAncestor! >= 0 and not conditionBelongsToFlow!) -> while {
+                                    conditionAncestor! == controlFlowAst -> if { true => conditionBelongsToFlow! } else {
+                                        prepared.nodes[sourceRange.astStart + conditionAncestor!].parent => conditionAncestor!
+                                        candidateConditionDistance! + 1 => candidateConditionDistance!
+                                    }
+                                }
+                                (conditionBelongsToFlow! and prepared.nodes[sourceRange.astStart + conditionCandidate.astNode].start < prepared.nodes[sourceRange.astStart + control!.astNode].start) -> if {
                                     prepared.nodes[sourceRange.astStart + conditionCandidate.astNode].start => candidateStart
-                                    (conditionIr! < 0 or candidateStart > conditionStart!) -> if {
+                                    (conditionIr! < 0 or candidateConditionDistance! < conditionDistance! or (candidateConditionDistance! == conditionDistance! and candidateStart > conditionStart!)) -> if {
                                         conditionSearch! => conditionIr!
                                         candidateStart => conditionStart!
+                                        candidateConditionDistance! => conditionDistance!
                                     }
                                 }
                             conditionSearch! + 1 => conditionSearch!
+                        }
+                        (conditionIr! < 0 and control!.parent >= expressionIrStart and results![control!.parent].kind != 19) -> if {
+                            control!.parent => enclosingConditionIr!
+                            results![enclosingConditionIr!].parent => control!.parent
+                            enclosingConditionIr! => conditionIr!
                         }
                         (conditionIr! >= 0 and results![conditionIr!].kind == 9) -> while {
                             -1 => nestedConditionResult!
@@ -809,11 +825,6 @@ public lowerContext prepared: semanticContext.CompilationContext -> [TypedIrNode
                                     thenRegion! < 0 -> if { regionSearch! => thenRegion! } else { regionSearch! => elseRegion! }
                                 }
                                 regionSearch! + 1 => regionSearch!
-                            }
-                            (conditionIr! < 0 and control!.parent >= expressionIrStart and results![control!.parent].kind != 19) -> if {
-                                control!.parent => enclosingConditionIr!
-                                results![enclosingConditionIr!].parent => control!.parent
-                                enclosingConditionIr! => conditionIr!
                             }
                             conditionIr! => control!.operand0
                             thenRegion! => control!.operand1
@@ -1328,17 +1339,33 @@ public lowerContext prepared: semanticContext.CompilationContext -> [TypedIrNode
                             prepared.nodes[sourceRange.astStart + entryControl!.astNode].parent => entryControlFlowAst
                             -1 => entryConditionIr!
                             UIntSize(0) => entryConditionStart!
+                            1000000 => entryConditionDistance!
                             entryExpressionStart => entryConditionSearch!
                             entryConditionSearch! < entryExpressionEnd -> while {
                                 results![entryConditionSearch!] => entryConditionCandidate
-                                (prepared.nodes[sourceRange.astStart + entryConditionCandidate.astNode].parent == entryControlFlowAst and prepared.nodes[sourceRange.astStart + entryConditionCandidate.astNode].start < prepared.nodes[sourceRange.astStart + entryControl!.astNode].start) -> if {
+                                prepared.nodes[sourceRange.astStart + entryConditionCandidate.astNode].parent => entryConditionAncestor!
+                                1 => entryCandidateConditionDistance!
+                                false => entryConditionBelongsToFlow!
+                                (entryConditionAncestor! >= 0 and not entryConditionBelongsToFlow!) -> while {
+                                    entryConditionAncestor! == entryControlFlowAst -> if { true => entryConditionBelongsToFlow! } else {
+                                        prepared.nodes[sourceRange.astStart + entryConditionAncestor!].parent => entryConditionAncestor!
+                                        entryCandidateConditionDistance! + 1 => entryCandidateConditionDistance!
+                                    }
+                                }
+                                (entryConditionBelongsToFlow! and prepared.nodes[sourceRange.astStart + entryConditionCandidate.astNode].start < prepared.nodes[sourceRange.astStart + entryControl!.astNode].start) -> if {
                                     prepared.nodes[sourceRange.astStart + entryConditionCandidate.astNode].start => entryCandidateStart
-                                    (entryConditionIr! < 0 or entryCandidateStart > entryConditionStart!) -> if {
+                                    (entryConditionIr! < 0 or entryCandidateConditionDistance! < entryConditionDistance! or (entryCandidateConditionDistance! == entryConditionDistance! and entryCandidateStart > entryConditionStart!)) -> if {
                                         entryConditionSearch! => entryConditionIr!
                                         entryCandidateStart => entryConditionStart!
+                                        entryCandidateConditionDistance! => entryConditionDistance!
                                     }
                                 }
                                 entryConditionSearch! + 1 => entryConditionSearch!
+                            }
+                            (entryConditionIr! < 0 and entryControl!.parent >= entryExpressionStart and results![entryControl!.parent].kind != 19) -> if {
+                                entryControl!.parent => entryEnclosingConditionIr!
+                                results![entryEnclosingConditionIr!].parent => entryControl!.parent
+                                entryEnclosingConditionIr! => entryConditionIr!
                             }
                             (entryConditionIr! >= 0 and results![entryConditionIr!].kind == 9) -> while {
                                 -1 => entryNestedConditionResult!
@@ -1365,11 +1392,6 @@ public lowerContext prepared: semanticContext.CompilationContext -> [TypedIrNode
                                     entryThenRegion! < 0 -> if { entryRegionSearch! => entryThenRegion! } else { entryRegionSearch! => entryElseRegion! }
                                 }
                                 entryRegionSearch! + 1 => entryRegionSearch!
-                            }
-                            (entryConditionIr! < 0 and entryControl!.parent >= entryExpressionStart and results![entryControl!.parent].kind != 19) -> if {
-                                entryControl!.parent => entryEnclosingConditionIr!
-                                results![entryEnclosingConditionIr!].parent => entryControl!.parent
-                                entryEnclosingConditionIr! => entryConditionIr!
                             }
                             entryConditionIr! => entryControl!.operand0
                             entryThenRegion! => entryControl!.operand1

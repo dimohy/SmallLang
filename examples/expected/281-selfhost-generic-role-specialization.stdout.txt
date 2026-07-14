@@ -1,2 +1,2 @@
-generic role counts = errors:0,scalar:2,composite:1,roles:3,operators:4
+generic role counts = errors:0,scalar:2,composite:1,roles:3,operators:5
 generic role specialization = valid
