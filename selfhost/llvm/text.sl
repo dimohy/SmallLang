@@ -65,6 +65,53 @@ struct EmitContext {
     modules: [modules.ModuleIdentity; ~]
 }
 
+isDynamicArrayType node: typedIr.TypedIrNode -> Bool {
+    node.typeId >= 0 -> if { node.typeKind == 3 } else { node.typeOrigin == 13 }
+}
+
+isDictionaryType node: typedIr.TypedIrNode -> Bool {
+    node.typeId >= 0 -> if { node.typeKind == 5 } else { node.typeOrigin == 15 }
+}
+
+isNominalStructType node: typedIr.TypedIrNode -> Bool {
+    node.typeId >= 0 -> if {
+        node.typeKind == 1 and node.typeFlags % 2 == 1
+    } else {
+        node.typeOrigin == 0 or node.typeOrigin == 2
+    }
+}
+
+ownsType node: typedIr.TypedIrNode -> Bool {
+    node.typeId >= 0 -> if {
+        node.typeFlags % 2 == 1
+    } else {
+        node.typeOrigin == 13 or node.typeOrigin == 15 or node.typeOrigin == 0 or node.typeOrigin == 2
+    }
+}
+
+# Transitional public boundary used by the emitter and regressions. Canonical
+# kind/ownership wins whenever a type ID exists; the shallow branch remains
+# only for IR nodes whose migration is not complete yet.
+public writeType node: typedIr.TypedIrNode -> Unit {
+    node -> isDynamicArrayType -> if {
+        "%sl.array.i32" -> print
+    } else {
+    node -> isDictionaryType -> if {
+        "%sl.dict" -> print
+    } else {
+    node -> isNominalStructType -> if {
+        "%sl.struct.m$(node.typeModule)_s$(node.typeSymbol)" -> print
+    } else {
+        node.typeSymbol == 1 -> if { "%sl.text" -> print } else {
+            node.typeSymbol == 2 -> if { "i32" -> print } else {
+                node.typeSymbol == 23 -> if { "i1" -> print } else { "void" -> print }
+            }
+        }
+    }
+    }
+    }
+}
+
 prepare sources: move [Text; ~] -> EmitContext {
     sources -> typedIr.lower => ir!
     ir! -> typedIr.movesFrom => moves!
@@ -314,21 +361,6 @@ emitCore context: move EmitContext -> Unit {
         value == 13 => "D"
         value == 14 => "E"
         else => "F"
-    }
-    writeType node: typedIr.TypedIrNode -> Unit {
-        node.typeOrigin == 13 -> if {
-            "%sl.array.i32" -> print
-        } else {
-        node.typeOrigin == 15 -> if {
-            "%sl.dict" -> print
-        } else {
-        (node.typeOrigin == 0 or node.typeOrigin == 2) -> if {
-            "%sl.struct.m$(node.typeModule)_s$(node.typeSymbol)" -> print
-        } else {
-            node.typeSymbol -> llvmType -> print
-        }
-        }
-        }
     }
     mutableBindingRoot bindingIndex: Int -> Int {
         context.ir[bindingIndex] => binding
@@ -609,7 +641,7 @@ emitCore context: move EmitContext -> Unit {
             }
             false => ownedDropMoved!
             false => ownedDropHasPartialMoves!
-            (ownedDropCandidate.kind == 17 and (ownedDropCandidate.typeOrigin == 13 or ownedDropCandidate.typeOrigin == 15 or ownedDropCandidate.typeOrigin == 0 or ownedDropCandidate.typeOrigin == 2)) -> if {
+            (ownedDropCandidate.kind == 17 and (ownedDropCandidate -> ownsType)) -> if {
                 0 => ownedMoveIndex!
                 (ownedMoveIndex! < (context.moves -> len) and not ownedDropMoved!) -> while {
                     context.moves[ownedMoveIndex!] => ownedMove
@@ -625,17 +657,17 @@ emitCore context: move EmitContext -> Unit {
                     ownedMoveIndex! + 1 => ownedMoveIndex!
                 }
             }
-            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 13 and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
+            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate -> isDynamicArrayType) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!) = extractvalue %sl.array.i32 %v$(ownedDropCandidate.operand0), 0" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!))" -> println
             }
-            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeOrigin == 15 and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
+            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate -> isDictionaryType) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_keys = extractvalue %sl.dict %v$(ownedDropCandidate.operand0), 0" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_keys)" -> println
                 "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values = extractvalue %sl.dict %v$(ownedDropCandidate.operand0), 1" -> println
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values)" -> println
             }
-            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate.typeOrigin == 0 or ownedDropCandidate.typeOrigin == 2) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
+            (ownedDropBeforeEdge! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate -> isNominalStructType) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 DropGlueRequest {
                     typeOrigin: ownedDropCandidate.typeOrigin
                     typeModule: ownedDropCandidate.typeModule

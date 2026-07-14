@@ -1,0 +1,2 @@
+array=%sl.array.i32
+struct=%sl.struct.m0_s0

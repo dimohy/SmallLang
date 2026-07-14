@@ -35,6 +35,7 @@ public struct TypedIrNode {
     typeModule: Int
     typeSymbol: Int
     typeId: Int
+    typeKind: Int
     typeFlags: Int
     payloadToken: Int
     opcode: Int
@@ -82,6 +83,7 @@ public struct CoroutineFrameSlot {
     typeModule: Int
     typeSymbol: Int
     typeId: Int
+    typeKind: Int
     typeFlags: Int
     flags: Int
 }
@@ -92,7 +94,12 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
     recursiveTypes.types -> each recursiveSemanticType {
         recursiveSemanticTypes! -> push(recursiveSemanticType)
     }
-    recursiveSemanticTypes! -> typeIds.classify => recursiveTypeFlags!
+    [typeIds.SemanticType; ~] => classificationTypes!
+    recursiveSemanticTypes! -> each classificationType { classificationTypes! -> push(classificationType) }
+    [typeIds.NominalField; ~] => classificationFields!
+    recursiveTypes.fields -> each classificationField { classificationFields! -> push(classificationField) }
+    typeIds.TypeClassificationRequest { types: classificationTypes!, fields: classificationFields! } => classificationRequest!
+    classificationRequest! -> typeIds.classify => recursiveTypeFlags!
     [typeIds.TypeReference; ~] => recursiveReferences!
     recursiveTypes.references -> each recursiveReference {
         recursiveReferences! -> push(recursiveReference)
@@ -245,6 +252,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         typeModule: functionResultModule!
                         typeSymbol: functionResultSymbol!
                         typeId: -1
+                        typeKind: -1
                         typeFlags: 0
                         payloadToken: function.nameToken
                         opcode: -1
@@ -264,6 +272,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         typeModule: functionResultModule!
                         typeSymbol: functionResultSymbol!
                         typeId: -1
+                        typeKind: -1
                         typeFlags: 0
                         payloadToken: -1
                         opcode: -1
@@ -285,6 +294,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             typeModule: parameterModule!
                             typeSymbol: parameterTypeSymbol!
                             typeId: -1
+                            typeKind: -1
                             typeFlags: 0
                             payloadToken: parameter.nameToken
                             opcode: -1
@@ -356,6 +366,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                         typeModule: bindingType.targetModule
                                         typeSymbol: bindingType.targetSymbol
                                         typeId: -1
+                                        typeKind: -1
                                         typeFlags: 0
                                         payloadToken: bindingAst.kind == 48 -> if { bindingAst.secondaryToken } else { bindingAst.payloadToken }
                                         opcode: -1
@@ -461,6 +472,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: controlTypeModule!
                                     typeSymbol: controlTypeSymbol!
                                     typeId: -1
+                                    typeKind: -1
                                     typeFlags: 0
                                     payloadToken: expression.payloadToken
                                     opcode: controlOpcode!
@@ -542,6 +554,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: expressionTypeModule!
                                     typeSymbol: expressionTypeSymbol!
                                     typeId: recursiveExpressionTypeId!
+                                    typeKind: recursiveExpressionTypeId! < 0 -> if { -1 } else { recursiveSemanticTypes![recursiveExpressionTypeId!].kind }
                                     typeFlags: recursiveExpressionTypeId! < 0 -> if { 0 } else { recursiveTypeFlags![recursiveExpressionTypeId!] }
                                     payloadToken: expression.payloadToken
                                     opcode: expression.operatorKind
@@ -806,6 +819,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     typeModule: -1
                     typeSymbol: 2
                     typeId: -1
+                    typeKind: -1
                     typeFlags: 0
                     payloadToken: -1
                     opcode: -1
@@ -876,6 +890,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                         typeModule: entryBindingType.targetModule
                                         typeSymbol: entryBindingType.targetSymbol
                                         typeId: -1
+                                        typeKind: -1
                                         typeFlags: 0
                                         payloadToken: entryBindingAst.kind == 48 -> if { entryBindingAst.secondaryToken } else { entryBindingAst.payloadToken }
                                         opcode: -1
@@ -979,6 +994,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: entryControlTypeModule!
                                     typeSymbol: entryControlTypeSymbol!
                                     typeId: -1
+                                    typeKind: -1
                                     typeFlags: 0
                                     payloadToken: entryExpression.payloadToken
                                     opcode: entryControlOpcode!
@@ -1060,6 +1076,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: entryExpressionTypeModule!
                                     typeSymbol: entryExpressionTypeSymbol!
                                     typeId: recursiveEntryExpressionTypeId!
+                                    typeKind: recursiveEntryExpressionTypeId! < 0 -> if { -1 } else { recursiveSemanticTypes![recursiveEntryExpressionTypeId!].kind }
                                     typeFlags: recursiveEntryExpressionTypeId! < 0 -> if { 0 } else { recursiveTypeFlags![recursiveEntryExpressionTypeId!] }
                                     payloadToken: entryExpression.payloadToken
                                     opcode: entryExpression.operatorKind
@@ -1376,6 +1393,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                         recursiveReferences![memberTypeReferenceIndex!] => memberTypeReference
                                         (memberTypeReference.status == 0 and memberTypeReference.sourceModule == memberOwnerSource! and memberTypeReference.typeAst == memberField.typeNode) -> if {
                                             memberTypeReference.typeId => member!.typeId
+                                            recursiveSemanticTypes![memberTypeReference.typeId].kind => member!.typeKind
                                             recursiveTypeFlags![memberTypeReference.typeId] => member!.typeFlags
                                         }
                                         memberTypeReferenceIndex! + 1 => memberTypeReferenceIndex!
@@ -1413,6 +1431,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
         recursiveExpressions! -> each recursiveExpression {
             (recursiveExpression.status == 0 and recursiveExpression.sourceModule == recursiveIr!.sourceModule and recursiveExpression.astNode == recursiveIr!.astNode) -> if {
                 recursiveExpression.typeId => recursiveIr!.typeId
+                recursiveSemanticTypes![recursiveExpression.typeId].kind => recursiveIr!.typeKind
                 recursiveTypeFlags![recursiveExpression.typeId] => recursiveIr!.typeFlags
             }
         }
@@ -1424,6 +1443,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
         results![canonicalBindingIndex!] => canonicalBinding!
         (canonicalBinding!.kind == 17 and canonicalBinding!.operand0 >= 0 and results![canonicalBinding!.operand0].typeId >= 0) -> if {
             results![canonicalBinding!.operand0].typeId => canonicalBinding!.typeId
+            results![canonicalBinding!.operand0].typeKind => canonicalBinding!.typeKind
             results![canonicalBinding!.operand0].typeFlags => canonicalBinding!.typeFlags
             canonicalBinding! => results![canonicalBindingIndex!]
         }
@@ -1637,6 +1657,7 @@ public frameSlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
                         typeModule: definition.typeModule
                         typeSymbol: definition.typeSymbol
                         typeId: definition.typeId
+                        typeKind: definition.typeKind
                         typeFlags: definition.typeFlags
                         flags: frameFlags!
                     })
@@ -1668,6 +1689,7 @@ public destroySlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
             typeModule: -1
             typeSymbol: -1
             typeId: -1
+            typeKind: -1
             typeFlags: 0
             flags: 4
         })

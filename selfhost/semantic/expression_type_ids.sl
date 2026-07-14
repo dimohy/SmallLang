@@ -20,6 +20,7 @@ public struct ExpressionTypeId {
 public struct ExpressionTypeIdSet {
     types: [typeIds.SemanticType; ~]
     references: [typeIds.TypeReference; ~]
+    fields: [typeIds.NominalField; ~]
     expressions: [ExpressionTypeId; ~]
 }
 
@@ -38,6 +39,10 @@ public resolve sources: [Text; ~] -> ExpressionTypeIdSet {
     [typeIds.TypeReference; ~] => references!
     semantic!.references -> each reference {
         references! -> push(reference)
+    }
+    [typeIds.NominalField; ~] => fields!
+    semantic!.fields -> each field {
+        fields! -> push(field)
     }
     [ExpressionTypeId; ~] => expressions!
 
@@ -449,6 +454,6 @@ public resolve sources: [Text; ~] -> ExpressionTypeIdSet {
         }
     }
 
-    ExpressionTypeIdSet { types: types!, references: references!, expressions: expressions! } => result!
+    ExpressionTypeIdSet { types: types!, references: references!, fields: fields!, expressions: expressions! } => result!
     result!
 }

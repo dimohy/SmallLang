@@ -31,9 +31,20 @@ public struct TypeReference {
     status: Int
 }
 
+public struct NominalField {
+    ownerType: Int
+    sourceModule: Int
+    ownerSymbol: Int
+    fieldSymbol: Int
+    ordinal: Int
+    fieldType: Int
+    status: Int
+}
+
 public struct SemanticTypeSet {
     types: [SemanticType; ~]
     references: [TypeReference; ~]
+    fields: [NominalField; ~]
 }
 
 public struct SpecializationRequest {
@@ -49,13 +60,22 @@ public struct SpecializationResult {
     status: Int
 }
 
+public struct TypeClassificationRequest {
+    types: [SemanticType; ~]
+    fields: [NominalField; ~]
+}
+
 # Canonical ownership traits derived from the recursive type arena.
 # Bit 0 means the value owns destruction responsibility. Bit 1 means that
 # responsibility reaches heap-backed storage. Child IDs always precede their
 # parents, so fixed arrays and nominal applications are classified bottom-up.
-public classify types: [SemanticType; ~] -> [Int; ~] {
+public classify request: TypeClassificationRequest -> [Int; ~] {
+    [SemanticType; ~] => types!
+    request.types -> each currentType { types! -> push(currentType) }
+    [NominalField; ~] => fields!
+    request.fields -> each currentField { fields! -> push(currentField) }
     [Int; ~] => traits!
-    types -> each current {
+    types! -> each current {
         false => owns!
         false => reachesHeap!
         (current.kind == 3 or current.kind == 5 or current.kind == 6) -> if {
@@ -80,6 +100,44 @@ public classify types: [SemanticType; ~] -> [Int; ~] {
         reachesHeap! -> if { value! + 2 => value! }
         traits! -> push(value!)
     }
+    true => changed!
+    changed! -> while {
+        false => changed!
+        0 => typeIndex!
+        typeIndex! < (types! -> len) -> while {
+            types![typeIndex!] => current
+            traits![typeIndex!] => value!
+            value! % 2 == 1 => owns!
+            (value! / 2) % 2 == 1 => reachesHeap!
+            (current.kind == 4 or current.kind == 7) -> if {
+                current.first >= 0 -> if {
+                    traits![current.first] % 2 == 1 -> if { true => owns! }
+                    (traits![current.first] / 2) % 2 == 1 -> if { true => reachesHeap! }
+                }
+                current.second >= 0 -> if {
+                    traits![current.second] % 2 == 1 -> if { true => owns! }
+                    (traits![current.second] / 2) % 2 == 1 -> if { true => reachesHeap! }
+                }
+            }
+            0 => fieldIndex!
+            fieldIndex! < (fields! -> len) -> while {
+                fields![fieldIndex!] => field
+                (field.status == 0 and field.ownerType == typeIndex! and field.fieldType >= 0) -> if {
+                    traits![field.fieldType] % 2 == 1 -> if { true => owns! }
+                    (traits![field.fieldType] / 2) % 2 == 1 -> if { true => reachesHeap! }
+                }
+                fieldIndex! + 1 => fieldIndex!
+            }
+            0 => nextValue!
+            owns! -> if { nextValue! + 1 => nextValue! }
+            reachesHeap! -> if { nextValue! + 2 => nextValue! }
+            nextValue! != value! -> if {
+                nextValue! => traits![typeIndex!]
+                true => changed!
+            }
+            typeIndex! + 1 => typeIndex!
+        }
+    }
     traits!
 }
 
@@ -91,6 +149,7 @@ public resolve sources: [Text; ~] -> SemanticTypeSet {
     sources -> qualified.resolve => qualifiedResults!
     [SemanticType; ~] => semanticTypes!
     [TypeReference; ~] => references!
+    [NominalField; ~] => fields!
 
     # Seed builtins in their stable nominal-symbol order. Expression inference
     # can therefore use the same id without an adapter or encounter-order map.
@@ -310,9 +369,51 @@ public resolve sources: [Text; ~] -> SemanticTypeSet {
                 termIndex! + 1 => termIndex!
             }
         }
+        0 => fieldSymbolIndex!
+        fieldSymbolIndex! < (table! -> len) -> while {
+            table![fieldSymbolIndex!] => fieldSymbol
+            (fieldSymbol.kind == 26 and fieldSymbol.parent >= 0 and fieldSymbol.typeNode >= 0) -> if {
+                -1 => ownerType!
+                0 => ownerTypeSearch!
+                (ownerTypeSearch! < (semanticTypes! -> len) and ownerType! < 0) -> while {
+                    semanticTypes![ownerTypeSearch!] => ownerCandidate
+                    (ownerCandidate.kind == 1 and (ownerCandidate.origin == 0 or ownerCandidate.origin == 2) and ownerCandidate.module == sourceIndex! and ownerCandidate.symbol == fieldSymbol.parent) -> if {
+                        ownerTypeSearch! => ownerType!
+                    }
+                    ownerTypeSearch! + 1 => ownerTypeSearch!
+                }
+                -1 => fieldType!
+                0 => fieldTermSearch!
+                fieldTermSearch! < (terms! -> len) -> while {
+                    (terms![fieldTermSearch!].astNode == fieldSymbol.typeNode and mapped![fieldTermSearch!] >= 0) -> if {
+                        mapped![fieldTermSearch!] => fieldType!
+                    }
+                    fieldTermSearch! + 1 => fieldTermSearch!
+                }
+                0 => fieldOrdinal!
+                0 => priorFieldIndex!
+                priorFieldIndex! < fieldSymbolIndex! -> while {
+                    table![priorFieldIndex!] => priorField
+                    (priorField.kind == 26 and priorField.parent == fieldSymbol.parent) -> if { fieldOrdinal! + 1 => fieldOrdinal! }
+                    priorFieldIndex! + 1 => priorFieldIndex!
+                }
+                (ownerType! >= 0 and fieldType! >= 0) -> if {
+                    fields! -> push(NominalField {
+                        ownerType: ownerType!
+                        sourceModule: sourceIndex!
+                        ownerSymbol: fieldSymbol.parent
+                        fieldSymbol: fieldSymbolIndex!
+                        ordinal: fieldOrdinal!
+                        fieldType: fieldType!
+                        status: semanticTypes![fieldType!].status
+                    })
+                }
+            }
+            fieldSymbolIndex! + 1 => fieldSymbolIndex!
+        }
         sourceIndex! + 1 => sourceIndex!
     }
-    SemanticTypeSet { types: semanticTypes!, references: references! } => result!
+    SemanticTypeSet { types: semanticTypes!, references: references!, fields: fields! } => result!
     result!
 }
 

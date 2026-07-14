@@ -1,0 +1,1 @@
+nominal fields=1, owned calls=1, bindings=1, frames=1

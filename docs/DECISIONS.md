@@ -4570,4 +4570,51 @@ zero warnings and errors. The representative typed-IR/move/async slice passed
 eight-worker runner passed all 404 cases in 429.8 seconds with flushed
 `n/404` progress records.
 
+## D146 - Nominal Field Graphs Join Canonical Type Identity
+
+Status: nominal ownership graph and first LLVM consumer implemented
+Date: 2026-07-14
+
+The canonical type context now records each nominal declaration field as an
+edge from owner type ID to field type ID. An edge also retains declaration
+module, owner and field symbols, source-order ordinal, and resolution status.
+The field type comes directly from the source's completed `TypeTerm -> typeId`
+map, so graph construction does not re-resolve syntax or search the global
+reference table.
+
+Ownership classification is a monotone fixed point over both ordinary type
+children and nominal field edges. Heap reachability can therefore flow from a
+dynamic array through `Result<[Int; ~], Text>` and then through an enclosing
+`Envelope` struct. Applications that refer back to a nominal type are updated
+on later iterations without depending on declaration order. Example 290
+proves the field edge and follows the resulting owned/heap traits through an
+imported generic call, its binding, and an `await`-crossing coroutine slot.
+
+`TypedIrNode.typeKind` carries the canonical arena kind beside `typeId` and
+`typeFlags`; bindings, member fields, and coroutine slots preserve it. LLVM
+type selection now follows canonical kind and ownership whenever `typeId` is
+available. Only not-yet-migrated nodes use the explicit shallow compatibility
+branch. The central edge-cleanup selector likewise prefers canonical array,
+dictionary, nominal, and owned facts. Example 291 deliberately corrupts the
+legacy origin and scalar symbol while retaining the canonical fields, then
+proves LLVM still selects `%sl.array.i32` and the correct struct type.
+
+The first field-graph implementation searched all global references once per
+field and made the 406-case run take 599.9 seconds. Reusing each source's local
+completed term map reduced the final run to 495.9 seconds; the representative
+LLVM dynamic-array case took 83.7 seconds alone. A reusable whole-compilation
+analysis context is still needed to remove repeated semantic passes across
+typed IR and LLVM rather than optimizing individual scans indefinitely.
+
+This remains a partial migration and does not promote a roadmap gate. LLVM
+storage size/alignment, aggregate layouts, recursive drop-glue tasks, and
+generic nominal-application lowering still use shallow fields in substantial
+paths. Those consumers must use the canonical type and field graph before the
+compatibility fields can be removed. The count remains 48.5/60 (80.8%).
+
+Regression evidence on 2026-07-14: the Release solution build completed with
+zero warnings and errors. The recursive-type/ownership/LLVM focused slice
+passed 11/11. The optimized coordinated eight-worker runner passed all 406
+cases in 495.9 seconds with flushed `n/406` progress records.
+
 

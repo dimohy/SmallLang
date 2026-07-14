@@ -656,9 +656,13 @@ into typed IR. Dynamic-array, dictionary, box, and local/imported struct
 literals participate in this boundary. Canonical ownership traits now fold
 through fixed arrays and nominal applications, propagate across calls,
 bindings, and member fields, govern partial-member move recognition, and mark
-heap-reaching coroutine slots that cross `await`. Nominal declaration field
-graphs, capability/effect enforcement, and LLVM layout/drop lowering still
-need to consume the recursive model consistently, and role-specific
+heap-reaching coroutine slots that cross `await`. Nominal declaration fields
+now form canonical owner-to-field type edges, and a fixed-point propagates
+ownership through nested structs and generic applications. Typed IR carries
+the canonical kind, and LLVM type/edge-cleanup selection prefers canonical
+facts when an ID exists. LLVM size/alignment, complete aggregate layout,
+recursive drop glue, generic application lowering, capability/effect
+enforcement, and role-specific
 ownership/effect checks still keep semantic parity partial;
 the canonical gate count therefore remains 42 complete, 13 partial, and 5
 missing (48.5/60, 80.8%).
