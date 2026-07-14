@@ -482,8 +482,11 @@ Notes:
 - A source file may declare one namespace before imports and function
   declarations. Top-level single-segment function declarations in that file are
   qualified by the namespace.
-- Imports may alias a path, such as `import sys.runtime as rt`. A path beginning
-  with the alias is resolved to the imported path before semantic analysis.
+- Imports use the path's final segment as their default alias, so
+  `import smalllang.compiler.lexer` is equivalent to
+  `import smalllang.compiler.lexer as lexer`. An explicit `as` may select a
+  different alias, such as `import sys.runtime as rt`. Default and explicit
+  aliases share the same duplicate-alias diagnostic.
 - A `smalllang.project` manifest names the project and either one `root` source
   or a nonempty `products` map. The forms are mutually exclusive. Product roots
   are confined existing `.sl` files. `smalllang build` searches ancestors;

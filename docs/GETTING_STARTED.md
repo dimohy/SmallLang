@@ -35,8 +35,9 @@ to the accepted language specification and decision log.
 - parenthesized calls with `function(value)`
 - SmallLang standard library functions `sys.io.print`, `sys.io.println`, and
   `sys.io.readInt` with global `print`, `println`, and `readInt` aliases
-- `namespace` declarations and `import ... as ...` aliases for standard library
-  module code
+- `namespace` declarations and imports whose last path segment is the default
+  alias (`import sample.math`), with optional explicit renaming through
+  `import sample.math as mathApi`
 - integer input with `"n = ? " -> readInt => n` or
   `"n = ? " -> sys.io.readInt => n`
 - line output with `value -> println` or `value -> sys.io.println`
@@ -391,6 +392,9 @@ dotnet run --project tests\SmallLang.ExampleTests\SmallLang.ExampleTests.csproj 
 The runner uses up to eight isolated test workers by default. It starts the
 expensive self-host LLVM cases first and uses a load-balancing partitioner so a
 worker that finishes a short case immediately takes the next remaining case.
+Bootstrap phases are printed as `[bootstrap n/total]`. Every scheduled case is
+printed as `[start n/total]`, and every completion is flushed immediately as
+`[n/total] PASS|FAIL name (seconds)`, so long LLVM runs never appear idle.
 Use `--jobs 1` for deterministic sequential diagnosis or an explicit positive
 worker count when measuring another machine. Compiler bootstrap and
 grammar-table determinism are still checked once before the parallel section.

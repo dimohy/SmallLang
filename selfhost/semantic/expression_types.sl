@@ -470,6 +470,178 @@ public infer sources: [Text; ~] -> [ExpressionType; ~] {
                 }
                 callIndex! + 1 => callIndex!
             }
+            # A generic role item is fixed from the source before the caller
+            # body is checked. This is deliberately outside-in: body uses do
+            # not participate in selecting a type argument.
+            0 => roleReferenceIndex!
+            roleReferenceIndex! < (resolvedNames! -> len) -> while {
+                resolvedNames![roleReferenceIndex!] => roleReference
+                table![roleReference.symbol] => roleValueSymbol
+                (roleValueSymbol.kind == 35 and nodes![roleValueSymbol.astNode].kind == 48) -> if {
+                    -1 => roleValueTypeIndex!
+                    0 => roleValueTypeSearch!
+                    roleValueTypeSearch! < (inferred! -> len) -> while {
+                        inferred![roleValueTypeSearch!] => roleValueTypeCandidate
+                        (roleValueTypeCandidate.sourceModule == sourceIndex! and roleValueTypeCandidate.astNode == roleReference.astNode) -> if {
+                            roleValueTypeSearch! => roleValueTypeIndex!
+                        }
+                        roleValueTypeSearch! + 1 => roleValueTypeSearch!
+                    }
+                    -1 => roleCallIndex!
+                    0 => roleCallSearch!
+                    roleCallSearch! < (moduleCalls! -> len) -> while {
+                        moduleCalls![roleCallSearch!] => roleCallCandidate
+                        (roleCallCandidate.sourceModule == sourceIndex! and roleCallCandidate.callAst == roleValueSymbol.astNode and roleCallCandidate.status == 0 and roleCallCandidate.targetSourceModule >= 0) -> if {
+                            roleCallSearch! => roleCallIndex!
+                        }
+                        roleCallSearch! + 1 => roleCallSearch!
+                    }
+                    (roleValueTypeIndex! >= 0 and roleCallIndex! >= 0) -> if {
+                        moduleCalls![roleCallIndex!] => roleCall
+                        sources[roleCall.targetSourceModule] -> symbols.collect => roleTargetTable!
+                        roleTargetTable![roleCall.functionSymbol] => roleFunction
+                        (roleFunction.secondaryTypeNode >= 0 and roleFunction.blockTypeNode >= 0) -> if {
+                            -1 => roleSourceTypeIndex!
+                            1000000 => roleSourceDistance!
+                            0 => roleSourceSearch!
+                            roleSourceSearch! < (inferred! -> len) -> while {
+                                inferred![roleSourceSearch!] => roleSourceTypeCandidate
+                                roleSourceTypeCandidate.sourceModule == sourceIndex! -> if {
+                                    nodes![roleSourceTypeCandidate.astNode] => roleSourceNode
+                                    roleSourceNode.start + roleSourceNode.length <= tokens![nodes![roleCall.callAst].payloadToken].span.start -> if {
+                                        roleSourceNode.parent => roleSourceAncestor!
+                                        1 => roleDistance!
+                                        false => belongsToRole!
+                                        (roleSourceAncestor! >= 0 and not belongsToRole!) -> while {
+                                            roleSourceAncestor! == roleCall.callAst -> if {
+                                                true => belongsToRole!
+                                            } else {
+                                                nodes![roleSourceAncestor!].parent => roleSourceAncestor!
+                                                roleDistance! + 1 => roleDistance!
+                                            }
+                                        }
+                                        (belongsToRole! and roleDistance! < roleSourceDistance!) -> if {
+                                            roleSourceSearch! => roleSourceTypeIndex!
+                                            roleDistance! => roleSourceDistance!
+                                        }
+                                    }
+                                }
+                                roleSourceSearch! + 1 => roleSourceSearch!
+                            }
+                            roleSourceTypeIndex! >= 0 -> if {
+                                inferred![roleSourceTypeIndex!] => roleSourceType
+                                -1 => roleInputNominalIndex!
+                                -1 => roleBlockNominalIndex!
+                                0 => roleNominalSearch!
+                                roleNominalSearch! < (nominal! -> len) -> while {
+                                    nominal![roleNominalSearch!] => roleNominal
+                                    (roleNominal.sourceModule == roleCall.targetSourceModule and roleNominal.typeAst == roleFunction.typeNode) -> if { roleNominalSearch! => roleInputNominalIndex! }
+                                    (roleNominal.sourceModule == roleCall.targetSourceModule and roleNominal.typeAst == roleFunction.blockTypeNode) -> if { roleNominalSearch! => roleBlockNominalIndex! }
+                                    roleNominalSearch! + 1 => roleNominalSearch!
+                                }
+                                -1 => roleInputCompositeIndex!
+                                -1 => roleBlockCompositeIndex!
+                                0 => roleCompositeSearch!
+                                roleCompositeSearch! < (composite! -> len) -> while {
+                                    composite![roleCompositeSearch!] => roleComposite
+                                    (roleComposite.sourceModule == roleCall.targetSourceModule and roleComposite.typeAst == roleFunction.typeNode) -> if { roleCompositeSearch! => roleInputCompositeIndex! }
+                                    (roleComposite.sourceModule == roleCall.targetSourceModule and roleComposite.typeAst == roleFunction.blockTypeNode) -> if { roleCompositeSearch! => roleBlockCompositeIndex! }
+                                    roleCompositeSearch! + 1 => roleCompositeSearch!
+                                }
+
+                                -1 => specializedRoleOrigin!
+                                -1 => specializedRoleModule!
+                                -1 => specializedRoleSymbol!
+                                -1 => specializedRoleKeyOrigin!
+                                -1 => specializedRoleKeyModule!
+                                -1 => specializedRoleValueOrigin!
+                                -1 => specializedRoleValueModule!
+
+                                roleBlockNominalIndex! >= 0 -> if {
+                                    nominal![roleBlockNominalIndex!] => roleBlockNominal
+                                    roleBlockNominal.origin == 3 -> if {
+                                        roleInputNominalIndex! >= 0 -> if {
+                                            nominal![roleInputNominalIndex!] => roleInputNominal
+                                            (roleInputNominal.origin == 3 and roleInputNominal.targetSymbol == roleBlockNominal.targetSymbol) -> if {
+                                                roleSourceType.origin => specializedRoleOrigin!
+                                                roleSourceType.targetModule => specializedRoleModule!
+                                                roleSourceType.targetSymbol => specializedRoleSymbol!
+                                                roleSourceType.keyOrigin => specializedRoleKeyOrigin!
+                                                roleSourceType.keyModule => specializedRoleKeyModule!
+                                                roleSourceType.valueOrigin => specializedRoleValueOrigin!
+                                                roleSourceType.valueModule => specializedRoleValueModule!
+                                            }
+                                        }
+                                        roleInputCompositeIndex! >= 0 -> if {
+                                            composite![roleInputCompositeIndex!] => roleInputComposite
+                                            roleInputComposite.kind == 5 -> if {
+                                                (roleInputComposite.keyOrigin == 3 and roleInputComposite.keySymbol == roleBlockNominal.targetSymbol and roleSourceType.origin == 15) -> if {
+                                                    roleSourceType.keyOrigin => specializedRoleOrigin!
+                                                    roleSourceType.keyModule => specializedRoleModule!
+                                                    roleSourceType.targetModule => specializedRoleSymbol!
+                                                }
+                                                (roleInputComposite.valueOrigin == 3 and roleInputComposite.valueSymbol == roleBlockNominal.targetSymbol and roleSourceType.origin == 15) -> if {
+                                                    roleSourceType.valueOrigin => specializedRoleOrigin!
+                                                    roleSourceType.valueModule => specializedRoleModule!
+                                                    roleSourceType.targetSymbol => specializedRoleSymbol!
+                                                }
+                                            } else {
+                                                (roleInputComposite.elementOrigin == 3 and roleInputComposite.elementSymbol == roleBlockNominal.targetSymbol and roleSourceType.origin == 10 + roleInputComposite.kind) -> if {
+                                                    roleSourceType.targetModule == -1 -> if { 1 } else {
+                                                        roleSourceType.targetModule == sourceIndex! -> if { 0 } else { 2 }
+                                                    } => specializedRoleOrigin!
+                                                    roleSourceType.targetModule => specializedRoleModule!
+                                                    roleSourceType.targetSymbol => specializedRoleSymbol!
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                (specializedRoleOrigin! < 0 and roleBlockCompositeIndex! >= 0 and roleInputCompositeIndex! >= 0) -> if {
+                                    composite![roleBlockCompositeIndex!] => roleBlockComposite
+                                    composite![roleInputCompositeIndex!] => roleInputComposite
+                                    false => sameRoleComposite!
+                                    (roleBlockComposite.kind == roleInputComposite.kind and roleSourceType.origin == 10 + roleInputComposite.kind) -> if {
+                                        roleInputComposite.kind == 5 -> if {
+                                            (roleInputComposite.keyOrigin == 3 and roleBlockComposite.keyOrigin == 3 and roleInputComposite.keySymbol == roleBlockComposite.keySymbol and roleInputComposite.valueOrigin == 3 and roleBlockComposite.valueOrigin == 3 and roleInputComposite.valueSymbol == roleBlockComposite.valueSymbol) -> if {
+                                                true => sameRoleComposite!
+                                            }
+                                        } else {
+                                            (roleInputComposite.elementOrigin == 3 and roleBlockComposite.elementOrigin == 3 and roleInputComposite.elementSymbol == roleBlockComposite.elementSymbol) -> if {
+                                                true => sameRoleComposite!
+                                            }
+                                        }
+                                    }
+                                    sameRoleComposite! -> if {
+                                        roleSourceType.origin => specializedRoleOrigin!
+                                        roleSourceType.targetModule => specializedRoleModule!
+                                        roleSourceType.targetSymbol => specializedRoleSymbol!
+                                        roleSourceType.keyOrigin => specializedRoleKeyOrigin!
+                                        roleSourceType.keyModule => specializedRoleKeyModule!
+                                        roleSourceType.valueOrigin => specializedRoleValueOrigin!
+                                        roleSourceType.valueModule => specializedRoleValueModule!
+                                    }
+                                }
+                                specializedRoleOrigin! >= 0 -> if {
+                                    inferred![roleValueTypeIndex!] => currentRoleType!
+                                    (currentRoleType!.origin != specializedRoleOrigin! or currentRoleType!.targetModule != specializedRoleModule! or currentRoleType!.targetSymbol != specializedRoleSymbol! or currentRoleType!.keyOrigin != specializedRoleKeyOrigin! or currentRoleType!.keyModule != specializedRoleKeyModule! or currentRoleType!.valueOrigin != specializedRoleValueOrigin! or currentRoleType!.valueModule != specializedRoleValueModule!) -> if {
+                                        specializedRoleOrigin! => currentRoleType!.origin
+                                        specializedRoleModule! => currentRoleType!.targetModule
+                                        specializedRoleSymbol! => currentRoleType!.targetSymbol
+                                        specializedRoleKeyOrigin! => currentRoleType!.keyOrigin
+                                        specializedRoleKeyModule! => currentRoleType!.keyModule
+                                        specializedRoleValueOrigin! => currentRoleType!.valueOrigin
+                                        specializedRoleValueModule! => currentRoleType!.valueModule
+                                        currentRoleType! => inferred![roleValueTypeIndex!]
+                                        true => changed!
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                roleReferenceIndex! + 1 => roleReferenceIndex!
+            }
             0 => bindingSymbolIndex!
             bindingSymbolIndex! < (table! -> len) -> while {
                 table![bindingSymbolIndex!] => bindingSymbol

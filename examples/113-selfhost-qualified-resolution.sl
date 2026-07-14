@@ -1,4 +1,4 @@
-import smalllang.compiler.semantic.qualified as qualified
+import smalllang.compiler.semantic.qualified
 
 main {
     [
@@ -8,7 +8,7 @@ main {
         """,
         """
         namespace app.main
-        import sample.math as math
+        import sample.math
         main {
             math.Number
         }

@@ -1,0 +1,1 @@
+default import alias collision = valid

@@ -197,14 +197,19 @@ typed IR retains the call, result binding, and nested body operation.
 proves that the source expression is selected only from the region before the
 role target, a mismatched source emits code 6, and role syntax targeting an
 ordinary function without a block input emits code 17. Runtime calls nested in
-the caller block are excluded from source-module lookup. The semantic checkbox
-remains open until generic block-item specialization, ownership/capability
-escape, and effect rules have matching self-host diagnostics.
+the caller block are excluded from source-module lookup.
+[`281-selfhost-generic-role-specialization.sl`](../examples/281-selfhost-generic-role-specialization.sl)
+proves outside-in generic specialization for scalar `T`, `[T; ~] -> item: T`,
+an imported role reached through a default import alias, caller-body operators,
+and typed IR. The semantic checkbox remains open until arbitrary nested generic
+substitution, ownership/capability escape, and effect rules have matching
+self-host diagnostics.
 
 Regression evidence on 2026-07-14: the Release solution build completed with
-zero warnings and errors. After adding lexical block items and the self-host
-block-input contract slice, the coordinated eight-worker runner passed all 393
-cases plus byte-for-byte grammar table determinism in 369.3 seconds.
+zero warnings and errors. After adding generic role-item specialization,
+default import aliases, and counted test progress, the coordinated eight-worker
+runner passed all 396 cases plus byte-for-byte grammar table determinism in
+390.6 seconds.
 The canonical roadmap remains 42 complete, 13 partial, and 5 missing gates
 (48.5/60, 80.8%). This partial role-block slice does not promote a roadmap gate.
 The common foundation baseline is commit `d2b07db`; self-host semantic/IR

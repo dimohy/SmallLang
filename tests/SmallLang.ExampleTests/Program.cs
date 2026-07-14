@@ -61,6 +61,8 @@ var compilerDll = Path.Combine(
     "SmallLang.Compiler.dll");
 if (!skipBootstrap)
 {
+    Console.WriteLine("[bootstrap 1/2] Building the Release compiler...");
+    Console.Out.Flush();
     var compilerBuild = Run(
         "dotnet",
         ["build", compilerProject, "-c", "Release", "--nologo", "--no-restore"],
@@ -73,7 +75,11 @@ if (!skipBootstrap)
         Console.Error.WriteLine(compilerBuild.Stderr);
         return 1;
     }
+    Console.WriteLine("[bootstrap 1/2] PASS Release compiler build");
+    Console.Out.Flush();
 
+    Console.WriteLine("[bootstrap 2/2] Generating and verifying the grammar table...");
+    Console.Out.Flush();
     var generatedGrammarPath = Path.Combine(artifactsDir, "smalllang_grammar.generated.sl");
     var grammarBuild = Run(
         "dotnet",
@@ -97,7 +103,8 @@ if (!skipBootstrap)
         Console.Error.WriteLine("FAIL generated grammar table is stale; run `smalllang grammar build`");
         return 1;
     }
-    Console.WriteLine("PASS grammar/table-determinism");
+    Console.WriteLine("[bootstrap 2/2] PASS grammar/table-determinism");
+    Console.Out.Flush();
 }
 else if (!File.Exists(compilerDll))
 {
@@ -138,7 +145,34 @@ if (filters.Count > 0 && expectedFiles.Length + diagnosticFiles.Length == 0)
 }
 
 var failures = 0;
-Console.WriteLine($"Running {expectedFiles.Length + diagnosticFiles.Length} tests with {jobs} worker(s).");
+var started = 0;
+var completed = 0;
+var totalTests = expectedFiles.Length + diagnosticFiles.Length;
+var progressLock = new object();
+Console.WriteLine($"[0/{totalTests}] Running with {jobs} worker(s).");
+Console.Out.Flush();
+
+void ReportStarted(string name)
+{
+    lock (progressLock)
+    {
+        var current = Interlocked.Increment(ref started);
+        Console.WriteLine($"[start {current}/{totalTests}] {name}");
+        Console.Out.Flush();
+    }
+}
+
+void ReportCompleted(string name, bool passed, TimeSpan elapsed)
+{
+    lock (progressLock)
+    {
+        var current = Interlocked.Increment(ref completed);
+        var writer = passed ? Console.Out : Console.Error;
+        writer.WriteLine($"[{current}/{totalTests}] {(passed ? "PASS" : "FAIL")} {name} ({elapsed.TotalSeconds:F2}s)");
+        writer.Flush();
+    }
+}
+
 Parallel.ForEach(
     Partitioner.Create(expectedFiles, loadBalance: true),
     new ParallelOptions { MaxDegreeOfParallelism = jobs },
@@ -146,6 +180,10 @@ Parallel.ForEach(
 {
     var stopwatch = Stopwatch.StartNew();
     var name = Path.GetFileName(expectedFile)[..^".stdout.txt".Length];
+    var passed = false;
+    ReportStarted(name);
+    try
+    {
     var sourcePath = Path.Combine(repoRoot, "examples", name + ".sl");
     var projectPath = Path.Combine(expectedDir, name + ".project.txt");
     var stdinPath = Path.Combine(expectedDir, name + ".stdin.txt");
@@ -348,13 +386,23 @@ Parallel.ForEach(
         }
     }
 
-    Console.WriteLine($"PASS {name} ({stopwatch.Elapsed.TotalSeconds:F2}s)");
+    passed = true;
+    }
+    finally
+    {
+        ReportCompleted(name, passed, stopwatch.Elapsed);
+    }
 });
 
 Parallel.ForEach(diagnosticFiles, new ParallelOptions { MaxDegreeOfParallelism = jobs }, sourcePath =>
 {
     var stopwatch = Stopwatch.StartNew();
     var name = Path.GetFileNameWithoutExtension(sourcePath);
+    var displayName = $"diagnostic/{name}";
+    var passed = false;
+    ReportStarted(displayName);
+    try
+    {
     var expectedPath = Path.Combine(diagnosticDir, name + ".stderr.contains.txt");
     var sourcesPath = Path.Combine(diagnosticDir, name + ".sources.txt");
     var diagnosticTarget = name.Contains("-wasm32-", StringComparison.Ordinal)
@@ -407,7 +455,12 @@ Parallel.ForEach(diagnosticFiles, new ParallelOptions { MaxDegreeOfParallelism =
         return;
     }
 
-    Console.WriteLine($"PASS diagnostic/{name} ({stopwatch.Elapsed.TotalSeconds:F2}s)");
+    passed = true;
+    }
+    finally
+    {
+        ReportCompleted(displayName, passed, stopwatch.Elapsed);
+    }
 });
 
 if (failures == 0)

@@ -4284,4 +4284,90 @@ solution build completed with zero warnings and errors, and the single
 coordinated eight-worker runner passed grammar/table determinism plus all 393
 examples in 369.3 seconds.
 
+## D138 - An Import Defaults To Its Final Path Segment
+
+Status: reference and self-host implementations aligned
+Date: 2026-07-14
+
+An import without `as` uses its last path identifier as the local alias:
+
+```smalllang
+import smalllang.compiler.lexer
+```
+
+This is exactly equivalent to `import smalllang.compiler.lexer as lexer`.
+Explicit aliases remain available when the natural name is unsuitable, such as
+`import smalllang.compiler.semantic.expression_types as expressionTypes`.
+Default and explicit aliases occupy one namespace and therefore share the same
+collision rule.
+
+The reference parser already implemented this rule. The self-host module pass
+now records the final `Path` identifier as `aliasToken` when no `as` clause is
+present, so qualified lookup uses the same token-backed comparison without
+allocating a string. Self-host module resolution reports status 3 for the later
+of two equal aliases in one source. Examples 110 and 113 execute default alias
+capture and qualified lookup; example 282 and the reference diagnostic
+`import-default-alias-collision` cover collisions. Explicit `as` remains
+continuously exercised by imports whose chosen camel-case name differs from
+their snake-case module segment.
+
+## D139 - Generic Role Items Are Fixed Outside-In
+
+Status: first nominal and shallow-composite specialization implemented
+Date: 2026-07-14
+
+For a generic role call, SmallLang fixes type variables from the source before
+checking the caller block. The block body cannot retroactively select a type:
+
+```smalllang
+visit<T> values: [T; ~] -> Int block item: T { ... }
+
+[1, 2, ~] -> visit item {
+    item + 1
+}
+```
+
+Here `[Int; ~]` fixes `T = Int`; only then is `item + 1` checked. This keeps
+inference deterministic and makes imported and local roles identical. It also
+avoids introducing Kotlin-style postponed builder inference before SL needs it.
+Kotlin itself uses builder inference only when regular inference cannot fix a
+type and describes lambda types as postponed variables in that fallback. Rust
+likewise infers one concrete closure parameter type from its use context.
+
+The self-host fixed-point pass now substitutes a matching nominal generic,
+extracts a matching array/box element or dictionary key/value generic from the
+source expression, and reuses a source composite when input and item generic
+shapes match. The specialized item then feeds ordinary operator inference and
+typed IR. Example 281 proves scalar, array-element, imported-role, result, and
+body-operation propagation. Recursive nested composites and reshaping such as
+`T -> [T; ~]` remain explicit follow-up work rather than being claimed complete.
+
+References: [Kotlin builder inference](https://kotlinlang.org/docs/using-builders-with-builder-inference.html),
+[Rust closure type inference](https://doc.rust-lang.org/book/ch13-01-closures.html#inferring-and-annotating-closure-types).
+
+## D140 - Long Test Runs Stream Counted Progress
+
+Status: implemented
+Date: 2026-07-14
+
+The example runner must never remain visually silent while expensive self-host
+LLVM tests run. Bootstrap build and grammar verification use explicit
+`[bootstrap n/total]` phase messages. Test scheduling prints
+`[start n/total] name`; completion prints `[n/total] PASS|FAIL name (seconds)`.
+Both stdout and stderr are flushed after each progress record.
+
+Started and completed counts use separate atomic counters because up to eight
+workers run concurrently. A lock keeps each progress record intact, while the
+actual compiler/test work remains parallel. Completion reporting is in
+`finally`, so every normal return path, including detailed failures, advances
+the visible counter exactly once. Diagnostics continue after success examples
+with the same total rather than restarting at zero. This preserves the single
+coordinated top-level runner rule while making its internal progress observable.
+
+Regression evidence on 2026-07-14: the Release solution build completed with
+zero warnings and errors. The coordinated eight-worker runner passed
+grammar/table determinism and all 396 cases in 390.6 seconds. A focused
+parallel check also verified that both emitted start and completion counters
+form the exact monotonic sequence `1..total`.
+
 

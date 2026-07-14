@@ -637,8 +637,10 @@ call, binding, and body operations into flat typed IR. Block-input contract
 checking now gives the caller item a lexical parameter type, restricts source
 selection to the expression before the role target, validates nominal and
 composite source types, and rejects ordinary functions used as roles. Generic
-block-item specialization and role-specific ownership/effect checks still keep
-semantic parity partial;
+block items are now specialized outside-in for nominal parameters, generic
+composite components, and shape-identical composites, including imported roles.
+Arbitrary nested substitution and role-specific ownership/effect checks still
+keep semantic parity partial;
 the canonical gate count therefore remains 42 complete, 13 partial, and 5
 missing (48.5/60, 80.8%).
 

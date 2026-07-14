@@ -1,6 +1,6 @@
-import smalllang.compiler.lexer as lexer
+import smalllang.compiler.lexer
 import smalllang.compiler.semantic.module_resolve as moduleResolve
-import smalllang.compiler.semantic.modules as modules
+import smalllang.compiler.semantic.modules
 
 main {
     [
@@ -8,7 +8,7 @@ main {
         namespace sample.math
         """,
         """
-        import sample.math as math
+        import sample.math
         """,
         """
         import missing.pkg as missing

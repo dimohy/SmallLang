@@ -1,0 +1,9 @@
+examples/282-selfhost-import-default-alias-collision.sl
+selfhost/semantic/module_resolve.sl
+selfhost/semantic/modules.sl
+selfhost/syntax/ast.sl
+selfhost/syntax/cst.sl
+selfhost/syntax/parser.sl
+selfhost/syntax/lexer.sl
+selfhost/syntax/source.sl
+syntax/generated/smalllang_grammar.sl

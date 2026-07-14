@@ -101,6 +101,7 @@ public imports sources: [Text; ~] -> [ImportEdge; ~] {
                 UIntSize(0) => importStart!
                 UIntSize(0) => importLength!
                 -1 => aliasToken!
+                -1 => defaultAliasToken!
                 0 => pathIndex!
                 pathIndex! < nodeCount -> while {
                     nodes![pathIndex!] => pathNode
@@ -112,6 +113,9 @@ public imports sources: [Text; ~] -> [ImportEdge; ~] {
                         pathNode.firstToken + pathNode.tokenCount => importPathEnd
                         importPathToken! < importPathEnd -> while {
                             tokens![importPathToken!] => token
+                            token.kind == grammar.tokenIdIdentifier -> if {
+                                importPathToken! => defaultAliasToken!
+                            }
                             token.kind == grammar.triviaIdWhitespace -> if {
                             } else {
                                 token.kind == grammar.triviaIdComment -> if {
@@ -154,6 +158,7 @@ public imports sources: [Text; ~] -> [ImportEdge; ~] {
                         importToken! + 1 => importToken!
                     }
                 }
+                aliasToken! < 0 -> if { defaultAliasToken! => aliasToken! }
                 ImportEdge {
                     sourceModule: sourceIndex!
                     targetHash: targetHash!

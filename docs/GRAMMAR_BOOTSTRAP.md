@@ -157,9 +157,12 @@ names are interned as canonical nominal ids; fixed arrays retain their value-
 generic length token.
 `selfhost/semantic/modules.sl` accepts multiple source texts, hashes qualified
 namespace paths into deterministic 64-bit identities, and emits import edges
-with source-module indexes, target identities, path spans, and alias tokens.
+with source-module indexes, target identities, path spans, and alias tokens. If
+`as` is absent, the final identifier of the import path becomes the alias token,
+matching the reference compiler without allocating a derived name.
 `selfhost/semantic/module_resolve.sl` resolves each edge to exactly one module
-index and distinguishes resolved, missing, and duplicate target identities.
+index and distinguishes resolved, missing, duplicate target identities, and a
+duplicate default or explicit alias in one source module.
 Declaration AST/symbol flags reserve bit 4 for explicit `public` visibility.
 `selfhost/semantic/qualified.sl` matches the first segment of member-access AST
 nodes to import aliases, resolves the target module, and distinguishes public,
@@ -287,8 +290,12 @@ is visible only in the caller body, while the trailing result binding belongs
 to the outer scope. Type checking selects the source expression only before the
 role target, validates its declared nominal or composite input type, and emits
 code 17 when role syntax targets a function without a block input. Example 280
-covers both source mismatch and invalid-target diagnostics. Generic block-item
-specialization and ownership/effect contracts remain later semantic work.
+covers both source mismatch and invalid-target diagnostics. Generic role items
+are fixed outside-in from the source before caller-body operators are checked:
+nominal `T`, an element/key/value `T` extracted from a generic composite source,
+and an identical generic composite item specialize without block-body feedback.
+Example 281 covers local and imported roles through typed IR. Arbitrary nested
+generic substitution and ownership/effect contracts remain later semantic work.
 Self-hosted compiler examples embed their input modules as raw multiline
 strings. This keeps tested SL source readable as source, removes duplicated
 newline escaping, and continuously exercises raw-string lexing in the bootstrap

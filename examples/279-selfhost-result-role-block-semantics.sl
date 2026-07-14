@@ -1,10 +1,10 @@
-import smalllang.compiler.ast as ast
+import smalllang.compiler.ast
 import smalllang.compiler.ir.typed as typedIr
-import smalllang.compiler.lexer as lexer
-import smalllang.compiler.semantic.calls as calls
+import smalllang.compiler.lexer
+import smalllang.compiler.semantic.calls
 import smalllang.compiler.semantic.expression_types as expressionTypes
 import smalllang.compiler.semantic.resolve as resolution
-import smalllang.compiler.semantic.symbols as symbols
+import smalllang.compiler.semantic.symbols
 import smalllang.compiler.semantic.type_check as typeCheck
 
 main {
