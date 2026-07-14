@@ -1,6 +1,7 @@
 namespace smalllang.compiler.semantic.user_effects
 
 import smalllang.compiler.semantic.context as semanticContext
+import smalllang.compiler.semantic.expression_type_ids as expressionTypeIds
 import smalllang.compiler.syntax as syntax
 import syntax.generated.smalllang as grammar
 
@@ -18,6 +19,8 @@ public struct UserEffectOperation {
     nameToken: Int
     inputTypeNode: Int
     returnTypeNode: Int
+    inputTypeId: Int
+    returnTypeId: Int
 }
 
 public struct UserEffectRequirement {
@@ -37,10 +40,13 @@ public struct UserEffectCall {
     operationSymbol: Int
     astNode: Int
     status: Int
+    argumentTypeId: Int
+    returnTypeId: Int
 }
 
 # Codes: 1 duplicate operation, 2 unknown effect, 3 private imported effect,
-# 4 operation requires the effect in uses, 5 ambiguous operation.
+# 4 operation requires the effect in uses, 5 ambiguous operation,
+# 6 operation argument type mismatch, 7 operation arity mismatch.
 public struct UserEffectDiagnostic {
     code: Int
     sourceModule: Int
@@ -49,6 +55,8 @@ public struct UserEffectDiagnostic {
     effectSymbol: Int
     operationSymbol: Int
     astNode: Int
+    expectedTypeId: Int
+    actualTypeId: Int
     span: syntax.SourceSpan
 }
 
@@ -113,6 +121,17 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                     -1 => inputTypeNode!
                     symbol.typeNode => returnTypeNode!
                 }
+                -1 => inputTypeId!
+                -1 => returnTypeId!
+                0 => operationTypeSearch!
+                operationTypeSearch! < (prepared.references -> len) -> while {
+                    prepared.references[operationTypeSearch!] => operationTypeReference
+                    (operationTypeReference.sourceModule == sourceIndex! and operationTypeReference.status == 0) -> if {
+                        operationTypeReference.typeAst == inputTypeNode! -> if { operationTypeReference.typeId => inputTypeId! }
+                        operationTypeReference.typeAst == returnTypeNode! -> if { operationTypeReference.typeId => returnTypeId! }
+                    }
+                    operationTypeSearch! + 1 => operationTypeSearch!
+                }
                 operations! -> push(UserEffectOperation {
                     sourceModule: sourceIndex!
                     effectSymbol: symbol.parent
@@ -120,6 +139,8 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                     nameToken: symbol.nameToken
                     inputTypeNode: inputTypeNode!
                     returnTypeNode: returnTypeNode!
+                    inputTypeId: inputTypeId!
+                    returnTypeId: returnTypeId!
                 })
             }
             symbolIndex! + 1 => symbolIndex!
@@ -151,6 +172,8 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                         effectSymbol: rightOperation.effectSymbol
                         operationSymbol: rightOperation.operationSymbol
                         astNode: duplicateSymbol.astNode
+                        expectedTypeId: -1
+                        actualTypeId: -1
                         span: syntax.SourceSpan { fileId: rightOperation.sourceModule, start: duplicateNode.start, length: duplicateNode.length }
                     })
                 }
@@ -250,6 +273,8 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                         effectSymbol: effectSymbol!
                         operationSymbol: -1
                         astNode: requirementAstIndex!
+                        expectedTypeId: -1
+                        actualTypeId: -1
                         span: syntax.SourceSpan { fileId: requirementSourceIndex!, start: requirementNode.start, length: requirementNode.length }
                     })
                 }
@@ -275,7 +300,7 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                 prepared.tokens[callRange.tokenStart + arrowSearch!].kind == grammar.tokenIdArrow -> if { true => flowArrow! }
                 arrowSearch! + 1 => arrowSearch!
             }
-            (callNode.kind == 11 or (callNode.kind == 10 and flowArrow!)) -> if {
+            (callNode.kind == 11 or callNode.kind == 15 or (callNode.kind == 10 and flowArrow!)) -> if {
                 false => ordinaryResolved!
                 0 => preparedCallIndex!
                 preparedCallIndex! < (prepared.calls -> len) -> while {
@@ -300,6 +325,7 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
 
                     -1 => callNameToken!
                     -1 => firstCallNameToken!
+                    -1 => previousCallNameToken!
                     false => afterArrow!
                     false => insideArguments!
                     callNode.firstToken => callTokenIndex!
@@ -309,117 +335,187 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
                             true => afterArrow!
                             -1 => callNameToken!
                             -1 => firstCallNameToken!
+                            -1 => previousCallNameToken!
                         }
                         callToken.kind == grammar.tokenIdLeftParen -> if { true => insideArguments! }
                         callToken.kind == grammar.tokenIdRightParen -> if { false => insideArguments! }
-                        (callToken.kind == grammar.tokenIdIdentifier and not insideArguments! and (callNode.kind == 11 or afterArrow!)) -> if {
+                        (callToken.kind == grammar.tokenIdIdentifier and not insideArguments! and (callNode.kind == 11 or callNode.kind == 15 or afterArrow!)) -> if {
                             firstCallNameToken! < 0 -> if { callTokenIndex! => firstCallNameToken! }
+                            callNameToken! >= 0 -> if { callNameToken! => previousCallNameToken! }
                             callTokenIndex! => callNameToken!
                         }
                         callTokenIndex! + 1 => callTokenIndex!
                     }
                     callNameToken! >= 0 -> if {
-                        0 => matchCount!
-                        -1 => matchedEffectSource!
-                        -1 => matchedEffectSymbol!
-                        -1 => matchedOperationSymbol!
-                        0 => callerRequirementIndex!
-                        callerRequirementIndex! < (requirements! -> len) -> while {
-                            requirements![callerRequirementIndex!] => requirement
-                            (requirement.sourceModule == callSourceIndex! and requirement.functionSymbol == callFunctionSymbol! and requirement.status == 0) -> if {
-                                0 => operationSearch!
-                                operationSearch! < (operations! -> len) -> while {
-                                    operations![operationSearch!] => operation
-                                    (operation.sourceModule == requirement.effectSourceModule and operation.effectSymbol == requirement.effectSymbol) -> if {
-                                        TokenPairRequest {
-                                            leftSource: callSource
-                                            left: prepared.tokens[callRange.tokenStart + callNameToken!]
-                                            rightSource: prepared.sources[operation.sourceModule]
-                                            right: prepared.tokens[prepared.ranges[operation.sourceModule].tokenStart + operation.nameToken]
-                                        } -> tokenEqual -> if {
-                                            matchCount! + 1 => matchCount!
-                                            operation.sourceModule => matchedEffectSource!
-                                            operation.effectSymbol => matchedEffectSymbol!
-                                            operation.operationSymbol => matchedOperationSymbol!
+                        firstCallNameToken! == callNameToken! -> if {
+                            0 => matchCount!
+                            -1 => matchedEffectSource!
+                            -1 => matchedEffectSymbol!
+                            -1 => matchedOperationSymbol!
+                            -1 => matchedReturnTypeId!
+                            0 => callerRequirementIndex!
+                            callerRequirementIndex! < (requirements! -> len) -> while {
+                                requirements![callerRequirementIndex!] => requirement
+                                (requirement.sourceModule == callSourceIndex! and requirement.functionSymbol == callFunctionSymbol! and requirement.status == 0) -> if {
+                                    0 => operationSearch!
+                                    operationSearch! < (operations! -> len) -> while {
+                                        operations![operationSearch!] => operation
+                                        (operation.sourceModule == requirement.effectSourceModule and operation.effectSymbol == requirement.effectSymbol) -> if {
+                                            TokenPairRequest {
+                                                leftSource: callSource
+                                                left: prepared.tokens[callRange.tokenStart + callNameToken!]
+                                                rightSource: prepared.sources[operation.sourceModule]
+                                                right: prepared.tokens[prepared.ranges[operation.sourceModule].tokenStart + operation.nameToken]
+                                            } -> tokenEqual -> if {
+                                                matchCount! + 1 => matchCount!
+                                                operation.sourceModule => matchedEffectSource!
+                                                operation.effectSymbol => matchedEffectSymbol!
+                                                operation.operationSymbol => matchedOperationSymbol!
+                                                operation.returnTypeId => matchedReturnTypeId!
+                                            }
                                         }
+                                        operationSearch! + 1 => operationSearch!
                                     }
-                                    operationSearch! + 1 => operationSearch!
                                 }
+                                callerRequirementIndex! + 1 => callerRequirementIndex!
                             }
-                            callerRequirementIndex! + 1 => callerRequirementIndex!
-                        }
-                        matchCount! == 1 -> if {
-                            calls! -> push(UserEffectCall {
-                                sourceModule: callSourceIndex!
-                                functionSymbol: callFunctionSymbol!
-                                effectSourceModule: matchedEffectSource!
-                                effectSymbol: matchedEffectSymbol!
-                                operationSymbol: matchedOperationSymbol!
-                                astNode: callAstIndex!
-                                status: 0
-                            })
-                        }
-                        matchCount! > 1 -> if {
-                            diagnostics! -> push(UserEffectDiagnostic {
-                                code: 5
-                                sourceModule: callSourceIndex!
-                                functionSymbol: callFunctionSymbol!
-                                effectSourceModule: -1
-                                effectSymbol: -1
-                                operationSymbol: -1
-                                astNode: callAstIndex!
-                                span: syntax.SourceSpan { fileId: callSourceIndex!, start: callNode.start, length: callNode.length }
-                            })
-                        }
-                        (matchCount! == 0 and firstCallNameToken! >= 0 and firstCallNameToken! != callNameToken!) -> if {
-                            -1 => explicitEffectSymbol!
-                            0 => explicitSignatureIndex!
-                            explicitSignatureIndex! < (signatures! -> len) -> while {
-                                signatures![explicitSignatureIndex!] => explicitSignature
-                                explicitSignature.sourceModule == callSourceIndex! -> if {
-                                    TokenPairRequest {
-                                        leftSource: callSource
-                                        left: prepared.tokens[callRange.tokenStart + firstCallNameToken!]
-                                        rightSource: prepared.sources[explicitSignature.sourceModule]
-                                        right: prepared.tokens[prepared.ranges[explicitSignature.sourceModule].tokenStart + explicitSignature.nameToken]
-                                    } -> tokenEqual -> if { explicitSignature.effectSymbol => explicitEffectSymbol! }
-                                }
-                                explicitSignatureIndex! + 1 => explicitSignatureIndex!
-                            }
-                            -1 => explicitOperationSymbol!
-                            0 => explicitOperationIndex!
-                            explicitOperationIndex! < (operations! -> len) -> while {
-                                operations![explicitOperationIndex!] => explicitOperation
-                                (explicitOperation.sourceModule == callSourceIndex! and explicitOperation.effectSymbol == explicitEffectSymbol!) -> if {
-                                    TokenPairRequest {
-                                        leftSource: callSource
-                                        left: prepared.tokens[callRange.tokenStart + callNameToken!]
-                                        rightSource: prepared.sources[explicitOperation.sourceModule]
-                                        right: prepared.tokens[prepared.ranges[explicitOperation.sourceModule].tokenStart + explicitOperation.nameToken]
-                                    } -> tokenEqual -> if { explicitOperation.operationSymbol => explicitOperationSymbol! }
-                                }
-                                explicitOperationIndex! + 1 => explicitOperationIndex!
-                            }
-                            explicitOperationSymbol! >= 0 -> if {
+                            matchCount! == 1 -> if {
                                 calls! -> push(UserEffectCall {
                                     sourceModule: callSourceIndex!
                                     functionSymbol: callFunctionSymbol!
-                                    effectSourceModule: callSourceIndex!
-                                    effectSymbol: explicitEffectSymbol!
-                                    operationSymbol: explicitOperationSymbol!
+                                    effectSourceModule: matchedEffectSource!
+                                    effectSymbol: matchedEffectSymbol!
+                                    operationSymbol: matchedOperationSymbol!
                                     astNode: callAstIndex!
-                                    status: 2
+                                    status: 0
+                                    argumentTypeId: -1
+                                    returnTypeId: matchedReturnTypeId!
                                 })
+                            }
+                            matchCount! > 1 -> if {
                                 diagnostics! -> push(UserEffectDiagnostic {
-                                    code: 4
+                                    code: 5
                                     sourceModule: callSourceIndex!
                                     functionSymbol: callFunctionSymbol!
-                                    effectSourceModule: callSourceIndex!
-                                    effectSymbol: explicitEffectSymbol!
-                                    operationSymbol: explicitOperationSymbol!
+                                    effectSourceModule: -1
+                                    effectSymbol: -1
+                                    operationSymbol: -1
                                     astNode: callAstIndex!
+                                    expectedTypeId: -1
+                                    actualTypeId: -1
                                     span: syntax.SourceSpan { fileId: callSourceIndex!, start: callNode.start, length: callNode.length }
                                 })
+                            }
+                        } else {
+                            previousCallNameToken! >= 0 -> if {
+                                -1 => explicitEffectSource!
+                                -1 => explicitEffectSymbol!
+                                0 => explicitSignatureIndex!
+                                explicitSignatureIndex! < (signatures! -> len) -> while {
+                                    signatures![explicitSignatureIndex!] => explicitSignature
+                                    explicitSignature.sourceModule == callSourceIndex! -> if {
+                                        TokenPairRequest {
+                                            leftSource: callSource
+                                            left: prepared.tokens[callRange.tokenStart + previousCallNameToken!]
+                                            rightSource: prepared.sources[explicitSignature.sourceModule]
+                                            right: prepared.tokens[prepared.ranges[explicitSignature.sourceModule].tokenStart + explicitSignature.nameToken]
+                                        } -> tokenEqual -> if {
+                                            callSourceIndex! => explicitEffectSource!
+                                            explicitSignature.effectSymbol => explicitEffectSymbol!
+                                        }
+                                    }
+                                    explicitSignatureIndex! + 1 => explicitSignatureIndex!
+                                }
+                                (explicitEffectSymbol! < 0 and firstCallNameToken! != previousCallNameToken!) -> if {
+                                    0 => explicitImportIndex!
+                                    explicitImportIndex! < (prepared.imports -> len) -> while {
+                                        prepared.imports[explicitImportIndex!] => explicitImport
+                                        explicitImport.sourceModule == callSourceIndex! -> if {
+                                            TokenPairRequest {
+                                                leftSource: callSource
+                                                left: prepared.tokens[callRange.tokenStart + firstCallNameToken!]
+                                                rightSource: callSource
+                                                right: prepared.tokens[callRange.tokenStart + explicitImport.aliasToken]
+                                            } -> tokenEqual -> if {
+                                                prepared.resolvedImports[explicitImportIndex!] => resolvedImport
+                                                resolvedImport.status == 0 -> if {
+                                                    prepared.modules[resolvedImport.targetModule].sourceIndex => importedEffectSource
+                                                    0 => importedSignatureIndex!
+                                                    importedSignatureIndex! < (signatures! -> len) -> while {
+                                                        signatures![importedSignatureIndex!] => importedSignature
+                                                        (importedSignature.sourceModule == importedEffectSource and importedSignature.flags >= 4) -> if {
+                                                            TokenPairRequest {
+                                                                leftSource: callSource
+                                                                left: prepared.tokens[callRange.tokenStart + previousCallNameToken!]
+                                                                rightSource: prepared.sources[importedEffectSource]
+                                                                right: prepared.tokens[prepared.ranges[importedEffectSource].tokenStart + importedSignature.nameToken]
+                                                            } -> tokenEqual -> if {
+                                                                importedEffectSource => explicitEffectSource!
+                                                                importedSignature.effectSymbol => explicitEffectSymbol!
+                                                            }
+                                                        }
+                                                        importedSignatureIndex! + 1 => importedSignatureIndex!
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        explicitImportIndex! + 1 => explicitImportIndex!
+                                    }
+                                }
+                                -1 => explicitOperationSymbol!
+                                -1 => explicitReturnTypeId!
+                                0 => explicitOperationIndex!
+                                explicitOperationIndex! < (operations! -> len) -> while {
+                                    operations![explicitOperationIndex!] => explicitOperation
+                                    (explicitOperation.sourceModule == explicitEffectSource! and explicitOperation.effectSymbol == explicitEffectSymbol!) -> if {
+                                        TokenPairRequest {
+                                            leftSource: callSource
+                                            left: prepared.tokens[callRange.tokenStart + callNameToken!]
+                                            rightSource: prepared.sources[explicitOperation.sourceModule]
+                                            right: prepared.tokens[prepared.ranges[explicitOperation.sourceModule].tokenStart + explicitOperation.nameToken]
+                                        } -> tokenEqual -> if {
+                                            explicitOperation.operationSymbol => explicitOperationSymbol!
+                                            explicitOperation.returnTypeId => explicitReturnTypeId!
+                                        }
+                                    }
+                                    explicitOperationIndex! + 1 => explicitOperationIndex!
+                                }
+                                explicitOperationSymbol! >= 0 -> if {
+                                    false => explicitRequirementFound!
+                                    0 => explicitRequirementIndex!
+                                    explicitRequirementIndex! < (requirements! -> len) -> while {
+                                        requirements![explicitRequirementIndex!] => explicitRequirement
+                                        (explicitRequirement.sourceModule == callSourceIndex! and explicitRequirement.functionSymbol == callFunctionSymbol! and explicitRequirement.status == 0 and explicitRequirement.effectSourceModule == explicitEffectSource! and explicitRequirement.effectSymbol == explicitEffectSymbol!) -> if {
+                                            true => explicitRequirementFound!
+                                        }
+                                        explicitRequirementIndex! + 1 => explicitRequirementIndex!
+                                    }
+                                    calls! -> push(UserEffectCall {
+                                        sourceModule: callSourceIndex!
+                                        functionSymbol: callFunctionSymbol!
+                                        effectSourceModule: explicitEffectSource!
+                                        effectSymbol: explicitEffectSymbol!
+                                        operationSymbol: explicitOperationSymbol!
+                                        astNode: callAstIndex!
+                                        status: explicitRequirementFound! -> if { 0 } else { 2 }
+                                        argumentTypeId: -1
+                                        returnTypeId: explicitReturnTypeId!
+                                    })
+                                    not explicitRequirementFound! -> if {
+                                        diagnostics! -> push(UserEffectDiagnostic {
+                                            code: 4
+                                            sourceModule: callSourceIndex!
+                                            functionSymbol: callFunctionSymbol!
+                                            effectSourceModule: explicitEffectSource!
+                                            effectSymbol: explicitEffectSymbol!
+                                            operationSymbol: explicitOperationSymbol!
+                                            astNode: callAstIndex!
+                                            expectedTypeId: -1
+                                            actualTypeId: -1
+                                            span: syntax.SourceSpan { fileId: callSourceIndex!, start: callNode.start, length: callNode.length }
+                                        })
+                                    }
+                                }
                             }
                         }
                     }
@@ -428,6 +524,135 @@ public analyzeContext prepared: semanticContext.CompilationContext -> UserEffect
             callAstIndex! + 1 => callAstIndex!
         }
         callSourceIndex! + 1 => callSourceIndex!
+    }
+
+    # Attach canonical argument/result types to resolved operation calls and
+    # reject arity or concrete type mismatches before handler lowering.
+    prepared -> expressionTypeIds.resolveContext => expressionTypeSet
+    0 => typedCallIndex!
+    typedCallIndex! < (calls! -> len) -> while {
+        calls![typedCallIndex!] => typedCall!
+        prepared.ranges[typedCall!.sourceModule] => typedCallRange
+        prepared.nodes[typedCallRange.astStart + typedCall!.astNode] => typedCallNode
+        -1 => expectedInputTypeId!
+        0 => typedOperationSearch!
+        typedOperationSearch! < (operations! -> len) -> while {
+            operations![typedOperationSearch!] => typedOperation
+            (typedOperation.sourceModule == typedCall!.effectSourceModule and typedOperation.effectSymbol == typedCall!.effectSymbol and typedOperation.operationSymbol == typedCall!.operationSymbol) -> if {
+                typedOperation.inputTypeId => expectedInputTypeId!
+                typedOperation.returnTypeId => typedCall!.returnTypeId
+            }
+            typedOperationSearch! + 1 => typedOperationSearch!
+        }
+
+        false => hasOperationArgument!
+        UIntSize(0) => argumentBoundaryStart!
+        UIntSize(0) => argumentBoundaryEnd!
+        typedCallNode.kind == 10 -> if {
+            typedCallNode.firstToken => typedCallTokenIndex!
+            typedCallTokenIndex! < typedCallNode.firstToken + typedCallNode.tokenCount -> while {
+                prepared.tokens[typedCallRange.tokenStart + typedCallTokenIndex!] => typedCallToken
+                typedCallToken.kind == grammar.tokenIdArrow -> if {
+                    true => hasOperationArgument!
+                    typedCallToken.span.start => argumentBoundaryEnd!
+                    typedCallNode.firstToken + typedCallNode.tokenCount => typedCallTokenIndex!
+                } else {
+                    typedCallTokenIndex! + 1 => typedCallTokenIndex!
+                }
+            }
+        }
+        typedCallNode.kind == 11 -> if {
+            false => afterOperationLeftParen!
+            typedCallNode.firstToken => typedCallTokenIndex!
+            typedCallTokenIndex! < typedCallNode.firstToken + typedCallNode.tokenCount -> while {
+                prepared.tokens[typedCallRange.tokenStart + typedCallTokenIndex!] => typedCallToken
+                typedCallToken.kind == grammar.tokenIdLeftParen -> if {
+                    true => afterOperationLeftParen!
+                    typedCallToken.span.start + typedCallToken.span.length => argumentBoundaryStart!
+                } else {
+                    typedCallToken.kind == grammar.tokenIdRightParen -> if {
+                        typedCallToken.span.start => argumentBoundaryEnd!
+                        false => afterOperationLeftParen!
+                    } else {
+                        (afterOperationLeftParen! and typedCallToken.kind != grammar.triviaIdWhitespace and typedCallToken.kind != grammar.triviaIdComment) -> if {
+                            true => hasOperationArgument!
+                        }
+                    }
+                }
+                typedCallTokenIndex! + 1 => typedCallTokenIndex!
+            }
+        }
+
+        -1 => actualArgumentExpression!
+        1000000 => actualArgumentDistance!
+        0 => typedExpressionSearch!
+        typedExpressionSearch! < (expressionTypeSet.expressions -> len) -> while {
+            expressionTypeSet.expressions[typedExpressionSearch!] => typedExpression
+            (typedExpression.sourceModule == typedCall!.sourceModule and typedExpression.astNode != typedCall!.astNode and typedExpression.status == 0) -> if {
+                prepared.nodes[typedCallRange.astStart + typedExpression.astNode] => typedExpressionNode
+                true => insideArgumentBoundary!
+                typedCallNode.kind == 10 -> if {
+                    typedExpressionNode.start + typedExpressionNode.length > argumentBoundaryEnd! -> if { false => insideArgumentBoundary! }
+                }
+                typedCallNode.kind == 11 -> if {
+                    (typedExpressionNode.start < argumentBoundaryStart! or typedExpressionNode.start + typedExpressionNode.length > argumentBoundaryEnd!) -> if { false => insideArgumentBoundary! }
+                }
+                typedExpressionNode.parent => typedExpressionAncestor!
+                1 => typedExpressionDistance!
+                false => belongsToOperationCall!
+                (typedExpressionAncestor! >= 0 and not belongsToOperationCall!) -> while {
+                    typedExpressionAncestor! == typedCall!.astNode -> if { true => belongsToOperationCall! } else {
+                        prepared.nodes[typedCallRange.astStart + typedExpressionAncestor!].parent => typedExpressionAncestor!
+                        typedExpressionDistance! + 1 => typedExpressionDistance!
+                    }
+                }
+                (insideArgumentBoundary! and belongsToOperationCall! and typedExpressionDistance! < actualArgumentDistance!) -> if {
+                    typedExpressionSearch! => actualArgumentExpression!
+                    typedExpressionDistance! => actualArgumentDistance!
+                }
+            }
+            typedExpressionSearch! + 1 => typedExpressionSearch!
+        }
+        actualArgumentExpression! >= 0 -> if {
+            expressionTypeSet.expressions[actualArgumentExpression!].typeId => typedCall!.argumentTypeId
+        }
+        typedCall! => calls![typedCallIndex!]
+
+        ((expectedInputTypeId! >= 0 and not hasOperationArgument!) or (expectedInputTypeId! < 0 and hasOperationArgument!)) -> if {
+            diagnostics! -> push(UserEffectDiagnostic {
+                code: 7
+                sourceModule: typedCall!.sourceModule
+                functionSymbol: typedCall!.functionSymbol
+                effectSourceModule: typedCall!.effectSourceModule
+                effectSymbol: typedCall!.effectSymbol
+                operationSymbol: typedCall!.operationSymbol
+                astNode: typedCall!.astNode
+                expectedTypeId: expectedInputTypeId!
+                actualTypeId: typedCall!.argumentTypeId
+                span: syntax.SourceSpan { fileId: typedCall!.sourceModule, start: typedCallNode.start, length: typedCallNode.length }
+            })
+        }
+        (expectedInputTypeId! >= 0 and typedCall!.argumentTypeId >= 0 and expectedInputTypeId! != typedCall!.argumentTypeId) -> if {
+            expressionTypeSet.types[expectedInputTypeId!] => expectedInputType
+            expressionTypeSet.types[typedCall!.argumentTypeId] => actualInputType
+            (not expectedInputType.containsParameter and not actualInputType.containsParameter) -> if {
+                expressionTypeSet.expressions[actualArgumentExpression!] => actualArgument
+                prepared.nodes[typedCallRange.astStart + actualArgument.astNode] => actualArgumentNode
+                diagnostics! -> push(UserEffectDiagnostic {
+                    code: 6
+                    sourceModule: typedCall!.sourceModule
+                    functionSymbol: typedCall!.functionSymbol
+                    effectSourceModule: typedCall!.effectSourceModule
+                    effectSymbol: typedCall!.effectSymbol
+                    operationSymbol: typedCall!.operationSymbol
+                    astNode: typedCall!.astNode
+                    expectedTypeId: expectedInputTypeId!
+                    actualTypeId: typedCall!.argumentTypeId
+                    span: syntax.SourceSpan { fileId: typedCall!.sourceModule, start: actualArgumentNode.start, length: actualArgumentNode.length }
+                })
+            }
+        }
+        typedCallIndex! + 1 => typedCallIndex!
     }
 
     UserEffectAnalysis {

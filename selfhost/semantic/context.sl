@@ -5,6 +5,7 @@ import smalllang.compiler.semantic.analysis as analysis
 import smalllang.compiler.semantic.calls as calls
 import smalllang.compiler.semantic.composite_types as compositeTypes
 import smalllang.compiler.semantic.modules as modules
+import smalllang.compiler.semantic.module_resolve as moduleResolve
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.qualified as qualified
 import smalllang.compiler.semantic.resolve as resolution
@@ -24,6 +25,8 @@ public struct CompilationContext {
     nominal: [nominalTypes.NominalType; ~]
     composite: [compositeTypes.CompositeType; ~]
     modules: [modules.ModuleIdentity; ~]
+    imports: [modules.ImportEdge; ~]
+    resolvedImports: [moduleResolve.ResolvedImport; ~]
     qualified: [qualified.QualifiedResolution; ~]
     calls: [calls.ModuleCallResolution; ~]
     ranges: [analysis.SourceAnalysisRange; ~]
@@ -41,6 +44,8 @@ public prepare sources: [Text; ~] -> CompilationContext {
     packageAnalysis -> nominalTypes.resolveAnalyzed => nominalTypes!
     packageAnalysis -> compositeTypes.resolveAnalyzed => compositeTypes!
     packageAnalysis -> modules.identitiesAnalyzed => moduleIdentities!
+    packageAnalysis -> modules.importsAnalyzed => importEdges!
+    packageAnalysis -> moduleResolve.resolveAnalyzed => resolvedImports!
     packageAnalysis -> qualified.resolveAnalyzed => qualifiedResults!
     packageAnalysis -> calls.resolveModulesAnalyzed => resolvedCalls!
 
@@ -75,6 +80,8 @@ public prepare sources: [Text; ~] -> CompilationContext {
         nominal: nominalTypes!
         composite: compositeTypes!
         modules: moduleIdentities!
+        imports: importEdges!
+        resolvedImports: resolvedImports!
         qualified: qualifiedResults!
         calls: resolvedCalls!
         ranges: contextRanges!

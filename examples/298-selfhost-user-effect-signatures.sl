@@ -48,8 +48,8 @@ main {
             repeat text: Text -> Int
         }
 
-        unhandled value: Int -> Int {
-            value -> Failure.fail
+        unhandled message: Text -> Int {
+            message -> Failure.fail
         }
         """,
         ~

@@ -7,6 +7,7 @@ import smalllang.compiler.semantic.calls
 import smalllang.compiler.semantic.composite_types as compositeTypes
 import smalllang.compiler.semantic.context as semanticContext
 import smalllang.compiler.semantic.modules
+import smalllang.compiler.semantic.module_resolve as moduleResolve
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.qualified
 import smalllang.compiler.semantic.resolve as resolution
@@ -512,6 +513,8 @@ public resolvePrepared request: move ExpressionTypeIdRequest -> ExpressionTypeId
         nominal: nominal!
         composite: composite!
         modules: moduleIdentities!
+        imports: [modules.ImportEdge; ~]
+        resolvedImports: [moduleResolve.ResolvedImport; ~]
         qualified: qualifiedResults!
         calls: moduleCalls!
         ranges: ranges!

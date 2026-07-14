@@ -380,9 +380,11 @@ Example stdout tests compile and run the samples listed under
 dotnet run --project tests\SmallLang.ExampleTests\SmallLang.ExampleTests.csproj --no-build
 ```
 
-During development, repeat `--filter` to run only matching example or
-`diagnostic/...` names. Add `--skip-bootstrap` only after the Release compiler
-and generated grammar table have already been verified in the current checkout:
+During development, repeat `--filter` for name fragments, use `--exact` for a
+complete test name, or repeat `--affected` with repository-relative changed
+paths. `--suite reference|semantic|selfhost|llvm|fast|full` selects a stable
+layer. Add `--skip-bootstrap` only after the Release compiler and generated
+grammar table have already been verified in the current checkout:
 
 ```powershell
 dotnet run --project tests\SmallLang.ExampleTests\SmallLang.ExampleTests.csproj `
@@ -390,8 +392,13 @@ dotnet run --project tests\SmallLang.ExampleTests\SmallLang.ExampleTests.csproj 
 ```
 
 The runner uses up to eight isolated test workers by default. It starts the
-expensive self-host LLVM cases first and uses a load-balancing partitioner so a
+remaining expensive cases first and uses a load-balancing partitioner so a
 worker that finishes a short case immediately takes the next remaining case.
+Self-host LLVM emitter tests bootstrap one SL compiler driver and then reuse its
+native executable for every Windows, Linux, and Wasm fixture. The driver is
+rebuilt only when its compiler, manifest, SL sources, or standard library inputs
+are newer; a current driver reports `[selfhost bootstrap] REUSE`. Thus the suite
+does not compile the same self-host compiler modules once per fixture.
 Bootstrap phases are printed as `[bootstrap n/total]`. Every scheduled case is
 printed as `[start n/total]`, and every completion is flushed immediately as
 `[n/total] PASS|FAIL name (seconds)`, so long LLVM runs never appear idle.

@@ -1,8 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 var filters = new List<string>();
+var exactFilters = new List<string>();
+var affectedFiles = new List<string>();
+var suite = TestSuite.Full;
 var skipBootstrap = false;
 var jobs = Math.Min(Environment.ProcessorCount, 8);
 for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
@@ -16,6 +20,30 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
                 return 2;
             }
             filters.Add(args[argumentIndex]);
+            break;
+        case "--exact":
+            if (++argumentIndex >= args.Length)
+            {
+                Console.Error.WriteLine("--exact requires a case-insensitive full test name.");
+                return 2;
+            }
+            exactFilters.Add(args[argumentIndex]);
+            break;
+        case "--affected":
+            if (++argumentIndex >= args.Length)
+            {
+                Console.Error.WriteLine("--affected requires a repository-relative source path.");
+                return 2;
+            }
+            affectedFiles.Add(args[argumentIndex]);
+            break;
+        case "--suite":
+            if (++argumentIndex >= args.Length
+                || !Enum.TryParse<TestSuite>(args[argumentIndex], ignoreCase: true, out suite))
+            {
+                Console.Error.WriteLine("--suite requires fast, reference, semantic, selfhost, llvm, or full.");
+                return 2;
+            }
             break;
         case "--skip-bootstrap":
             skipBootstrap = true;
@@ -31,7 +59,7 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
             break;
         default:
             Console.Error.WriteLine($"Unknown test option: {args[argumentIndex]}");
-            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <name>]... [--skip-bootstrap] [--jobs <count>]");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <fragment>]... [--exact <name>]... [--affected <path>]... [--suite fast|reference|semantic|selfhost|llvm|full] [--skip-bootstrap] [--jobs <count>]");
             return 2;
     }
 }
@@ -118,6 +146,9 @@ var allExpectedFiles = Directory
     .Order(StringComparer.Ordinal)
     .ToArray();
 var diagnosticDir = Path.Combine(repoRoot, "examples", "diagnostics");
+var affectedPaths = affectedFiles
+    .Select(path => Path.GetFullPath(path, repoRoot))
+    .ToHashSet(StringComparer.OrdinalIgnoreCase);
 var allDiagnosticFiles = Directory.Exists(diagnosticDir)
     ? Directory.EnumerateFiles(diagnosticDir, "*.sl")
         .Concat(Directory.EnumerateFiles(diagnosticDir, "*.project"))
@@ -125,12 +156,16 @@ var allDiagnosticFiles = Directory.Exists(diagnosticDir)
         .ToArray()
     : [];
 var expectedFiles = allExpectedFiles
-    .Where(file => MatchesFilters(Path.GetFileName(file)[..^".stdout.txt".Length], filters))
+    .Where(file => MatchesFilters(Path.GetFileName(file)[..^".stdout.txt".Length], filters, exactFilters))
+    .Where(file => MatchesSuite(file, suite))
+    .Where(file => MatchesAffectedExpected(file, repoRoot, expectedDir, affectedPaths))
     .OrderByDescending(IsExpensiveSelfHostLlvmTest)
     .ThenBy(file => file, StringComparer.Ordinal)
     .ToArray();
 var diagnosticFiles = allDiagnosticFiles
-    .Where(file => MatchesFilters("diagnostic/" + Path.GetFileNameWithoutExtension(file), filters))
+    .Where(file => suite != TestSuite.Llvm && suite != TestSuite.SelfHost && suite != TestSuite.Semantic)
+    .Where(file => MatchesFilters("diagnostic/" + Path.GetFileNameWithoutExtension(file), filters, exactFilters))
+    .Where(file => MatchesAffectedDiagnostic(file, diagnosticDir, repoRoot, affectedPaths))
     .ToArray();
 
 if (allExpectedFiles.Length == 0)
@@ -138,10 +173,60 @@ if (allExpectedFiles.Length == 0)
     Console.Error.WriteLine("No expected stdout files found.");
     return 1;
 }
-if (filters.Count > 0 && expectedFiles.Length + diagnosticFiles.Length == 0)
+if (expectedFiles.Length + diagnosticFiles.Length == 0)
 {
-    Console.Error.WriteLine($"No example or diagnostic test matched: {string.Join(", ", filters)}");
+    Console.Error.WriteLine($"No example or diagnostic test matched suite={suite}, filters=[{string.Join(", ", filters)}], exact=[{string.Join(", ", exactFilters)}], affected=[{string.Join(", ", affectedFiles)}].");
     return 2;
+}
+
+var selfHostDriverPath = Path.Combine(artifactsDir, "selfhost-compiler-driver.exe");
+var selfHostDriverSourcesPath = Path.Combine(
+    repoRoot,
+    "tests",
+    "SmallLang.ExampleTests",
+    "Fixtures",
+    "selfhost-compiler-driver.sources.txt");
+if (expectedFiles.Any(IsReusableSelfHostCompilerTest))
+{
+    var selfHostDriverSources = File.ReadLines(selfHostDriverSourcesPath)
+        .Where(static line => !string.IsNullOrWhiteSpace(line))
+        .Select(line => Path.GetFullPath(line.Trim(), repoRoot))
+        .ToArray();
+    var selfHostDriverInputs = selfHostDriverSources
+        .Concat(Directory.EnumerateFiles(
+            Path.Combine(repoRoot, "stdlib"),
+            "*.sl",
+            SearchOption.AllDirectories))
+        .Append(selfHostDriverSourcesPath)
+        .Append(compilerDll)
+        .ToArray();
+    if (!IsOutputCurrent(selfHostDriverPath, selfHostDriverInputs))
+    {
+        Console.WriteLine("[selfhost bootstrap] Building the reusable SL compiler driver...");
+        Console.Out.Flush();
+        var driverArguments = new List<string> { compilerDll, "build" };
+        driverArguments.AddRange(selfHostDriverSources);
+        driverArguments.AddRange([
+            "-o", selfHostDriverPath,
+            "--target", "windows-x64",
+            "--llvm", llvmDir,
+            "-O1"
+        ]);
+        var driverBuild = Run("dotnet", driverArguments, input: null, repoRoot);
+        if (driverBuild.ExitCode != 0)
+        {
+            Console.Error.WriteLine("FAIL reusable self-host compiler bootstrap");
+            Console.Error.WriteLine(driverBuild.Stdout);
+            Console.Error.WriteLine(driverBuild.Stderr);
+            return 1;
+        }
+        Console.WriteLine("[selfhost bootstrap] PASS reusable SL compiler driver");
+    }
+    else
+    {
+        Console.WriteLine("[selfhost bootstrap] REUSE current SL compiler driver");
+    }
+    Console.Out.Flush();
 }
 
 var failures = 0;
@@ -149,7 +234,7 @@ var started = 0;
 var completed = 0;
 var totalTests = expectedFiles.Length + diagnosticFiles.Length;
 var progressLock = new object();
-Console.WriteLine($"[0/{totalTests}] Running with {jobs} worker(s).");
+Console.WriteLine($"[0/{totalTests}] Running {suite.ToString().ToLowerInvariant()} suite with {jobs} worker(s).");
 Console.Out.Flush();
 
 void ReportStarted(string name)
@@ -204,6 +289,19 @@ Parallel.ForEach(
         return;
     }
 
+    ProcessResult run;
+    if (IsReusableSelfHostCompilerTest(expectedFile))
+    {
+        var driverArguments = new List<string>
+        {
+            SelfHostTargetMode(File.ReadAllText(sourcePath, Encoding.UTF8))
+        };
+        driverArguments.AddRange(ExtractRawMultilineStrings(
+            File.ReadAllText(sourcePath, Encoding.UTF8)));
+        run = Run(selfHostDriverPath, driverArguments, input: null, repoRoot);
+    }
+    else
+    {
     var compilerArguments = new List<string>
     {
         compilerDll,
@@ -312,7 +410,8 @@ Parallel.ForEach(
             .Select(line => line.Split('=', 2))
             .ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "", StringComparer.Ordinal)
         : null;
-    var run = Run(outputPath, runArguments, stdin, repoRoot, runEnvironment);
+    run = Run(outputPath, runArguments, stdin, repoRoot, runEnvironment);
+    }
     var expected = Normalize(File.ReadAllText(expectedFile, Encoding.UTF8));
     var actual = Normalize(run.Stdout);
 
@@ -484,12 +583,147 @@ static string FindRepositoryRoot(string startPath)
     throw new InvalidOperationException("Could not find repository root.");
 }
 
-static bool MatchesFilters(string name, IReadOnlyList<string> filters) => filters.Count == 0
-    || filters.Any(filter => name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+static bool MatchesFilters(
+    string name,
+    IReadOnlyList<string> filters,
+    IReadOnlyList<string> exactFilters) => (filters.Count == 0 && exactFilters.Count == 0)
+    || filters.Any(filter => name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+    || exactFilters.Any(filter => name.Equals(filter, StringComparison.OrdinalIgnoreCase));
+
+static bool MatchesSuite(string path, TestSuite suite) => suite switch
+{
+    TestSuite.Fast => !IsExpensiveSelfHostLlvmTest(path),
+    TestSuite.Reference => !IsSelfHostTest(path),
+    TestSuite.Semantic => IsSelfHostTest(path) && !IsExpensiveSelfHostLlvmTest(path),
+    TestSuite.SelfHost => IsSelfHostTest(path),
+    TestSuite.Llvm => IsExpensiveSelfHostLlvmTest(path),
+    _ => true
+};
+
+static bool MatchesAffectedExpected(
+    string expectedFile,
+    string repoRoot,
+    string expectedDir,
+    IReadOnlySet<string> affectedPaths)
+{
+    if (affectedPaths.Count == 0)
+    {
+        return true;
+    }
+
+    var name = Path.GetFileName(expectedFile)[..^".stdout.txt".Length];
+    if (affectedPaths.Contains(Path.GetFullPath(expectedFile))
+        || affectedPaths.Contains(Path.Combine(repoRoot, "examples", name + ".sl"))
+        || affectedPaths.Contains(Path.Combine(expectedDir, name + ".project.txt")))
+    {
+        return true;
+    }
+
+    var sourcesPath = Path.Combine(expectedDir, name + ".sources.txt");
+    return MatchesAffectedSources(sourcesPath, repoRoot, affectedPaths);
+}
+
+static bool MatchesAffectedDiagnostic(
+    string sourceFile,
+    string diagnosticDir,
+    string repoRoot,
+    IReadOnlySet<string> affectedPaths)
+{
+    if (affectedPaths.Count == 0)
+    {
+        return true;
+    }
+
+    var name = Path.GetFileNameWithoutExtension(sourceFile);
+    if (affectedPaths.Contains(Path.GetFullPath(sourceFile))
+        || affectedPaths.Contains(Path.Combine(diagnosticDir, name + ".stderr.contains.txt")))
+    {
+        return true;
+    }
+
+    return MatchesAffectedSources(
+        Path.Combine(diagnosticDir, name + ".sources.txt"),
+        repoRoot,
+        affectedPaths);
+}
+
+static bool MatchesAffectedSources(
+    string sourcesPath,
+    string repoRoot,
+    IReadOnlySet<string> affectedPaths)
+{
+    if (!File.Exists(sourcesPath))
+    {
+        return false;
+    }
+
+    if (affectedPaths.Contains(Path.GetFullPath(sourcesPath)))
+    {
+        return true;
+    }
+
+    return File.ReadLines(sourcesPath)
+        .Where(line => !string.IsNullOrWhiteSpace(line))
+        .Select(line => Path.GetFullPath(line.Trim(), repoRoot))
+        .Any(affectedPaths.Contains);
+}
 
 static bool IsExpensiveSelfHostLlvmTest(string path) => Path
     .GetFileName(path)
     .Contains("selfhost-llvm-", StringComparison.Ordinal);
+
+static bool IsReusableSelfHostCompilerTest(string path)
+{
+    var name = Path.GetFileName(path);
+    return name.Contains("selfhost-llvm-", StringComparison.Ordinal)
+        && !name.StartsWith("195-selfhost-llvm-target-descriptor", StringComparison.Ordinal)
+        && !name.StartsWith("291-selfhost-llvm-canonical-type-selection", StringComparison.Ordinal);
+}
+
+static string SelfHostTargetMode(string source) => source.Contains("llvm.emitWasm", StringComparison.Ordinal)
+    ? "wasm"
+    : source.Contains("llvm.emitLinux", StringComparison.Ordinal)
+        ? "linux"
+        : "windows";
+
+static IEnumerable<string> ExtractRawMultilineStrings(string source)
+{
+    var matches = Regex.Matches(
+        source,
+        "\"\"\"\\r?\\n(?<body>.*?)\\r?\\n[ \\t]*\"\"\"",
+        RegexOptions.Singleline);
+    if (matches.Count == 0)
+    {
+        throw new InvalidOperationException("Reusable self-host compiler test requires at least one raw multiline source string.");
+    }
+
+    foreach (Match match in matches)
+    {
+        var lines = Normalize(match.Groups["body"].Value).Split('\n');
+        var indentation = lines
+            .Where(static line => line.Length != 0)
+            .Select(static line => line.TakeWhile(static character => character is ' ' or '\t').Count())
+            .DefaultIfEmpty(0)
+            .Min();
+        yield return string.Join('\n', lines.Select(line =>
+            line.Length >= indentation ? line[indentation..] : string.Empty));
+    }
+}
+
+static bool IsOutputCurrent(string outputPath, IEnumerable<string> inputPaths)
+{
+    if (!File.Exists(outputPath))
+    {
+        return false;
+    }
+
+    var outputTime = File.GetLastWriteTimeUtc(outputPath);
+    return inputPaths.All(path => File.Exists(path) && File.GetLastWriteTimeUtc(path) <= outputTime);
+}
+
+static bool IsSelfHostTest(string path) => Path
+    .GetFileName(path)
+    .Contains("selfhost-", StringComparison.Ordinal);
 
 static ProcessResult Run(
     string fileName,
@@ -594,3 +828,13 @@ static IEnumerable<string> ReadAssertions(string path)
 }
 
 internal sealed record ProcessResult(int ExitCode, string Stdout, string Stderr);
+
+internal enum TestSuite
+{
+    Fast,
+    Reference,
+    Semantic,
+    SelfHost,
+    Full,
+    Llvm
+}

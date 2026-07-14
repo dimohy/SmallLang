@@ -181,12 +181,16 @@ lowering. State-specific branch frames avoid reading sibling-path slots that
 were never initialized; loop back-edges use explicit initialization-dominating
 phis for persistent loop-carried state.
 
-The coordinated regression runner now schedules known self-host LLVM cases
-first and uses a dynamically load-balanced partitioner across eight workers.
-On the same checkout and machine, an unfiltered 343-case run fell from 793.8 to
-382.8 seconds while retaining grammar determinism and isolated artifacts. This
-removes worker starvation; compiler/module fingerprint caching remains the next
-test-performance boundary.
+The coordinated regression runner has stable `reference`, `semantic`,
+`selfhost`, `llvm`, `fast`, and `full` layers plus exact-name and affected-source
+selection. Self-host LLVM fixtures no longer rebuild the same compiler modules
+for every case: one native SL compiler driver accepts target mode and source
+modules through process arguments, then emits Windows, Linux, or Wasm LLVM.
+Its timestamp fingerprint covers the compiler, source manifest, all listed SL
+modules, and the standard library. On the same checkout and machine, a current
+driver ran all 39 self-host LLVM cases in 4.1 seconds; the one-time cold driver
+bootstrap took 56.7 seconds. Two specialized introspection examples retain the
+ordinary reference-compiler path.
 
 ## Gate Inventory
 

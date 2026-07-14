@@ -5142,3 +5142,47 @@ zero warnings and errors; the focused grammar/module/call/effect slice passed
 26/26, including the long LLVM overlap selected by substring filters; and the
 coordinated eight-worker full suite passed 418/418 in 431.5 seconds with
 flushed monotonic `n/418` completion records.
+
+## D159 - User Effect Operations Carry Canonical Types
+
+Status: self-host semantic analysis implemented; runtime handling pending
+Date: 2026-07-15
+
+User-effect operation input and return annotations resolve to the same
+canonical type IDs used by expression analysis. Calls retain their argument and
+return IDs, diagnose zero/one-input arity mismatches, and compare argument types
+without spelling-based aliases. Explicit imported `Effect.operation` calls use
+normal alias, visibility, and `uses` resolution. Example 299 fixes the flat
+operation/call/diagnostic contract. Handler matching, resumptions, reference
+parser support, and LLVM execution remain open, so the roadmap score is not
+promoted.
+
+## D160 - Regression Selection Follows Stable Compiler Layers
+
+Status: implemented
+Date: 2026-07-15
+
+The example runner supports exact names, changed-source dependency selection,
+and `reference`, `semantic`, `selfhost`, `llvm`, `fast`, and `full` suites.
+Development checks can therefore prove the affected compiler layer quickly,
+while one unfiltered full run remains the commit gate. All modes retain flushed
+`[n/total]` progress and zero-warning Release bootstrap verification.
+
+## D161 - Self-Host LLVM Fixtures Reuse One Native SL Compiler
+
+Status: implemented for emitter fixtures
+Date: 2026-07-15
+
+Thirty-seven emitter fixtures formerly rebuilt the same multi-file self-host
+compiler through the C# reference compiler. One representative split measured
+56.05 seconds for that outer build, 0.02 seconds for the generated compiler to
+emit LLVM, and 0.01 seconds for `llvm-as`. The runner now bootstraps one native
+SL driver, passes target mode and one or more source modules as literal process
+arguments, and reuses it across Windows, Linux, and Wasm cases. Freshness covers
+the reference compiler output, driver manifest, listed SL sources, and standard
+library. The two non-emitter introspection cases keep their original path.
+
+Measured verification: cold driver bootstrap took 56.7 seconds. With the driver
+current, all 39 self-host LLVM tests passed in 4.1 seconds; individual emitter
+fixtures completed in roughly 0.02-0.26 seconds. This replaces repeated
+whole-compiler compilation with the intended bootstrap-once architecture.

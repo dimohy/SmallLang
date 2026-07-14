@@ -9,6 +9,7 @@ import smalllang.compiler.semantic.context as semanticContext
 import smalllang.compiler.semantic.expression_type_ids as expressionTypeIds
 import smalllang.compiler.semantic.expression_types as expressionTypes
 import smalllang.compiler.semantic.modules as modules
+import smalllang.compiler.semantic.module_resolve as moduleResolve
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.qualified as qualified
 import smalllang.compiler.semantic.resolve as resolution
@@ -1523,6 +1524,8 @@ public lowerPrepared request: move TypedIrRequest -> [TypedIrNode; ~] {
         nominal: nominal!
         composite: composite!
         modules: moduleIdentities!
+        imports: [modules.ImportEdge; ~]
+        resolvedImports: [moduleResolve.ResolvedImport; ~]
         qualified: qualifiedResults!
         calls: moduleCalls!
         ranges: ranges!

@@ -1,0 +1,13 @@
+effects = 2, operations = 2
+operation = 1,0,1,1,2
+operation = 1,2,3,2,2
+requirements = 4, calls = 5
+call = 0,0,1,0,1,0,1,2
+call = 0,1,1,0,1,0,1,2
+call = 0,2,1,0,1,2,1,2
+call = 0,3,1,2,3,0,1,2
+call = 0,4,1,2,3,0,-1,2
+diagnostics = 3
+diagnostic = 4,0,2,1,0,1,-1,-1
+diagnostic = 6,0,3,1,2,3,2,1
+diagnostic = 7,0,4,1,2,3,2,-1
