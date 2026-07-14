@@ -1,0 +1,20 @@
+builtin diagnostics = 0
+user effects = 4, operations = 5
+operation = 1,0,1,5,7
+operation = 1,2,3,11,13
+operation = 1,4,5,17,19
+operation = 1,6,7,23,25
+operation = 1,6,8,28,30
+requirements = 4, calls = 3
+requirement = 0,0,1,0,0
+requirement = 0,1,1,2,0
+requirement = 0,2,-1,-1,2
+requirement = 0,3,1,4,3
+user call = 0,0,1,0,1,0
+user call = 0,1,1,2,3,0
+user call = 1,9,1,0,1,2
+user diagnostics = 4
+user diagnostic = 1,1,-1,1,6,8
+user diagnostic = 2,0,2,-1,-1,-1
+user diagnostic = 3,0,3,1,4,-1
+user diagnostic = 4,1,9,1,0,1

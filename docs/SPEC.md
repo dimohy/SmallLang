@@ -1512,6 +1512,33 @@ effect signatures and operations; only those operations may be discharged by
 a matching lexical handler. The current implementation checks the closed
 capability set and does not silently infer or erase authority.
 
+The accepted user-defined surface keeps operation types inside a module-level
+effect declaration and references that effect from `uses`:
+
+```smalllang
+public effect Failure {
+    fail message: Text -> Int
+}
+
+parse text: Text -> Int uses Failure {
+    text -> fail
+}
+```
+
+An imported declaration is named through its normal import alias, for example
+`uses fx.Failure`. Inside a function, an unqualified operation such as `fail`
+is selected only from that function's declared user effects. Ordinary lexical
+functions keep precedence. An explicit `Failure.fail` call still requires
+`uses Failure`; qualification does not grant an effect capability. Duplicate
+operations, unknown effects, inaccessible imported effects, missing `uses`,
+and ambiguous operations are compile-time diagnostics.
+
+This surface is currently implemented as a self-host grammar, AST, symbol, and
+semantic-analysis product. Reference-compiler parsing, canonical operation
+type checking, lexical handler discharge, resumptions, and LLVM lowering are
+not implemented yet, so user effect operations are not executable runtime
+features at this stage.
+
 ## Output Surface Semantics
 
 `sys.io.print` and `sys.io.println` are standard library functions. The compiler

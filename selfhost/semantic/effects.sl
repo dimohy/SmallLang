@@ -123,16 +123,77 @@ public analyzeContext prepared: semanticContext.CompilationContext -> EffectAnal
                             (afterUses! and token.kind == grammar.tokenIdIdentifier) -> if {
                                 EffectMaskRequest { source: source, token: token } -> effectMask => effect!
                                 effect! == 0 -> if {
-                                    diagnostics! -> push(EffectDiagnostic {
-                                        code: 2
-                                        sourceModule: sourceIndex!
-                                        functionSymbol: symbolIndex!
-                                        targetSourceModule: -1
-                                        targetFunctionSymbol: -1
-                                        effectMask: 0
-                                        astNode: symbol.astNode
-                                        span: token.span
-                                    })
+                                    -1 => effectReferenceAst!
+                                    0 => effectReferenceSearch!
+                                    (effectReferenceSearch! < sourceRange.astCount and effectReferenceAst! < 0) -> while {
+                                        prepared.nodes[sourceRange.astStart + effectReferenceSearch!] => effectReferenceCandidate
+                                        (effectReferenceCandidate.kind == 52 and tokenIndex! >= effectReferenceCandidate.firstToken and tokenIndex! < effectReferenceCandidate.firstToken + effectReferenceCandidate.tokenCount) -> if {
+                                            effectReferenceSearch! => effectReferenceAst!
+                                        }
+                                        effectReferenceSearch! + 1 => effectReferenceSearch!
+                                    }
+                                    -1 => effectReferenceLastToken!
+                                    false => qualifiedEffectReference!
+                                    effectReferenceAst! >= 0 -> if {
+                                        prepared.nodes[sourceRange.astStart + effectReferenceAst!] => effectReference
+                                        effectReference.firstToken => effectReferenceToken!
+                                        effectReferenceToken! < effectReference.firstToken + effectReference.tokenCount -> while {
+                                            prepared.tokens[sourceRange.tokenStart + effectReferenceToken!].kind == grammar.tokenIdIdentifier -> if { effectReferenceToken! => effectReferenceLastToken! }
+                                            prepared.tokens[sourceRange.tokenStart + effectReferenceToken!].kind == grammar.tokenIdDot -> if { true => qualifiedEffectReference! }
+                                            effectReferenceToken! + 1 => effectReferenceToken!
+                                        }
+                                    }
+                                    false => knownUserEffect!
+                                    tokenIndex! == effectReferenceLastToken! -> if {
+                                        0 => localEffectSearch!
+                                        localEffectSearch! < sourceRange.symbolCount -> while {
+                                            prepared.symbols[sourceRange.symbolStart + localEffectSearch!] => localEffect
+                                            (localEffect.kind == 50 and localEffect.parent < 0) -> if {
+                                                prepared.tokens[sourceRange.tokenStart + localEffect.nameToken] => localEffectName
+                                                token.span.length == localEffectName.span.length => sameEffectName!
+                                                UIntSize(0) => effectNameByte!
+                                                (sameEffectName! and effectNameByte! < token.span.length) -> while {
+                                                    (source -> byte(token.span.start + effectNameByte!)) != (source -> byte(localEffectName.span.start + effectNameByte!)) -> if { false => sameEffectName! }
+                                                    effectNameByte! + UIntSize(1) => effectNameByte!
+                                                }
+                                                sameEffectName! -> if { true => knownUserEffect! }
+                                            }
+                                            localEffectSearch! + 1 => localEffectSearch!
+                                        }
+                                        0 => importedEffectSearch!
+                                        importedEffectSearch! < (prepared.qualified -> len) -> while {
+                                            prepared.qualified[importedEffectSearch!] => importedEffect
+                                            importedEffect.sourceModule == sourceIndex! -> if {
+                                                importedEffect.pathAst => importedEffectAncestor!
+                                                false => belongsToEffectReference!
+                                                (importedEffectAncestor! >= 0 and not belongsToEffectReference!) -> while {
+                                                    importedEffectAncestor! == effectReferenceAst! -> if { true => belongsToEffectReference! } else {
+                                                        prepared.nodes[sourceRange.astStart + importedEffectAncestor!].parent => importedEffectAncestor!
+                                                    }
+                                                }
+                                                belongsToEffectReference! -> if {
+                                                    prepared.modules[importedEffect.targetModule].sourceIndex => importedEffectSource
+                                                    importedEffect.targetSymbol >= 0 -> if {
+                                                        prepared.ranges[importedEffectSource] => importedEffectRange
+                                                        prepared.symbols[importedEffectRange.symbolStart + importedEffect.targetSymbol].kind == 50 -> if { true => knownUserEffect! }
+                                                    }
+                                                }
+                                            }
+                                            importedEffectSearch! + 1 => importedEffectSearch!
+                                        }
+                                        (not knownUserEffect! and not qualifiedEffectReference!) -> if {
+                                            diagnostics! -> push(EffectDiagnostic {
+                                                code: 2
+                                                sourceModule: sourceIndex!
+                                                functionSymbol: symbolIndex!
+                                                targetSourceModule: -1
+                                                targetFunctionSymbol: -1
+                                                effectMask: 0
+                                                astNode: symbol.astNode
+                                                span: token.span
+                                            })
+                                        }
+                                    }
                                 } else {
                                     HasEffectRequest { mask: mask!, effect: effect! } -> hasEffect -> if {
                                         diagnostics! -> push(EffectDiagnostic {

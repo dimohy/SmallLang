@@ -692,7 +692,11 @@ checks local, imported, and builtin-alias calls without rebuilding syntax.
 The grammar and AST now represent map expressions directly; map construction
 and mapped-view `flush` derive File requirements from prepared facts. Fixed
 external capabilities are deliberately not discharged by ordinary role blocks;
-user-defined effect signatures and matching handler lowering remain. The LLVM
+the self-host frontend now represents module-level user effect declarations,
+typed operation signatures, qualified `uses` requirements, operation calls,
+visibility, and structured diagnostics in one context-derived analysis product.
+Reference-parser parity, canonical operation type checking, matching handler
+discharge, resumptions, and LLVM lowering remain. The LLVM
 text emitter's 67 direct
 `lexer.lex`, `ast.lower`, and `symbols.collect` sites now read these flat package
 products through source ranges, covering scheduling, control flow, cleanup,
@@ -709,7 +713,11 @@ self-host effect-product evidence; its focused call/grammar/effect set passed
 22/22 and the coordinated suite passed 417/417 in 397.4 seconds with flushed
 monotonic progress. The following map/flush parity slice passed 12/12 focused
 cases and 417/417 in 392.1 seconds. The formal gate count remains unchanged
-until effect signatures, operation matching, and LLVM handler lowering exist.
+because the new declaration/operation slice is frontend-only; handler matching
+and LLVM lowering do not exist yet. Example 298 proves the new self-host user
+effect facts and diagnostics. Its focused overlapping slice passed 26/26, and
+the coordinated eight-worker suite passed 418/418 in 431.5 seconds with
+flushed monotonic progress and a zero-warning, zero-error Release build.
 
 Self-hosted LLVM text selects descriptors implemented in the file module
 `smalllang.compiler.llvm.target`. Windows x64/COFF, Linux x64/ELF, and

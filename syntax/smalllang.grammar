@@ -2,13 +2,15 @@ parser SmallLang.Compiler.Parsing.Parser
 
 start SourceFile
 
-rule SourceFile = NewLine* NamespaceDeclaration? ImportDeclaration* NewLine* (StructDeclaration NewLine*)* (EnumDeclaration NewLine*)* (TraitDeclaration NewLine*)* (ImplDeclaration NewLine*)* (FunctionDeclaration NewLine*)* (MainBlock | Statement*) NewLine* End
+rule SourceFile = NewLine* NamespaceDeclaration? ImportDeclaration* NewLine* (StructDeclaration NewLine*)* (EnumDeclaration NewLine*)* (EffectDeclaration NewLine*)* (TraitDeclaration NewLine*)* (ImplDeclaration NewLine*)* (FunctionDeclaration NewLine*)* (MainBlock | Statement*) NewLine* End
 rule NamespaceDeclaration = Identifier("namespace") Path StatementEnd
 rule ImportDeclaration = Identifier("import") Path (Identifier("as") Identifier)? StatementEnd
 rule StructDeclaration = Identifier("public")? Identifier("struct") Identifier LeftBrace NewLine* StructFieldDeclaration* RightBrace
 rule StructFieldDeclaration = Identifier Colon TypeAnnotation Comma? NewLine*
 rule EnumDeclaration = Identifier("public")? Identifier("enum") Identifier LeftBrace NewLine* EnumVariantDeclaration* RightBrace
 rule EnumVariantDeclaration = Identifier (LeftParen TypeAnnotation RightParen)? Comma? NewLine*
+rule EffectDeclaration = Identifier("public")? Identifier("effect") Identifier LeftBrace NewLine* EffectOperationDeclaration* RightBrace
+rule EffectOperationDeclaration = Identifier Identifier? Colon (TypeAnnotation Arrow TypeAnnotation | Arrow TypeAnnotation) NewLine+
 rule TraitDeclaration = Identifier("public")? Identifier("trait") Identifier LeftBrace NewLine* (TraitAssociatedTypeDeclaration | TraitMethodDeclaration)* RightBrace
 rule TraitAssociatedTypeDeclaration = Identifier("type") Identifier StatementEnd
 rule TraitMethodDeclaration = Identifier Colon ((Identifier("move") | Identifier("mut"))? Identifier("self")) Arrow TypeAnnotation StatementEnd
@@ -20,7 +22,8 @@ rule GenericParameterClause = Less Identifier (Colon Path AssociatedTypeEquality
 rule GenericWhereClause = Identifier("where") Identifier Colon Path AssociatedTypeEqualityConstraint?
 rule AssociatedTypeEqualityConstraint = Less Identifier Equal TypeAnnotation Greater
 rule FunctionSignature = Arrow Identifier("async")? TypeAnnotation EffectClause? | InputTypeAnnotation Arrow Identifier("async")? TypeAnnotation EffectClause?
-rule EffectClause = Identifier("uses") Identifier (Comma Identifier)*
+rule EffectClause = Identifier("uses") EffectReference (Comma EffectReference)*
+rule EffectReference = Path
 rule BlockFunctionBody = Identifier("block") Identifier Colon TypeAnnotation LeftBrace BlockBody RightBrace
 rule FunctionBody = LeftBrace NewLine* (FunctionDeclaration NewLine*)* Statement+ RightBrace | FatArrow Expression | Arrow Expression | Equal Identifier("intrinsic")
 rule MainBlock = Identifier("main") LeftBrace NewLine* Statement* RightBrace

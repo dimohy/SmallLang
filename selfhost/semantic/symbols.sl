@@ -31,6 +31,7 @@ public collectPrepared nodes: [ast.AstNode; ~] -> [Symbol; ~] {
         }
         node.kind == 9 -> if { true => isSymbol! }
         node.kind == 48 -> if { true => isSymbol! }
+        (node.kind == 50 or node.kind == 51) -> if { true => isSymbol! }
         node.kind >= 26 -> if {
             node.kind <= 34 -> if { true => isSymbol! }
         }

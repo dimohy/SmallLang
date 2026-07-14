@@ -39,7 +39,8 @@ struct LowerRequest {
 # 41 index access, 42 if flow target, 43 control-flow region,
 # 44 while flow target, 45 loop control statement,
 # 46 guarded loop control statement, 47 explicit return statement,
-# 48 result-producing block-function call, 49 memory-map expression.
+# 48 result-producing block-function call, 49 memory-map expression,
+# 50 effect declaration, 51 effect operation, 52 effect reference.
 # Function flags: 1 move input, 2 mutable input, 4 public, 8 async.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
@@ -96,6 +97,9 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
         rule == grammar.ruleIdReturnStatement => 47
         rule == grammar.ruleIdBlockFunctionCallStatement => 48
         rule == grammar.ruleIdMapExpression => 49
+        rule == grammar.ruleIdEffectDeclaration => 50
+        rule == grammar.ruleIdEffectOperationDeclaration => 51
+        rule == grammar.ruleIdEffectReference => 52
         else => -1
     }
     request.source => source
@@ -306,7 +310,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                 childIndex! + 1 => childIndex!
             }
         }
-        (declaration!.kind == 3 or declaration!.kind == 4 or declaration!.kind == 5) -> if {
+        (declaration!.kind == 3 or declaration!.kind == 4 or declaration!.kind == 5 or declaration!.kind == 50) -> if {
             declaration!.firstToken => headerToken!
             declaration!.firstToken + declaration!.tokenCount => headerEnd
             headerToken! < headerEnd -> while {
@@ -319,6 +323,28 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                     headerToken! + 1 => headerToken!
                 }
             }
+        }
+        declaration!.kind == 51 -> if {
+            -1 => operationNameToken!
+            -1 => operationInputToken!
+            declaration!.firstToken => operationToken!
+            declaration!.firstToken + declaration!.tokenCount => operationEnd!
+            operationToken! < operationEnd! -> while {
+                tokens![operationToken!].kind == grammar.tokenIdColon -> if {
+                    operationEnd! => operationToken!
+                } else {
+                    tokens![operationToken!].kind == grammar.tokenIdIdentifier -> if {
+                        operationNameToken! < 0 -> if {
+                            operationToken! => operationNameToken!
+                        } else {
+                            operationInputToken! < 0 -> if { operationToken! => operationInputToken! }
+                        }
+                    }
+                    operationToken! + 1 => operationToken!
+                }
+            }
+            operationNameToken! => declaration!.payloadToken
+            operationInputToken! => declaration!.secondaryToken
         }
         (declaration!.kind == 28 or declaration!.kind == 30) -> if {
             declaration!.firstToken => associatedToken!
@@ -549,7 +575,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
             firstGenericToken! => declaration!.payloadToken
             secondGenericToken! => declaration!.secondaryToken
         }
-        (declaration!.kind >= 3 and declaration!.kind <= 7) -> if {
+        ((declaration!.kind >= 3 and declaration!.kind <= 7) or declaration!.kind == 50) -> if {
             declaration!.firstToken => visibilityToken!
             true => findingVisibility!
             (visibilityToken! < declaration!.firstToken + declaration!.tokenCount and findingVisibility!) -> while {

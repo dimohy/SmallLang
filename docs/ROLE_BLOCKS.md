@@ -171,9 +171,11 @@ result block with statically typed input and deterministic install/body/resolve
 ordering. Example 297 now proves flat self-host effect declarations plus
 missing local/imported/builtin/map/flush capability diagnostics. The closed
 Console/File/Clock/Random/Process/Environment set represents fixed external
-authority and is intentionally not removable by a user role. The handler
-checkboxes remain open until separately declared effect operations can be
-matched, discharged, and lowered by a lexical handler.
+authority and is intentionally not removable by a user role. Example 298 adds
+self-host module-level user effect signatures, typed operation facts, qualified
+`uses` resolution, public/private import checks, and missing/duplicate/unknown
+operation diagnostics. The handler checkboxes remain open because those facts
+are not yet matched, discharged, resumed, or lowered by a lexical handler.
 
 ### E. Self-hosting and release evidence
 

@@ -5094,3 +5094,51 @@ Regression evidence on 2026-07-14: the focused map/grammar/effect set passed
 12/12; the coordinated eight-worker full suite passed 417/417 in 392.1 seconds
 with flushed monotonic `n/417` progress. The Release solution build completed
 with zero warnings and errors.
+
+## D158 - User Effects Are Typed Module Symbols
+
+Status: self-host declaration and call analysis implemented; execution pending
+Date: 2026-07-14
+
+User-defined handleable effects use module-level declarations whose operations
+have ordinary static input and return types:
+
+```smalllang
+public effect Failure {
+    fail message: Text -> Int
+}
+
+parse text: Text -> Int uses Failure {
+    text -> fail
+}
+```
+
+The generated grammar, self-host AST, and symbol collector represent effects
+and their operations directly. `semantic.user_effects` derives flat
+`UserEffectSignature`, `UserEffectOperation`, `UserEffectRequirement`,
+`UserEffectCall`, and `UserEffectDiagnostic` tables from one borrowed
+`CompilationContext`; it does not rebuild source syntax or module resolution.
+Qualified requirements such as `uses fx.Failure` obey normal module aliases and
+public visibility. Bare operation calls are selected only from the caller's
+declared user effects, while an ordinary resolved lexical function wins. An
+explicit same-module `Failure.fail` call without `uses Failure` is diagnosed;
+qualification never grants authority.
+
+Example 298 proves public and private signatures, typed zero/one-input operation
+facts, qualified requirements, ordinary operation calls, duplicate operation
+names, unknown and private imported effects, and a missing-`uses` call. The
+closed Console/File/Clock/Random/Process/Environment capabilities remain a
+separate non-handleable set.
+
+This is deliberately a self-host frontend slice. The reference parser does not
+yet accept effect declarations, imported explicit operation calls without
+`uses` need a direct diagnostic path, and canonical operation type checking,
+lexical handler matching, capability non-escape, nested selection, resumptions,
+and LLVM lowering remain. User effect operations are therefore not claimed as
+runtime-executable, and the formal roadmap score stays 48.5/60 (80.8%).
+
+Regression evidence on 2026-07-14: the Release solution build completed with
+zero warnings and errors; the focused grammar/module/call/effect slice passed
+26/26, including the long LLVM overlap selected by substring filters; and the
+coordinated eight-worker full suite passed 418/418 in 431.5 seconds with
+flushed monotonic `n/418` completion records.
