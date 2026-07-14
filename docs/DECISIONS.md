@@ -4526,4 +4526,48 @@ zero warnings and errors. The representative typed-IR/generic slice passed
 9/9, and the coordinated eight-worker runner passed all 403 cases in 411.8
 seconds with flushed `n/403` progress records.
 
+## D145 - Ownership Traits Fold Over Canonical Recursive Types
+
+Status: move and coroutine-frame ownership boundary implemented
+Date: 2026-07-14
+
+Ownership classification is now derived from the canonical semantic type
+arena instead of recognizing only shallow numeric origins. Each type receives
+two independent traits: bit 0 means the value carries destruction
+responsibility, and bit 1 means that responsibility reaches heap-backed
+storage. Dynamic arrays, dictionaries, and boxes set both bits directly.
+Fixed arrays and nominal applications such as `Option<T>` and `Result<T, E>`
+fold both traits from their canonical child IDs. A local or imported nominal
+declaration remains conservatively owned.
+
+`TypedIrNode` carries these traits as `typeFlags` beside `typeId`. Exact
+expression matches, binding operands, and resolved member field annotations
+propagate the same canonical identity and traits. Typed IR can also materialize
+an expression known only to the recursive pass when the temporary legacy
+inference table has no entry. The recursive lookup is deliberately skipped
+when legacy inference already has the expression; the final canonical mapping
+then fills its ID once, avoiding an unnecessary all-expression scan for every
+AST node.
+
+Partial-member move discovery now tests canonical ownership rather than the
+old array/dictionary/struct origin list. Coroutine frame planning uses heap
+reachability, and `CoroutineFrameSlot` retains both canonical `typeId` and
+`typeFlags` for later destruction and LLVM lowering. Example 289 proves that
+`Result<[Int; ~], Text>` specialized through an imported generic call is
+classified as owned and heap-reaching at the call, its binding, and the live
+slot that crosses `await`.
+
+This remains a partial migration and does not promote a roadmap gate. A
+nominal node does not yet contain its declaration-field type edges, so heap
+reachability through arbitrary nested struct fields is still supplied by the
+older struct analysis. Capability escape and effect-set enforcement remain
+separate work, and self-host LLVM still selects layout and drop glue from
+shallow fields. The count remains 48.5/60 (80.8%).
+
+Regression evidence on 2026-07-14: the Release solution build completed with
+zero warnings and errors. The representative typed-IR/move/async slice passed
+13/13. After eliminating redundant recursive lookups, the coordinated
+eight-worker runner passed all 404 cases in 429.8 seconds with flushed
+`n/404` progress records.
+
 

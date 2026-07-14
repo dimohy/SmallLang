@@ -10,6 +10,7 @@ import smalllang.compiler.semantic.modules as modules
 import smalllang.compiler.semantic.nominal_types as nominalTypes
 import smalllang.compiler.semantic.resolve as resolution
 import smalllang.compiler.semantic.symbols as symbols
+import smalllang.compiler.semantic.type_ids as typeIds
 import syntax.generated.smalllang as grammar
 
 # Stable, flat typed IR. Indexes are relocatable array offsets so later LLVM
@@ -34,6 +35,7 @@ public struct TypedIrNode {
     typeModule: Int
     typeSymbol: Int
     typeId: Int
+    typeFlags: Int
     payloadToken: Int
     opcode: Int
     operand0: Int
@@ -79,11 +81,26 @@ public struct CoroutineFrameSlot {
     typeOrigin: Int
     typeModule: Int
     typeSymbol: Int
+    typeId: Int
+    typeFlags: Int
     flags: Int
 }
 
 public lower sources: [Text; ~] -> [TypedIrNode; ~] {
     sources -> expressionTypeIds.resolve => recursiveTypes
+    [typeIds.SemanticType; ~] => recursiveSemanticTypes!
+    recursiveTypes.types -> each recursiveSemanticType {
+        recursiveSemanticTypes! -> push(recursiveSemanticType)
+    }
+    recursiveSemanticTypes! -> typeIds.classify => recursiveTypeFlags!
+    [typeIds.TypeReference; ~] => recursiveReferences!
+    recursiveTypes.references -> each recursiveReference {
+        recursiveReferences! -> push(recursiveReference)
+    }
+    [expressionTypeIds.ExpressionTypeId; ~] => recursiveExpressions!
+    recursiveTypes.expressions -> each recursiveExpression {
+        recursiveExpressions! -> push(recursiveExpression)
+    }
     sources -> expressionTypes.infer => inferred!
     sources -> nominalTypes.resolve => nominal!
     sources -> compositeTypes.resolve => composite!
@@ -228,6 +245,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         typeModule: functionResultModule!
                         typeSymbol: functionResultSymbol!
                         typeId: -1
+                        typeFlags: 0
                         payloadToken: function.nameToken
                         opcode: -1
                         operand0: returnIr
@@ -246,6 +264,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                         typeModule: functionResultModule!
                         typeSymbol: functionResultSymbol!
                         typeId: -1
+                        typeFlags: 0
                         payloadToken: -1
                         opcode: -1
                         operand0: -1
@@ -266,6 +285,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             typeModule: parameterModule!
                             typeSymbol: parameterTypeSymbol!
                             typeId: -1
+                            typeFlags: 0
                             payloadToken: parameter.nameToken
                             opcode: -1
                             operand0: -1
@@ -336,6 +356,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                         typeModule: bindingType.targetModule
                                         typeSymbol: bindingType.targetSymbol
                                         typeId: -1
+                                        typeFlags: 0
                                         payloadToken: bindingAst.kind == 48 -> if { bindingAst.secondaryToken } else { bindingAst.payloadToken }
                                         opcode: -1
                                         operand0: -1
@@ -364,6 +385,45 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             inferred![expressionTypeSearch!] => candidateExpressionType
                             (candidateExpressionType.sourceModule == sourceIndex! and candidateExpressionType.astNode == expressionAstIndex!) -> if { expressionTypeSearch! => expressionTypeIndex! }
                             expressionTypeSearch! + 1 => expressionTypeSearch!
+                        }
+                        -1 => recursiveExpressionTypeId!
+                        expressionTypeIndex! < 0 -> if {
+                            0 => recursiveExpressionSearch!
+                            recursiveExpressionSearch! < (recursiveExpressions! -> len) -> while {
+                                recursiveExpressions![recursiveExpressionSearch!] => recursiveExpressionCandidate
+                                (recursiveExpressionCandidate.status == 0 and recursiveExpressionCandidate.sourceModule == sourceIndex! and recursiveExpressionCandidate.astNode == expressionAstIndex!) -> if {
+                                    recursiveExpressionCandidate.typeId => recursiveExpressionTypeId!
+                                }
+                                recursiveExpressionSearch! + 1 => recursiveExpressionSearch!
+                            }
+                        }
+                        1 => expressionTypeOrigin!
+                        -1 => expressionTypeModule!
+                        0 => expressionTypeSymbol!
+                        expressionTypeIndex! >= 0 -> if {
+                            inferred![expressionTypeIndex!] => legacyExpressionType
+                            legacyExpressionType.origin => expressionTypeOrigin!
+                            legacyExpressionType.targetModule => expressionTypeModule!
+                            legacyExpressionType.targetSymbol => expressionTypeSymbol!
+                        }
+                        (expressionTypeIndex! < 0 and recursiveExpressionTypeId! >= 0) -> if {
+                            recursiveSemanticTypes![recursiveExpressionTypeId!] => recursiveExpressionType
+                            recursiveExpressionType.origin => expressionTypeOrigin!
+                            recursiveExpressionType.module => expressionTypeModule!
+                            recursiveExpressionType.symbol => expressionTypeSymbol!
+                            (recursiveExpressionType.kind >= 2 and recursiveExpressionType.kind <= 6) -> if {
+                                10 + recursiveExpressionType.kind => expressionTypeOrigin!
+                            }
+                            (recursiveExpressionType.kind == 2 or recursiveExpressionType.kind == 3 or recursiveExpressionType.kind == 4 or recursiveExpressionType.kind == 6) -> if {
+                                recursiveExpressionType.first >= 0 -> if {
+                                    recursiveSemanticTypes![recursiveExpressionType.first].module => expressionTypeModule!
+                                    recursiveSemanticTypes![recursiveExpressionType.first].symbol => expressionTypeSymbol!
+                                }
+                            }
+                            recursiveExpressionType.kind == 5 -> if {
+                                recursiveExpressionType.first >= 0 -> if { recursiveSemanticTypes![recursiveExpressionType.first].symbol => expressionTypeModule! }
+                                recursiveExpressionType.second >= 0 -> if { recursiveSemanticTypes![recursiveExpressionType.second].symbol => expressionTypeSymbol! }
+                            }
                         }
                         expressionBelongsToFunction! -> if {
                             (expression.kind == 42 or expression.kind == 43 or expression.kind == 44 or expression.kind == 45 or expression.kind == 46 or expression.kind == 47) -> if {
@@ -401,6 +461,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: controlTypeModule!
                                     typeSymbol: controlTypeSymbol!
                                     typeId: -1
+                                    typeFlags: 0
                                     payloadToken: expression.payloadToken
                                     opcode: controlOpcode!
                                     operand0: -1
@@ -409,14 +470,13 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     flags: expression.flags
                                 })
                             } else {
-                                expressionTypeIndex! >= 0 -> if {
-                                inferred![expressionTypeIndex!] => expressionType
+                                (expressionTypeIndex! >= 0 or recursiveExpressionTypeId! >= 0) -> if {
                                 9 => expressionKind!
                                 expression.kind == 13 -> if { 2 => expressionKind! }
                                 expression.kind == 14 -> if { 3 => expressionKind! }
                                 expression.kind == 15 -> if {
                                     5 => expressionKind!
-                                    (expressionType.origin == 1 and expressionType.targetSymbol == 23) -> if {
+                                    (expressionTypeOrigin! == 1 and expressionTypeSymbol! == 23) -> if {
                                         true => expressionIsBoolLiteral!
                                         0 => expressionBoolNameSearch!
                                         expressionBoolNameSearch! < (resolvedNames! -> len) -> while {
@@ -478,10 +538,11 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     astNode: expressionAstIndex!
                                     symbol: expressionSymbol!
                                     targetModule: expressionTargetModule!
-                                    typeOrigin: expressionType.origin
-                                    typeModule: expressionType.targetModule
-                                    typeSymbol: expressionType.targetSymbol
-                                    typeId: -1
+                                    typeOrigin: expressionTypeOrigin!
+                                    typeModule: expressionTypeModule!
+                                    typeSymbol: expressionTypeSymbol!
+                                    typeId: recursiveExpressionTypeId!
+                                    typeFlags: recursiveExpressionTypeId! < 0 -> if { 0 } else { recursiveTypeFlags![recursiveExpressionTypeId!] }
                                     payloadToken: expression.payloadToken
                                     opcode: expression.operatorKind
                                     operand0: -1
@@ -745,6 +806,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                     typeModule: -1
                     typeSymbol: 2
                     typeId: -1
+                    typeFlags: 0
                     payloadToken: -1
                     opcode: -1
                     operand0: -1
@@ -814,6 +876,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                         typeModule: entryBindingType.targetModule
                                         typeSymbol: entryBindingType.targetSymbol
                                         typeId: -1
+                                        typeFlags: 0
                                         payloadToken: entryBindingAst.kind == 48 -> if { entryBindingAst.secondaryToken } else { entryBindingAst.payloadToken }
                                         opcode: -1
                                         operand0: -1
@@ -840,6 +903,45 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                             inferred![entryExpressionTypeSearch!] => entryExpressionTypeCandidate
                             (entryExpressionTypeCandidate.sourceModule == sourceIndex! and entryExpressionTypeCandidate.astNode == entryExpressionAst!) -> if { entryExpressionTypeSearch! => entryExpressionTypeIndex! }
                             entryExpressionTypeSearch! + 1 => entryExpressionTypeSearch!
+                        }
+                        -1 => recursiveEntryExpressionTypeId!
+                        entryExpressionTypeIndex! < 0 -> if {
+                            0 => recursiveEntryExpressionSearch!
+                            recursiveEntryExpressionSearch! < (recursiveExpressions! -> len) -> while {
+                                recursiveExpressions![recursiveEntryExpressionSearch!] => recursiveEntryExpressionCandidate
+                                (recursiveEntryExpressionCandidate.status == 0 and recursiveEntryExpressionCandidate.sourceModule == sourceIndex! and recursiveEntryExpressionCandidate.astNode == entryExpressionAst!) -> if {
+                                    recursiveEntryExpressionCandidate.typeId => recursiveEntryExpressionTypeId!
+                                }
+                                recursiveEntryExpressionSearch! + 1 => recursiveEntryExpressionSearch!
+                            }
+                        }
+                        1 => entryExpressionTypeOrigin!
+                        -1 => entryExpressionTypeModule!
+                        0 => entryExpressionTypeSymbol!
+                        entryExpressionTypeIndex! >= 0 -> if {
+                            inferred![entryExpressionTypeIndex!] => legacyEntryExpressionType
+                            legacyEntryExpressionType.origin => entryExpressionTypeOrigin!
+                            legacyEntryExpressionType.targetModule => entryExpressionTypeModule!
+                            legacyEntryExpressionType.targetSymbol => entryExpressionTypeSymbol!
+                        }
+                        (entryExpressionTypeIndex! < 0 and recursiveEntryExpressionTypeId! >= 0) -> if {
+                            recursiveSemanticTypes![recursiveEntryExpressionTypeId!] => recursiveEntryExpressionType
+                            recursiveEntryExpressionType.origin => entryExpressionTypeOrigin!
+                            recursiveEntryExpressionType.module => entryExpressionTypeModule!
+                            recursiveEntryExpressionType.symbol => entryExpressionTypeSymbol!
+                            (recursiveEntryExpressionType.kind >= 2 and recursiveEntryExpressionType.kind <= 6) -> if {
+                                10 + recursiveEntryExpressionType.kind => entryExpressionTypeOrigin!
+                            }
+                            (recursiveEntryExpressionType.kind == 2 or recursiveEntryExpressionType.kind == 3 or recursiveEntryExpressionType.kind == 4 or recursiveEntryExpressionType.kind == 6) -> if {
+                                recursiveEntryExpressionType.first >= 0 -> if {
+                                    recursiveSemanticTypes![recursiveEntryExpressionType.first].module => entryExpressionTypeModule!
+                                    recursiveSemanticTypes![recursiveEntryExpressionType.first].symbol => entryExpressionTypeSymbol!
+                                }
+                            }
+                            recursiveEntryExpressionType.kind == 5 -> if {
+                                recursiveEntryExpressionType.first >= 0 -> if { recursiveSemanticTypes![recursiveEntryExpressionType.first].symbol => entryExpressionTypeModule! }
+                                recursiveEntryExpressionType.second >= 0 -> if { recursiveSemanticTypes![recursiveEntryExpressionType.second].symbol => entryExpressionTypeSymbol! }
+                            }
                         }
                         entryExpressionBelongs! -> if {
                             (entryExpression.kind == 42 or entryExpression.kind == 43 or entryExpression.kind == 44 or entryExpression.kind == 45 or entryExpression.kind == 46 or entryExpression.kind == 47) -> if {
@@ -877,6 +979,7 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     typeModule: entryControlTypeModule!
                                     typeSymbol: entryControlTypeSymbol!
                                     typeId: -1
+                                    typeFlags: 0
                                     payloadToken: entryExpression.payloadToken
                                     opcode: entryControlOpcode!
                                     operand0: -1
@@ -885,14 +988,13 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     flags: entryExpression.flags
                                 })
                             } else {
-                                entryExpressionTypeIndex! >= 0 -> if {
-                                inferred![entryExpressionTypeIndex!] => entryExpressionType
+                                (entryExpressionTypeIndex! >= 0 or recursiveEntryExpressionTypeId! >= 0) -> if {
                                 9 => entryExpressionKind!
                                 entryExpression.kind == 13 -> if { 2 => entryExpressionKind! }
                                 entryExpression.kind == 14 -> if { 3 => entryExpressionKind! }
                                 entryExpression.kind == 15 -> if {
                                     5 => entryExpressionKind!
-                                    (entryExpressionType.origin == 1 and entryExpressionType.targetSymbol == 23) -> if {
+                                    (entryExpressionTypeOrigin! == 1 and entryExpressionTypeSymbol! == 23) -> if {
                                         true => entryExpressionIsBoolLiteral!
                                         0 => entryBoolNameSearch!
                                         entryBoolNameSearch! < (resolvedNames! -> len) -> while {
@@ -954,10 +1056,11 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     astNode: entryExpressionAst!
                                     symbol: entryExpressionSymbol!
                                     targetModule: entryExpressionTargetModule!
-                                    typeOrigin: entryExpressionType.origin
-                                    typeModule: entryExpressionType.targetModule
-                                    typeSymbol: entryExpressionType.targetSymbol
-                                    typeId: -1
+                                    typeOrigin: entryExpressionTypeOrigin!
+                                    typeModule: entryExpressionTypeModule!
+                                    typeSymbol: entryExpressionTypeSymbol!
+                                    typeId: recursiveEntryExpressionTypeId!
+                                    typeFlags: recursiveEntryExpressionTypeId! < 0 -> if { 0 } else { recursiveTypeFlags![recursiveEntryExpressionTypeId!] }
                                     payloadToken: entryExpression.payloadToken
                                     opcode: entryExpression.operatorKind
                                     operand0: -1
@@ -1268,6 +1371,15 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
                                     memberCurrentOrigin! => member!.typeOrigin
                                     memberCurrentModule! => member!.typeModule
                                     memberCurrentSymbol! => member!.typeSymbol
+                                    0 => memberTypeReferenceIndex!
+                                    memberTypeReferenceIndex! < (recursiveReferences! -> len) -> while {
+                                        recursiveReferences![memberTypeReferenceIndex!] => memberTypeReference
+                                        (memberTypeReference.status == 0 and memberTypeReference.sourceModule == memberOwnerSource! and memberTypeReference.typeAst == memberField.typeNode) -> if {
+                                            memberTypeReference.typeId => member!.typeId
+                                            recursiveTypeFlags![memberTypeReference.typeId] => member!.typeFlags
+                                        }
+                                        memberTypeReferenceIndex! + 1 => memberTypeReferenceIndex!
+                                    }
                                 }
                                 memberFieldOrdinal! + 1 => memberFieldOrdinal!
                             }
@@ -1298,13 +1410,24 @@ public lower sources: [Text; ~] -> [TypedIrNode; ~] {
     0 => recursiveIrIndex!
     recursiveIrIndex! < (results! -> len) -> while {
         results![recursiveIrIndex!] => recursiveIr!
-        recursiveTypes.expressions -> each recursiveExpression {
+        recursiveExpressions! -> each recursiveExpression {
             (recursiveExpression.status == 0 and recursiveExpression.sourceModule == recursiveIr!.sourceModule and recursiveExpression.astNode == recursiveIr!.astNode) -> if {
                 recursiveExpression.typeId => recursiveIr!.typeId
+                recursiveTypeFlags![recursiveExpression.typeId] => recursiveIr!.typeFlags
             }
         }
         recursiveIr! => results![recursiveIrIndex!]
         recursiveIrIndex! + 1 => recursiveIrIndex!
+    }
+    0 => canonicalBindingIndex!
+    canonicalBindingIndex! < (results! -> len) -> while {
+        results![canonicalBindingIndex!] => canonicalBinding!
+        (canonicalBinding!.kind == 17 and canonicalBinding!.operand0 >= 0 and results![canonicalBinding!.operand0].typeId >= 0) -> if {
+            results![canonicalBinding!.operand0].typeId => canonicalBinding!.typeId
+            results![canonicalBinding!.operand0].typeFlags => canonicalBinding!.typeFlags
+            canonicalBinding! => results![canonicalBindingIndex!]
+        }
+        canonicalBindingIndex! + 1 => canonicalBindingIndex!
     }
     results!
 }
@@ -1328,7 +1451,7 @@ public movesFrom ir: [TypedIrNode; ~] -> [MoveEvent; ~] {
             }
             consumes! -> if { site.operand0 => movedValueIr! }
         }
-        (site.kind == 17 and site.operand0 >= 0 and ir[site.operand0].kind == 13 and (ir[site.operand0].typeOrigin == 13 or ir[site.operand0].typeOrigin == 15 or ir[site.operand0].typeOrigin == 0 or ir[site.operand0].typeOrigin == 2)) -> if {
+        (site.kind == 17 and site.operand0 >= 0 and ir[site.operand0].kind == 13 and ir[site.operand0].typeFlags % 2 == 1) -> if {
             site.operand0 => movedValueIr!
         }
         movedValueIr! >= 0 -> if {
@@ -1485,7 +1608,7 @@ public frameSlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
                 }
                 usedAfterAwait! -> if {
                     definition.flags => frameFlags!
-                    (definition.typeOrigin == 13 or definition.typeOrigin == 15 or definition.typeOrigin == 16) -> if {
+                    (definition.typeFlags / 2) % 2 == 1 -> if {
                         frameFlags! + 2 => frameFlags!
                     }
                     false => isTaskSlot!
@@ -1513,6 +1636,8 @@ public frameSlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
                         typeOrigin: definition.typeOrigin
                         typeModule: definition.typeModule
                         typeSymbol: definition.typeSymbol
+                        typeId: definition.typeId
+                        typeFlags: definition.typeFlags
                         flags: frameFlags!
                     })
                 }
@@ -1542,6 +1667,8 @@ public destroySlots sources: [Text; ~] -> [CoroutineFrameSlot; ~] {
             typeOrigin: -1
             typeModule: -1
             typeSymbol: -1
+            typeId: -1
+            typeFlags: 0
             flags: 4
         })
         slots! -> len => slotCursor!

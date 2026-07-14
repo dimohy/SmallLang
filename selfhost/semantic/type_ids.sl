@@ -49,6 +49,40 @@ public struct SpecializationResult {
     status: Int
 }
 
+# Canonical ownership traits derived from the recursive type arena.
+# Bit 0 means the value owns destruction responsibility. Bit 1 means that
+# responsibility reaches heap-backed storage. Child IDs always precede their
+# parents, so fixed arrays and nominal applications are classified bottom-up.
+public classify types: [SemanticType; ~] -> [Int; ~] {
+    [Int; ~] => traits!
+    types -> each current {
+        false => owns!
+        false => reachesHeap!
+        (current.kind == 3 or current.kind == 5 or current.kind == 6) -> if {
+            true => owns!
+            true => reachesHeap!
+        }
+        (current.kind == 1 and (current.origin == 0 or current.origin == 2)) -> if {
+            true => owns!
+        }
+        (current.kind == 4 or current.kind == 7) -> if {
+            current.first >= 0 -> if {
+                traits![current.first] % 2 == 1 -> if { true => owns! }
+                (traits![current.first] / 2) % 2 == 1 -> if { true => reachesHeap! }
+            }
+            current.second >= 0 -> if {
+                traits![current.second] % 2 == 1 -> if { true => owns! }
+                (traits![current.second] / 2) % 2 == 1 -> if { true => reachesHeap! }
+            }
+        }
+        0 => value!
+        owns! -> if { value! + 1 => value! }
+        reachesHeap! -> if { value! + 2 => value! }
+        traits! -> push(value!)
+    }
+    traits!
+}
+
 # Resolves and globally interns recursive annotation types across source files.
 # Nominal equality uses declaration identity, not source spelling.
 public resolve sources: [Text; ~] -> SemanticTypeSet {

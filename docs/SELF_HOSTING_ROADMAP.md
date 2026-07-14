@@ -653,9 +653,13 @@ not-yet-specialized generic expressions. Generic calls now structurally unify
 complete input trees, consistently bind repeated and multiple parameters,
 rebuild canonical result trees, and carry successful concrete expression IDs
 into typed IR. Dynamic-array, dictionary, box, and local/imported struct
-literals participate in this boundary. Fixed-array length identity,
-ownership/effects, and LLVM still need to consume that ID consistently, and
-role-specific ownership/effect checks still keep semantic parity partial;
+literals participate in this boundary. Canonical ownership traits now fold
+through fixed arrays and nominal applications, propagate across calls,
+bindings, and member fields, govern partial-member move recognition, and mark
+heap-reaching coroutine slots that cross `await`. Nominal declaration field
+graphs, capability/effect enforcement, and LLVM layout/drop lowering still
+need to consume the recursive model consistently, and role-specific
+ownership/effect checks still keep semantic parity partial;
 the canonical gate count therefore remains 42 complete, 13 partial, and 5
 missing (48.5/60, 80.8%).
 
