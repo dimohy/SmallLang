@@ -67,7 +67,9 @@ runtimeFunctionSymbol request: RuntimeNameRequest -> Int {
     TokenNameRequest { source: request.source, token: request.token, expected: "closestInt" } -> tokenNameIs -> if { -110 } else {
     TokenNameRequest { source: request.source, token: request.token, expected: "closeIntReader" } -> tokenNameIs -> if { -111 } else {
     TokenNameRequest { source: request.source, token: request.token, expected: "nowMillis" } -> tokenNameIs -> if { -112 } else {
-    TokenNameRequest { source: request.source, token: request.token, expected: "sleep" } -> tokenNameIs -> if { -113 } else { -1 }
+    TokenNameRequest { source: request.source, token: request.token, expected: "sleep" } -> tokenNameIs -> if { -113 } else {
+    TokenNameRequest { source: request.source, token: request.token, expected: "flush" } -> tokenNameIs -> if { -114 } else { -1 }
+    }
     }
     }
     }

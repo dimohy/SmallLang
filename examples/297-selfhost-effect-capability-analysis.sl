@@ -43,6 +43,21 @@ main {
             value -> lib.inspect
         }
 
+        mappedLength: -> UIntSize {
+            map read "data.bin" at 0 for 16 => data
+            data -> len
+        }
+
+        sync data: MutableMappedBytes -> Unit {
+            data -> flush
+        }
+
+        mappedSafe: -> UIntSize uses File {
+            map write "safe.bin" size 16 => data!
+            data! -> flush
+            data! -> len
+        }
+
         main {
         }
         """,

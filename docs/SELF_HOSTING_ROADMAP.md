@@ -689,8 +689,11 @@ Clock, Random, Process, Environment, mapped files, generics, and role blocks.
 The self-host semantic layer now derives flat source-qualified `FunctionEffect`
 and `EffectDiagnostic` products from one borrowed `CompilationContext`. It
 checks local, imported, and builtin-alias calls without rebuilding syntax.
-Role-handler discharge and self-host map/flush syntax effects still need
-migration. The LLVM text emitter's 67 direct
+The grammar and AST now represent map expressions directly; map construction
+and mapped-view `flush` derive File requirements from prepared facts. Fixed
+external capabilities are deliberately not discharged by ordinary role blocks;
+user-defined effect signatures and matching handler lowering remain. The LLVM
+text emitter's 67 direct
 `lexer.lex`, `ast.lower`, and `symbols.collect` sites now read these flat package
 products through source ranges, covering scheduling, control flow, cleanup,
 operands, member layout, and interpolation name lookup. Interpolation lowering
@@ -704,8 +707,9 @@ The reference effect-set slice then passed the coordinated 416-case suite in
 393.2 seconds with flushed monotonic progress. Example 297 adds executable
 self-host effect-product evidence; its focused call/grammar/effect set passed
 22/22 and the coordinated suite passed 417/417 in 397.4 seconds with flushed
-monotonic progress. The formal gate count remains unchanged until handler
-discharge and syntax-level map/flush parity exist.
+monotonic progress. The following map/flush parity slice passed 12/12 focused
+cases and 417/417 in 392.1 seconds. The formal gate count remains unchanged
+until effect signatures, operation matching, and LLVM handler lowering exist.
 
 Self-hosted LLVM text selects descriptors implemented in the file module
 `smalllang.compiler.llvm.target`. Windows x64/COFF, Linux x64/ELF, and

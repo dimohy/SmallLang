@@ -5048,13 +5048,49 @@ Example 297 prepares one `CompilationContext` and passes it to
 `effects.analyzeContext`. It proves pure, multi-effect, local, imported, and
 builtin-alias facts and diagnostics across all six initial capability names.
 The design follows the subset rule used by Unison abilities and Koka effect
-types, while retaining a separate future `handle` discharge step like Unison
-and Effekt handlers. Handler subtraction, user-defined effect operations, and
-self-host syntax-level map/flush effects remain explicit gaps, so no formal
-gate is promoted and progress remains 48.5/60 (80.8%).
+types. Handler subtraction is reserved for separately declared user-defined
+effect operations; fixed external capabilities cannot be erased by an
+ordinary role block. User-defined effect operations and their handler lowering
+remain explicit gaps, so no formal gate is promoted and progress remains
+48.5/60 (80.8%).
 
 Regression evidence on 2026-07-14: the call/grammar/effect focused set passed
 22/22, including the generic-role `yield` regression and example 297. The
 coordinated eight-worker full suite then passed 417/417 in 397.4 seconds with
 flushed monotonic `n/417` progress. The Release solution build completed with
 zero warnings and errors.
+
+## D157 - Fixed Capabilities Are Not User-Handleable Effects
+
+Status: fixed capability boundary and self-host map/flush parity implemented;
+user-defined effect signatures pending
+Date: 2026-07-14
+
+Console, File, Clock, Random, Process, and Environment describe authority over
+real external resources. Letting a normal `handle` role subtract one of these
+bits without replacing its runtime implementation would allow a function to
+be typed as pure while it still prints, reads files, or starts processes. SL
+therefore does not treat the closed capability set as user-handleable algebraic
+effects.
+
+This matches the capability interpretation in modern Effekt and the evidence
+boundary used by Koka: fixed resources remain explicit requirements, while a
+future user-defined effect signature may be installed and discharged by a
+matching lexical handler. The accepted ordinary `handle` block-function form
+remains the surface mechanism, but it gains no authority merely from its name.
+
+The self-host grammar now recognizes `map read` and `map write` as a distinct
+AST kind. `semantic.effects` derives File requirements for map construction
+directly from the prepared AST and for mapped-view `flush` through stable
+runtime alias -114. A lexically resolved user function named `flush` still
+wins over the runtime alias. Example 297 proves missing File diagnostics for
+both forms and positive `uses File` coverage without rebuilding syntax.
+
+No formal gate is promoted: effect signatures, typed operations, lexical
+handler matching, capability non-escape, nested-handler selection, and LLVM
+handler lowering remain. Progress stays 48.5/60 (80.8%).
+
+Regression evidence on 2026-07-14: the focused map/grammar/effect set passed
+12/12; the coordinated eight-worker full suite passed 417/417 in 392.1 seconds
+with flushed monotonic `n/417` progress. The Release solution build completed
+with zero warnings and errors.

@@ -39,7 +39,7 @@ struct LowerRequest {
 # 41 index access, 42 if flow target, 43 control-flow region,
 # 44 while flow target, 45 loop control statement,
 # 46 guarded loop control statement, 47 explicit return statement,
-# 48 result-producing block-function call.
+# 48 result-producing block-function call, 49 memory-map expression.
 # Function flags: 1 move input, 2 mutable input, 4 public, 8 async.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
@@ -95,6 +95,7 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
         rule == grammar.ruleIdGuardLoopControlStatement => 46
         rule == grammar.ruleIdReturnStatement => 47
         rule == grammar.ruleIdBlockFunctionCallStatement => 48
+        rule == grammar.ruleIdMapExpression => 49
         else => -1
     }
     request.source => source

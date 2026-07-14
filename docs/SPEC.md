@@ -1503,9 +1503,14 @@ capability boundary.
 `async` is intentionally separate: it describes suspension and scheduling,
 not permission to access the clock, filesystem, console, or process state. An
 async timer therefore declares both parts, for example
-`delayed: -> async Int uses Clock`. Future `handle` role blocks may discharge a
-handled effect from the surrounding set; the current implementation only
-checks declared propagation and does not silently infer or erase effects.
+`delayed: -> async Int uses Clock`.
+
+These six names are fixed external capabilities, not user-replaceable
+algebraic operations. A normal `handle` role therefore cannot erase them and
+make real I/O appear pure. Future handleable effects use separately declared
+effect signatures and operations; only those operations may be discharged by
+a matching lexical handler. The current implementation checks the closed
+capability set and does not silently infer or erase authority.
 
 ## Output Surface Semantics
 

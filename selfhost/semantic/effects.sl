@@ -222,6 +222,9 @@ public analyzeContext prepared: semanticContext.CompilationContext -> EffectAnal
                 (call.functionSymbol == -112 or call.functionSymbol == -113) -> if {
                     4 => requiredMask!
                 } else {
+                call.functionSymbol == -114 -> if {
+                    2 => requiredMask!
+                } else {
                     0 => targetFactIndex!
                     targetFactIndex! < (functions! -> len) -> while {
                         functions![targetFactIndex!] => targetFact
@@ -230,6 +233,7 @@ public analyzeContext prepared: semanticContext.CompilationContext -> EffectAnal
                         }
                         targetFactIndex! + 1 => targetFactIndex!
                     }
+                }
                 }
                 }
                 }
@@ -259,6 +263,72 @@ public analyzeContext prepared: semanticContext.CompilationContext -> EffectAnal
             }
         }
         callIndex! + 1 => callIndex!
+    }
+
+    # Memory-map construction is syntax rather than a function call, so derive
+    # it directly from the prepared AST. Mapped-view flush uses runtime alias
+    # -114 above and therefore follows the ordinary resolved-call path.
+    0 => mapSourceIndex!
+    mapSourceIndex! < (prepared.sources -> len) -> while {
+        prepared.ranges[mapSourceIndex!] => mapSourceRange
+        0 => mapAstIndex!
+        mapAstIndex! < mapSourceRange.astCount -> while {
+            prepared.nodes[mapSourceRange.astStart + mapAstIndex!] => mapNode
+            mapNode.kind == 49 -> if {
+                mapNode.parent => mapAncestor!
+                -1 => mapCallerAst!
+                (mapAncestor! >= 0 and mapCallerAst! < 0) -> while {
+                    prepared.nodes[mapSourceRange.astStart + mapAncestor!] => mapAncestorNode
+                    mapAncestorNode.kind == 7 -> if {
+                        mapAncestor! => mapCallerAst!
+                    } else {
+                        mapAncestorNode.kind == 8 -> if {
+                            -2 => mapCallerAst!
+                        } else {
+                            mapAncestorNode.parent => mapAncestor!
+                        }
+                    }
+                }
+                mapCallerAst! >= 0 -> if {
+                    -1 => mapCallerSymbol!
+                    0 => mapSymbolSearch!
+                    (mapSymbolSearch! < mapSourceRange.symbolCount and mapCallerSymbol! < 0) -> while {
+                        prepared.symbols[mapSourceRange.symbolStart + mapSymbolSearch!] => mapCandidate
+                        (mapCandidate.kind == 7 and mapCandidate.astNode == mapCallerAst!) -> if {
+                            mapSymbolSearch! => mapCallerSymbol!
+                        }
+                        mapSymbolSearch! + 1 => mapSymbolSearch!
+                    }
+                    0 => mapCallerMask!
+                    0 => mapFactSearch!
+                    mapFactSearch! < (functions! -> len) -> while {
+                        functions![mapFactSearch!] => mapFact
+                        (mapFact.sourceModule == mapSourceIndex! and mapFact.functionSymbol == mapCallerSymbol!) -> if {
+                            mapFact.mask => mapCallerMask!
+                        }
+                        mapFactSearch! + 1 => mapFactSearch!
+                    }
+                    not (HasEffectRequest { mask: mapCallerMask!, effect: 2 } -> hasEffect) -> if {
+                        diagnostics! -> push(EffectDiagnostic {
+                            code: 1
+                            sourceModule: mapSourceIndex!
+                            functionSymbol: mapCallerSymbol!
+                            targetSourceModule: -1
+                            targetFunctionSymbol: -115
+                            effectMask: 2
+                            astNode: mapAstIndex!
+                            span: syntax.SourceSpan {
+                                fileId: mapSourceIndex!
+                                start: mapNode.start
+                                length: mapNode.length
+                            }
+                        })
+                    }
+                }
+            }
+            mapAstIndex! + 1 => mapAstIndex!
+        }
+        mapSourceIndex! + 1 => mapSourceIndex!
     }
 
     EffectAnalysis { functions: functions!, diagnostics: diagnostics! } => result!

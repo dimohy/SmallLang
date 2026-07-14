@@ -169,9 +169,11 @@ Control-flow cleanup and capability escape analysis remain unchecked.
 Current evidence: example 277 proves that `handle` is an ordinary user-defined
 result block with statically typed input and deterministic install/body/resolve
 ordering. Example 297 now proves flat self-host effect declarations plus
-missing local/imported/builtin capability diagnostics. Handler installation
-does not yet subtract a handled capability, so the handler checkboxes remain
-open.
+missing local/imported/builtin/map/flush capability diagnostics. The closed
+Console/File/Clock/Random/Process/Environment set represents fixed external
+authority and is intentionally not removable by a user role. The handler
+checkboxes remain open until separately declared effect operations can be
+matched, discharged, and lowered by a lexical handler.
 
 ### E. Self-hosting and release evidence
 
