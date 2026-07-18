@@ -1,0 +1,7 @@
+smalllang_file_operation_task_worker
+call void @smalllang_platform_close_owned_file
+call %smalllang.file_handle_result @smalllang_platform_open_owned_read_file
+call %smalllang.file_count_result @smalllang_platform_read_owned_file_at
+call i64 @smalllang_platform_duplicate_owned_file
+@dup
+@pread

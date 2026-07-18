@@ -1004,8 +1004,12 @@ item before releasing workers, making the parent-help contract deterministic;
 the Windows executable reported `parent-helped=true` in 30/30 repeated runs.
 The read-only Windows suite passes 523/523, the Release build has zero warnings
 and errors, and the focused Linux verifier passes 6/6. Linux full-suite parity
-is still unproven, so the parallel checklist remains 27/28 (96.4%) and the
-canonical roadmap remains 48.5/60 (80.8%).
+was subsequently implemented as a target-aware 523-case runner. Ordinary
+examples and diagnostics compile for Linux x64 and execute under WSL; reusable
+self-host examples emit Linux LLVM, every module assembles, and cases with
+runtime expectations link and execute natively. The Linux suite passes 523/523,
+so the parallel checklist reaches 28/28 (100%). This closes the feature-local
+parallel plan; the canonical roadmap remains 48.5/60 (80.8%).
 
 ## Immediate Implementation Order
 

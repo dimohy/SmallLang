@@ -150,13 +150,13 @@ worker callbacks capture only immutable arrays.
 - [x] Full self-host frontend wall time improves from the recorded baseline.
 - [x] Three repeated LLVM outputs are byte-for-byte identical.
 - [x] Peak runtime memory stays within the documented budget.
-- [ ] Windows and Linux full suites pass with zero warnings and errors.
+- [x] Windows and Linux full suites pass with zero warnings and errors.
 
 Evidence: example 324 executes `block item: Int -> Int`; example 325 proves the
 self-host grammar/parser accepts the same declaration and call form. The two
 `block-callback-result-*` diagnostics cover missing and mismatched results.
 
-Parallel-compilation progress is **27/28 checks (96.4%)**. This is a feature-local
+Parallel-compilation progress is **28/28 checks (100%)**. This is a feature-local
 metric and does not promote the canonical self-host roadmap, which remains
 **48.5/60 equivalent gates (80.8%)** until a full checklist audit proves a gate.
 
@@ -225,7 +225,7 @@ effective cores). The parent-help fixed-point run used 376.91 CPU-seconds over
 34.56 seconds wall time (10.91 effective cores). The Linux-pool and common-sink
 run used 407.42 CPU-seconds over 36.86 seconds wall time (11.05 effective cores)
 and peaked at 100.7 MiB. The earlier capture-safety run peaked at 77.5 MiB.
-Linux full-suite parity remains outstanding.
+The complete Linux x64 suite now passes all 523 cases through WSL.
 
 The `tryParallel` reference-runtime checkpoint passes the complete 516-case
 Windows suite and its three runtime cases on Linux x86-64. The updated compiler
@@ -233,12 +233,16 @@ reaches an exact 7,247,585-byte stage-2/stage-3 fixed point with SHA-256
 `C1D43534CFC873CC3BB18BA9DDE3CAF1F515FB8D9FEBA57ABDFE063F648F0723`;
 stage 3 assembles with `llvm-as` and took 35.19 seconds to emit. This evidence
 predates executable self-host owned-`Result` cleanup. That cleanup is now
-covered by example 396; a Linux full-suite run is still pending.
+covered by example 396; the complete Linux suite now covers the same 523-case
+inventory as Windows.
 
-The post-owned-cleanup Windows gate now passes all 523 examples in a read-only
+The post-owned-cleanup Windows gate passes all 523 examples in a read-only
 run with a zero-warning, zero-error Release build. That run also repaired a
 self-host aggregate-flow defect exposed by slice and nested-region output: only
 opcode `-1` kind-9 nodes are transparent wrappers, and two-operand calls select
 the later resolved IR value. The six-step Linux verifier remains green, but it
-is deliberately a focused platform gate rather than evidence for the complete
-523-case Linux suite. The final checklist item therefore stays open.
+remains the fast platform gate. The new `--target linux-x64` runner path also
+compiles and executes all ordinary examples and diagnostics under WSL, emits
+Linux LLVM for every reusable self-host case, assembles all of those modules,
+and links/executes every case with a runtime expectation. The resulting Linux
+gate passes 523/523, closing the final checklist item.

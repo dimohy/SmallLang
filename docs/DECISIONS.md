@@ -5994,3 +5994,39 @@ parallel verifier passes all six steps including AddressSanitizer. This proves
 the Windows half of the final parallel checklist item. It does not claim Linux
 full-suite parity, so progress remains 27/28 (96.4%) and the canonical roadmap
 remains 48.5/60 (80.8%).
+
+## D187 - Make Linux a Complete 523-Case Test Target
+
+Status: implemented and verified
+Date: 2026-07-19
+
+The example runner now accepts `--target windows-x64|linux-x64`. Linux ordinary
+examples compile to native ELF binaries and execute in the selected WSL
+distribution with stdin, arguments, environment, and repository working
+directory preserved. Diagnostics compile against the Linux backend, while
+Wasm-specific diagnostics retain their explicit Wasm target. Target-specific
+LLVM assertion files override Windows API assertions without weakening shared
+target-neutral checks.
+
+Reusable self-host cases keep one cached Windows-hosted SL compiler driver but
+request Linux emission. Their raw LLVM is target-specific and therefore is not
+compared to the Windows text snapshot; every Linux module is assembled, and
+all cases with an observable execution expectation are compiled to Linux
+objects, linked by WSL `gcc -pthread`, and executed. `scripts/verify-linux-full.ps1`
+provides the durable two-step Release-build and 523-case gate with four bounded
+workers.
+
+The first reference run found missing Linux `smalllang_compute_workers` support
+and five Windows-only LLVM assertions; after correction, 281/281 reference and
+diagnostic cases passed. The first complete run then found an invalid self-host
+control-result module that the old raw snapshot had not assembled. A binding
+that directly consumed an `if` result and that `if` incorrectly waited on each
+other because their source offsets formed a false scheduling barrier. Function
+and entry schedulers now exclude the direct result binding from that barrier,
+and example 311 has mandatory assemble/link/execute gates.
+
+The final read-only Linux run passes 523/523 in 112.2 seconds. The corresponding
+Windows inventory remains 523 cases, and the Release solution builds with zero
+warnings and zero errors. Parallel compilation therefore reaches 28/28 checks
+(100%). This feature-local completion does not promote the canonical self-host
+roadmap, which remains 48.5/60 equivalent gates (80.8%).

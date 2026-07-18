@@ -1,0 +1,4 @@
+call i64 @smalllang_platform_duplicate_owned_file
+call i32 @smalllang_platform_sync_owned_file
+@dup
+@fsync

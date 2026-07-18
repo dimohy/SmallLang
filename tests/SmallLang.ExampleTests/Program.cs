@@ -10,6 +10,8 @@ var suite = TestSuite.Full;
 var skipBootstrap = false;
 var updateExpected = false;
 var compareCompilers = false;
+var testTarget = TestTarget.WindowsX64;
+var wslDistribution = "Ubuntu";
 var jobs = Math.Min(Environment.ProcessorCount, 8);
 for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
 {
@@ -56,6 +58,22 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
         case "--compare-compilers":
             compareCompilers = true;
             break;
+        case "--target":
+            if (++argumentIndex >= args.Length
+                || !TryParseTestTarget(args[argumentIndex], out testTarget))
+            {
+                Console.Error.WriteLine("--target requires windows-x64 or linux-x64.");
+                return 2;
+            }
+            break;
+        case "--wsl-distribution":
+            if (++argumentIndex >= args.Length || string.IsNullOrWhiteSpace(args[argumentIndex]))
+            {
+                Console.Error.WriteLine("--wsl-distribution requires a WSL distribution name.");
+                return 2;
+            }
+            wslDistribution = args[argumentIndex];
+            break;
         case "--jobs":
             if (++argumentIndex >= args.Length
                 || !int.TryParse(args[argumentIndex], out jobs)
@@ -67,14 +85,23 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
             break;
         default:
             Console.Error.WriteLine($"Unknown test option: {args[argumentIndex]}");
-            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <fragment>]... [--exact <name>]... [--affected <path>]... [--suite fast|reference|semantic|selfhost|llvm|full] [--skip-bootstrap] [--update-expected] [--compare-compilers] [--jobs <count>]");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <fragment>]... [--exact <name>]... [--affected <path>]... [--suite fast|reference|semantic|selfhost|llvm|full] [--target windows-x64|linux-x64] [--wsl-distribution <name>] [--skip-bootstrap] [--update-expected] [--compare-compilers] [--jobs <count>]");
             return 2;
     }
 }
 
+if (testTarget == TestTarget.LinuxX64 && updateExpected)
+{
+    Console.Error.WriteLine("--update-expected is not supported with --target linux-x64; Linux verifies target-neutral behavior without replacing Windows LLVM snapshots.");
+    return 2;
+}
+
 var repoRoot = FindRepositoryRoot(AppContext.BaseDirectory);
 var expectedDir = Path.Combine(repoRoot, "examples", "expected");
-var artifactsDir = Path.Combine(repoRoot, "artifacts", "example-tests");
+var baseArtifactsDir = Path.Combine(repoRoot, "artifacts", "example-tests");
+var artifactsDir = testTarget == TestTarget.WindowsX64
+    ? baseArtifactsDir
+    : Path.Combine(baseArtifactsDir, "linux-x64");
 Directory.CreateDirectory(artifactsDir);
 var llvmDir = Path.Combine(repoRoot, ".tools", "llvm-22.1.8");
 var clangPath = Path.Combine(llvmDir, "bin", "clang.exe");
@@ -84,6 +111,16 @@ if (!File.Exists(clangPath))
     Console.Error.WriteLine($"LLVM toolchain not found: {clangPath}");
     Console.Error.WriteLine("Run scripts/smalllang.ps1 once to install the pinned toolchain.");
     return 1;
+}
+if (testTarget == TestTarget.LinuxX64)
+{
+    var wslCheck = Run("wsl.exe", ["-d", wslDistribution, "--", "true"], input: null, repoRoot);
+    if (wslCheck.ExitCode != 0)
+    {
+        Console.Error.WriteLine($"WSL distribution is unavailable: {wslDistribution}");
+        Console.Error.WriteLine(wslCheck.Stderr);
+        return 1;
+    }
 }
 
 var compilerProject = Path.Combine(repoRoot, "src", "SmallLang.Compiler", "SmallLang.Compiler.csproj");
@@ -187,7 +224,7 @@ if (expectedFiles.Length + diagnosticFiles.Length == 0)
     return 2;
 }
 
-var selfHostDriverPath = Path.Combine(artifactsDir, "selfhost-slc-driver.exe");
+var selfHostDriverPath = Path.Combine(baseArtifactsDir, "selfhost-slc-driver.exe");
 var selfHostDriverSourcesPath = Path.Combine(
     repoRoot,
     "tests",
@@ -243,7 +280,7 @@ var started = 0;
 var completed = 0;
 var totalTests = expectedFiles.Length + diagnosticFiles.Length;
 var progressLock = new object();
-Console.WriteLine($"[0/{totalTests}] Running {suite.ToString().ToLowerInvariant()} suite with {jobs} worker(s).");
+Console.WriteLine($"[0/{totalTests}] Running {suite.ToString().ToLowerInvariant()} suite for {TestTargetName(testTarget)} with {jobs} worker(s).");
 Console.Out.Flush();
 
 void ReportStarted(string name)
@@ -282,9 +319,17 @@ Parallel.ForEach(
     var stdinPath = Path.Combine(expectedDir, name + ".stdin.txt");
     var argumentsPath = Path.Combine(expectedDir, name + ".args.txt");
     var environmentPath = Path.Combine(expectedDir, name + ".env.txt");
-    var outputPath = Path.Combine(artifactsDir, name + ".exe");
-    var llvmContainsPath = Path.Combine(expectedDir, name + ".llvm.contains.txt");
-    var llvmNotContainsPath = Path.Combine(expectedDir, name + ".llvm.not-contains.txt");
+    var outputPath = Path.Combine(artifactsDir, name + TestExecutableSuffix(testTarget));
+    var commonLlvmContainsPath = Path.Combine(expectedDir, name + ".llvm.contains.txt");
+    var commonLlvmNotContainsPath = Path.Combine(expectedDir, name + ".llvm.not-contains.txt");
+    var targetLlvmContainsPath = Path.Combine(expectedDir, name + ".linux-x64.llvm.contains.txt");
+    var targetLlvmNotContainsPath = Path.Combine(expectedDir, name + ".linux-x64.llvm.not-contains.txt");
+    var llvmContainsPath = testTarget == TestTarget.LinuxX64 && File.Exists(targetLlvmContainsPath)
+        ? targetLlvmContainsPath
+        : commonLlvmContainsPath;
+    var llvmNotContainsPath = testTarget == TestTarget.LinuxX64 && File.Exists(targetLlvmNotContainsPath)
+        ? targetLlvmNotContainsPath
+        : commonLlvmNotContainsPath;
     var wasmLlvmContainsPath = Path.Combine(expectedDir, name + ".wasm32.llvm.contains.txt");
     var sourcesPath = Path.Combine(expectedDir, name + ".sources.txt");
     var stdoutLlvmValidationPath = Path.Combine(expectedDir, name + ".stdout.llvm.validate.txt");
@@ -300,15 +345,19 @@ Parallel.ForEach(
 
     ProcessResult run;
     string[]? selfHostSourcePaths = null;
-    if (IsReusableSelfHostCompilerTest(expectedFile))
+    var reusableSelfHostTest = IsReusableSelfHostCompilerTest(expectedFile);
+    var selfHostMode = "";
+    if (reusableSelfHostTest)
     {
+        var outerSource = File.ReadAllText(sourcePath, Encoding.UTF8);
+        selfHostMode = SelfHostTargetMode(outerSource, testTarget);
         var driverArguments = new List<string>
         {
-            SelfHostTargetMode(File.ReadAllText(sourcePath, Encoding.UTF8))
+            selfHostMode
         };
         selfHostSourcePaths = MaterializeSelfHostSources(
             name,
-            ExtractRawMultilineStrings(File.ReadAllText(sourcePath, Encoding.UTF8)),
+            ExtractRawMultilineStrings(outerSource),
             artifactsDir);
         driverArguments.AddRange(selfHostSourcePaths);
         run = Run(selfHostDriverPath, driverArguments, input: null, repoRoot);
@@ -345,7 +394,7 @@ Parallel.ForEach(
     }
     compilerArguments.AddRange([
         "-o", outputPath,
-        "--target", "windows-x64",
+        "--target", TestTargetName(testTarget),
         "--llvm", llvmDir,
         "-O1"
     ]);
@@ -423,10 +472,22 @@ Parallel.ForEach(
             .Select(line => line.Split('=', 2))
             .ToDictionary(parts => parts[0], parts => parts.Length == 2 ? parts[1] : "", StringComparer.Ordinal)
         : null;
-    run = Run(outputPath, runArguments, stdin, repoRoot, runEnvironment);
+    run = RunTargetExecutable(
+        testTarget,
+        outputPath,
+        runArguments,
+        stdin,
+        repoRoot,
+        runEnvironment,
+        wslDistribution);
     }
-    var expected = Normalize(File.ReadAllText(expectedFile, Encoding.UTF8));
     var actual = Normalize(run.Stdout);
+    var compareRawStdout = testTarget == TestTarget.WindowsX64
+        || !reusableSelfHostTest
+        || string.Equals(selfHostMode, "wasm", StringComparison.Ordinal);
+    var expected = compareRawStdout
+        ? Normalize(File.ReadAllText(expectedFile, Encoding.UTF8))
+        : actual;
 
     if (run.ExitCode != 0)
     {
@@ -471,7 +532,10 @@ Parallel.ForEach(
         return;
     }
 
-    if (File.Exists(stdoutLlvmValidationPath))
+    if (File.Exists(stdoutLlvmValidationPath)
+        || (testTarget == TestTarget.LinuxX64
+            && reusableSelfHostTest
+            && !string.Equals(selfHostMode, "wasm", StringComparison.Ordinal)))
     {
         var stdoutLlvmPath = Path.Combine(artifactsDir, name + ".stdout.ll");
         var stdoutBitcodePath = Path.Combine(artifactsDir, name + ".stdout.bc");
@@ -486,10 +550,16 @@ Parallel.ForEach(
             return;
         }
 
-        if (File.Exists(stdoutLlvmExecutionPath))
+        var linuxExecutionPath = Path.Combine(expectedDir, name + ".stdout.llvm.linux.execute.txt");
+        var executionPath = testTarget == TestTarget.LinuxX64 && File.Exists(linuxExecutionPath)
+            ? linuxExecutionPath
+            : stdoutLlvmExecutionPath;
+        if (File.Exists(executionPath))
         {
-            var linkedPath = Path.Combine(artifactsDir, name + ".stdout.exe");
-            var link = Run(clangPath, ["-Wno-override-module", stdoutLlvmPath, "-o", linkedPath], input: null, repoRoot);
+            var linkedPath = Path.Combine(artifactsDir, name + ".stdout" + TestExecutableSuffix(testTarget));
+            var link = testTarget == TestTarget.LinuxX64
+                ? LinkLinuxLlvm(clangPath, stdoutLlvmPath, linkedPath, repoRoot, wslDistribution)
+                : Run(clangPath, ["-Wno-override-module", stdoutLlvmPath, "-o", linkedPath], input: null, repoRoot);
             if (link.ExitCode != 0)
             {
                 Console.Error.WriteLine($"FAIL {name}: stdout LLVM could not be linked");
@@ -499,8 +569,15 @@ Parallel.ForEach(
                 return;
             }
 
-            var linkedRun = Run(linkedPath, [], input: null, repoRoot);
-            var executionExpectation = Normalize(File.ReadAllText(stdoutLlvmExecutionPath, Encoding.UTF8));
+            var linkedRun = RunTargetExecutable(
+                testTarget,
+                linkedPath,
+                [],
+                input: null,
+                repoRoot,
+                environment: null,
+                wslDistribution);
+            var executionExpectation = Normalize(File.ReadAllText(executionPath, Encoding.UTF8));
             var expectedLinkedStdout = string.IsNullOrWhiteSpace(executionExpectation)
                 || StringComparer.Ordinal.Equals(executionExpectation.Trim(), "exit=0")
                 ? string.Empty
@@ -521,12 +598,12 @@ Parallel.ForEach(
 
             if (compareCompilers && selfHostSourcePaths is not null)
             {
-                var referencePath = Path.Combine(artifactsDir, name + ".reference.exe");
+                var referencePath = Path.Combine(artifactsDir, name + ".reference" + TestExecutableSuffix(testTarget));
                 var referenceArguments = new List<string> { compilerDll, "build" };
                 referenceArguments.AddRange(selfHostSourcePaths);
                 referenceArguments.AddRange([
                     "-o", referencePath,
-                    "--target", "windows-x64",
+                    "--target", TestTargetName(testTarget),
                     "--llvm", llvmDir,
                     "-O0",
                     "--keep-temps"
@@ -541,7 +618,14 @@ Parallel.ForEach(
                     return;
                 }
 
-                var referenceRun = Run(referencePath, [], input: null, repoRoot);
+                var referenceRun = RunTargetExecutable(
+                    testTarget,
+                    referencePath,
+                    [],
+                    input: null,
+                    repoRoot,
+                    environment: null,
+                    wslDistribution);
                 var referenceStdout = Normalize(referenceRun.Stdout);
                 if (referenceRun.ExitCode != linkedRun.ExitCode
                     || !StringComparer.Ordinal.Equals(referenceStdout, actualLinkedStdout))
@@ -579,7 +663,7 @@ Parallel.ForEach(diagnosticFiles, new ParallelOptions { MaxDegreeOfParallelism =
     var sourcesPath = Path.Combine(diagnosticDir, name + ".sources.txt");
     var diagnosticTarget = name.Contains("-wasm32-", StringComparison.Ordinal)
         ? "wasm32-browser"
-        : "windows-x64";
+        : TestTargetName(testTarget);
     if (!File.Exists(expectedPath))
     {
         Console.Error.WriteLine($"FAIL diagnostic/{name}: expected diagnostic file not found");
@@ -606,7 +690,7 @@ Parallel.ForEach(diagnosticFiles, new ParallelOptions { MaxDegreeOfParallelism =
         }
     }
     diagnosticArguments.AddRange([
-        "-o", Path.Combine(artifactsDir, "diagnostic-" + name + ".exe"),
+        "-o", Path.Combine(artifactsDir, "diagnostic-" + name + TestExecutableSuffix(testTarget)),
         "--target", diagnosticTarget,
         "--llvm", llvmDir
     ]);
@@ -754,11 +838,13 @@ static bool IsReusableSelfHostCompilerTest(string path)
         && !name.StartsWith("291-selfhost-llvm-canonical-type-selection", StringComparison.Ordinal);
 }
 
-static string SelfHostTargetMode(string source) => source.Contains("llvm.emitWasm", StringComparison.Ordinal)
-    ? "wasm"
-    : source.Contains("llvm.emitLinux", StringComparison.Ordinal)
-        ? "linux"
-        : "windows";
+static string SelfHostTargetMode(string source, TestTarget testTarget) =>
+    source.Contains("llvm.emitWasm", StringComparison.Ordinal)
+        ? "wasm"
+        : testTarget == TestTarget.LinuxX64
+            || source.Contains("llvm.emitLinux", StringComparison.Ordinal)
+                ? "linux"
+                : "windows";
 
 static IEnumerable<string> ExtractRawMultilineStrings(string source)
 {
@@ -813,6 +899,121 @@ static bool IsOutputCurrent(string outputPath, IEnumerable<string> inputPaths)
 static bool IsSelfHostTest(string path) => Path
     .GetFileName(path)
     .Contains("selfhost-", StringComparison.Ordinal);
+
+static bool TryParseTestTarget(string value, out TestTarget target)
+{
+    switch (value.ToLowerInvariant())
+    {
+        case "windows-x64":
+            target = TestTarget.WindowsX64;
+            return true;
+        case "linux-x64":
+            target = TestTarget.LinuxX64;
+            return true;
+        default:
+            target = default;
+            return false;
+    }
+}
+
+static string TestTargetName(TestTarget target) => target switch
+{
+    TestTarget.WindowsX64 => "windows-x64",
+    TestTarget.LinuxX64 => "linux-x64",
+    _ => throw new ArgumentOutOfRangeException(nameof(target), target, null)
+};
+
+static string TestExecutableSuffix(TestTarget target) => target switch
+{
+    TestTarget.WindowsX64 => ".exe",
+    TestTarget.LinuxX64 => ".linux",
+    _ => throw new ArgumentOutOfRangeException(nameof(target), target, null)
+};
+
+static ProcessResult RunTargetExecutable(
+    TestTarget target,
+    string executablePath,
+    IReadOnlyList<string> args,
+    string? input,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environment,
+    string wslDistribution) => target switch
+{
+    TestTarget.WindowsX64 => Run(executablePath, args, input, workingDirectory, environment),
+    TestTarget.LinuxX64 => RunInWsl(
+        executablePath,
+        args,
+        input,
+        workingDirectory,
+        environment,
+        wslDistribution),
+    _ => throw new ArgumentOutOfRangeException(nameof(target), target, null)
+};
+
+static ProcessResult RunInWsl(
+    string executablePath,
+    IReadOnlyList<string> args,
+    string? input,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environment,
+    string wslDistribution)
+{
+    var wslArguments = new List<string>
+    {
+        "-d", wslDistribution,
+        "--cd", ConvertToWslPath(workingDirectory),
+        "--"
+    };
+    if (environment is not null && environment.Count != 0)
+    {
+        wslArguments.Add("env");
+        wslArguments.AddRange(environment.Select(static pair => $"{pair.Key}={pair.Value}"));
+    }
+    wslArguments.Add(ConvertToWslPath(executablePath));
+    wslArguments.AddRange(args);
+    return Run("wsl.exe", wslArguments, input, workingDirectory);
+}
+
+static ProcessResult LinkLinuxLlvm(
+    string clangPath,
+    string llvmPath,
+    string executablePath,
+    string workingDirectory,
+    string wslDistribution)
+{
+    var objectPath = Path.ChangeExtension(executablePath, ".o");
+    var compile = Run(
+        clangPath,
+        ["--target=x86_64-unknown-linux-gnu", "-Wno-override-module", "-c", llvmPath, "-O0", "-o", objectPath],
+        input: null,
+        workingDirectory);
+    if (compile.ExitCode != 0)
+    {
+        return compile;
+    }
+
+    return Run(
+        "wsl.exe",
+        [
+            "-d", wslDistribution,
+            "--cd", ConvertToWslPath(workingDirectory),
+            "--", "gcc", ConvertToWslPath(objectPath), "-pthread", "-o", ConvertToWslPath(executablePath)
+        ],
+        input: null,
+        workingDirectory);
+}
+
+static string ConvertToWslPath(string path)
+{
+    var absolute = Path.GetFullPath(path);
+    if (absolute.Length < 3 || absolute[1] != ':' || absolute[2] != Path.DirectorySeparatorChar)
+    {
+        throw new InvalidOperationException($"WSL test paths must be drive-qualified Windows paths: {absolute}");
+    }
+
+    var drive = char.ToLowerInvariant(absolute[0]);
+    return $"/mnt/{drive}/{absolute[3..].Replace('\\', '/')}";
+}
 
 static ProcessResult Run(
     string fileName,
@@ -943,4 +1144,10 @@ internal enum TestSuite
     SelfHost,
     Full,
     Llvm
+}
+
+internal enum TestTarget
+{
+    WindowsX64,
+    LinuxX64
 }

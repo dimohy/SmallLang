@@ -4876,7 +4876,8 @@ emitCore context: move EmitContext -> Unit uses Console {
                         (scheduleReady! and (scheduleNode.kind == 18 or scheduleNode.kind == 20)) -> if {
                             expressionStart => priorControlValueSearch!
                             priorControlValueSearch! < functionEnd! -> while {
-                                (not expressionScheduled![priorControlValueSearch! - expressionStart] and (context.ir[priorControlValueSearch!] -> sourceStart) < (scheduleNode -> sourceStart)) -> if {
+                                context.ir[priorControlValueSearch!] => priorControlValue
+                                (not expressionScheduled![priorControlValueSearch! - expressionStart] and not (priorControlValue.kind == 17 and priorControlValue.operand0 == scheduleCandidate!) and (priorControlValue -> sourceStart) < (scheduleNode -> sourceStart)) -> if {
                                     false => scheduleReady!
                                 }
                                 priorControlValueSearch! + 1 => priorControlValueSearch!
@@ -7027,7 +7028,8 @@ emitCore context: move EmitContext -> Unit uses Console {
                             (entryScheduleReady! and (entryScheduleNode.kind == 18 or entryScheduleNode.kind == 20)) -> if {
                                 functionIndex! + 1 => entryPriorControlValueSearch!
                                 entryPriorControlValueSearch! < entryEnd! -> while {
-                                    (not entryScheduled![entryPriorControlValueSearch! - functionIndex! - 1] and (context.ir[entryPriorControlValueSearch!] -> sourceStart) < (entryScheduleNode -> sourceStart)) -> if {
+                                    context.ir[entryPriorControlValueSearch!] => entryPriorControlValue
+                                    (not entryScheduled![entryPriorControlValueSearch! - functionIndex! - 1] and not (entryPriorControlValue.kind == 17 and entryPriorControlValue.operand0 == entryScheduleCandidate!) and (entryPriorControlValue -> sourceStart) < (entryScheduleNode -> sourceStart)) -> if {
                                         false => entryScheduleReady!
                                     }
                                     entryPriorControlValueSearch! + 1 => entryPriorControlValueSearch!

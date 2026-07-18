@@ -432,6 +432,20 @@ so the ordinary parallel edit loop does not pay for another full compiler
 generation.
 An unfiltered run always remains the commit-gate regression check.
 
+Run the complete Linux x64 gate through WSL with the same 523-case inventory:
+
+```powershell
+.\scripts\verify-linux-full.ps1
+```
+
+The runner compiles ordinary examples and diagnostics for `linux-x64`, executes
+native binaries inside WSL, and makes reusable self-host tests emit Linux LLVM.
+Those self-host outputs are assembled for every case and linked/executed when
+an observable runtime expectation exists. Linux uses four test workers by
+default because higher concurrent WSL process counts made asynchronous file
+readiness stress runs nondeterministic; this bounds the launcher without
+serializing compiler and runtime coverage.
+
 Multiple user source files may form one compilation unit. Declarations from all
 files are merged after each file independently resolves its namespace and import
 aliases. Exactly one file may contain executable top-level statements:

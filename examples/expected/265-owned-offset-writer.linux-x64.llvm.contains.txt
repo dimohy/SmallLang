@@ -1,0 +1,4 @@
+call %smalllang.file_handle_result @smalllang_platform_open_owned_write_file
+call %smalllang.file_count_result @smalllang_platform_write_owned_file_at
+call void @smalllang_platform_close_owned_file
+@pwrite

@@ -410,6 +410,19 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               ret void
             }
 
+            define internal i32 @smalllang_compute_workers() #0 {
+            entry:
+              %started = call i1 @smalllang_compute_start()
+              br i1 %started, label %read, label %failed
+
+            read:
+              %workers = load i32, ptr @smalllang_compute_worker_count, align 4
+              ret i32 %workers
+
+            failed:
+              ret i32 0
+            }
+
             define internal i32 @smalllang_compute_limit_workers(i32 %requested) #0 {
             entry:
               %existing = load i32, ptr @smalllang_compute_worker_count, align 4
