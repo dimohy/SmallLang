@@ -3,16 +3,7 @@ target triple = "x86_64-pc-windows-msvc"
 define i32 @sl_m0_s0(i32 %arg) {
 entry:
   %v5 = icmp eq i32 %arg, 0
-  br i1 %v5, label %if8_then, label %if8_else
-if8_then:
-  br label %if8_merge
-if8_else:
-  br label %if8_merge
-if8_merge:
-  %v8 = phi i32 [ 10, %if8_then ], [ 20, %if8_else ]
-  %v16 = freeze i32 %v8
-  %v15 = add i32 %v16, 1
-  ret i32 %v15
+  ret i32 %v13
 }
 define i32 @main() {
 entry:

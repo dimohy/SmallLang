@@ -41,7 +41,6 @@ define i32 @main() {
 entry:
   %v11 = call %sl.array.i32 @sl_m0_s0()
   %v13 = freeze %sl.array.i32 %v11
-  %v12_raw = extractvalue %sl.array.i32 %v13, 1
-  %v12 = trunc i64 %v12_raw to i32
+  %v12 = extractvalue %sl.array.i32 %v13, 1
   ret i32 0
 }

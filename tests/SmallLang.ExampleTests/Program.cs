@@ -8,6 +8,8 @@ var exactFilters = new List<string>();
 var affectedFiles = new List<string>();
 var suite = TestSuite.Full;
 var skipBootstrap = false;
+var updateExpected = false;
+var compareCompilers = false;
 var jobs = Math.Min(Environment.ProcessorCount, 8);
 for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
 {
@@ -48,6 +50,12 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
         case "--skip-bootstrap":
             skipBootstrap = true;
             break;
+        case "--update-expected":
+            updateExpected = true;
+            break;
+        case "--compare-compilers":
+            compareCompilers = true;
+            break;
         case "--jobs":
             if (++argumentIndex >= args.Length
                 || !int.TryParse(args[argumentIndex], out jobs)
@@ -59,7 +67,7 @@ for (var argumentIndex = 0; argumentIndex < args.Length; argumentIndex++)
             break;
         default:
             Console.Error.WriteLine($"Unknown test option: {args[argumentIndex]}");
-            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <fragment>]... [--exact <name>]... [--affected <path>]... [--suite fast|reference|semantic|selfhost|llvm|full] [--skip-bootstrap] [--jobs <count>]");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/SmallLang.ExampleTests -- [--filter <fragment>]... [--exact <name>]... [--affected <path>]... [--suite fast|reference|semantic|selfhost|llvm|full] [--skip-bootstrap] [--update-expected] [--compare-compilers] [--jobs <count>]");
             return 2;
     }
 }
@@ -291,16 +299,18 @@ Parallel.ForEach(
     }
 
     ProcessResult run;
+    string[]? selfHostSourcePaths = null;
     if (IsReusableSelfHostCompilerTest(expectedFile))
     {
         var driverArguments = new List<string>
         {
             SelfHostTargetMode(File.ReadAllText(sourcePath, Encoding.UTF8))
         };
-        driverArguments.AddRange(MaterializeSelfHostSources(
+        selfHostSourcePaths = MaterializeSelfHostSources(
             name,
             ExtractRawMultilineStrings(File.ReadAllText(sourcePath, Encoding.UTF8)),
-            artifactsDir));
+            artifactsDir);
+        driverArguments.AddRange(selfHostSourcePaths);
         run = Run(selfHostDriverPath, driverArguments, input: null, repoRoot);
     }
     else
@@ -426,6 +436,30 @@ Parallel.ForEach(
         return;
     }
 
+    if (!StringComparer.Ordinal.Equals(expected, actual) && updateExpected)
+    {
+        if (File.Exists(stdoutLlvmValidationPath))
+        {
+            var updateLlvmPath = Path.Combine(artifactsDir, name + ".update.stdout.ll");
+            var updateBitcodePath = Path.Combine(artifactsDir, name + ".update.stdout.bc");
+            File.WriteAllText(updateLlvmPath, actual, new UTF8Encoding(false));
+            var updateLlvmAs = Run(llvmAsPath, [updateLlvmPath, "-o", updateBitcodePath], input: null, repoRoot);
+            if (updateLlvmAs.ExitCode != 0)
+            {
+                Console.Error.WriteLine($"FAIL {name}: refusing to update expected stdout because LLVM verification failed");
+                Console.Error.WriteLine(updateLlvmAs.Stdout);
+                Console.Error.WriteLine(updateLlvmAs.Stderr);
+                Interlocked.Increment(ref failures);
+                return;
+            }
+        }
+
+        File.WriteAllText(expectedFile, actual, new UTF8Encoding(false));
+        expected = actual;
+        Console.WriteLine($"UPDATE {name}: expected stdout refreshed");
+        Console.Out.Flush();
+    }
+
     if (!StringComparer.Ordinal.Equals(expected, actual))
     {
         Console.Error.WriteLine($"FAIL {name}: stdout mismatch");
@@ -483,6 +517,43 @@ Parallel.ForEach(
                 Console.Error.WriteLine(linkedRun.Stderr);
                 Interlocked.Increment(ref failures);
                 return;
+            }
+
+            if (compareCompilers && selfHostSourcePaths is not null)
+            {
+                var referencePath = Path.Combine(artifactsDir, name + ".reference.exe");
+                var referenceArguments = new List<string> { compilerDll, "build" };
+                referenceArguments.AddRange(selfHostSourcePaths);
+                referenceArguments.AddRange([
+                    "-o", referencePath,
+                    "--target", "windows-x64",
+                    "--llvm", llvmDir,
+                    "-O0",
+                    "--keep-temps"
+                ]);
+                var referenceBuild = Run("dotnet", referenceArguments, input: null, repoRoot);
+                if (referenceBuild.ExitCode != 0)
+                {
+                    Console.Error.WriteLine($"FAIL {name}: C# reference compiler failed during differential verification");
+                    Console.Error.WriteLine(referenceBuild.Stdout);
+                    Console.Error.WriteLine(referenceBuild.Stderr);
+                    Interlocked.Increment(ref failures);
+                    return;
+                }
+
+                var referenceRun = Run(referencePath, [], input: null, repoRoot);
+                var referenceStdout = Normalize(referenceRun.Stdout);
+                if (referenceRun.ExitCode != linkedRun.ExitCode
+                    || !StringComparer.Ordinal.Equals(referenceStdout, actualLinkedStdout))
+                {
+                    Console.Error.WriteLine($"FAIL {name}: C# and SL generated LLVM differ at runtime");
+                    Console.Error.WriteLine("C# LLVM OUTPUT:");
+                    Console.Error.WriteLine(referenceRun.Stdout);
+                    Console.Error.WriteLine("SL LLVM OUTPUT:");
+                    Console.Error.WriteLine(linkedRun.Stdout);
+                    Interlocked.Increment(ref failures);
+                    return;
+                }
             }
         }
     }

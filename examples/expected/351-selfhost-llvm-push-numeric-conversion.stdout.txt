@@ -1,0 +1,46 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
+define i32 @sl_m0_s0(i64 %arg) {
+entry:
+  %slot3 = alloca %sl.array.i32, align 8
+  %v4_data = call ptr @malloc(i64 0)
+  %v4_0 = insertvalue %sl.array.i32 poison, ptr %v4_data, 0
+  %v4_1 = insertvalue %sl.array.i32 %v4_0, i64 0, 1
+  %v4 = insertvalue %sl.array.i32 %v4_1, i64 0, 2
+  store %sl.array.i32 %v4, ptr %slot3, align 8
+  %v6 = load %sl.array.i32, ptr %slot3, align 8
+  %push5_data = extractvalue %sl.array.i32 %v6, 0
+  %push5_length = extractvalue %sl.array.i32 %v6, 1
+  %push5_capacity = extractvalue %sl.array.i32 %v6, 2
+  %push5_full = icmp eq i64 %push5_length, %push5_capacity
+  %push5_empty = icmp eq i64 %push5_capacity, 0
+  %push5_doubled = mul i64 %push5_capacity, 2
+  %push5_grown_capacity = select i1 %push5_empty, i64 4, i64 %push5_doubled
+  %push5_append_capacity = select i1 %push5_full, i64 %push5_grown_capacity, i64 %push5_capacity
+  %push5_append_bytes = mul i64 %push5_append_capacity, 4
+  %push5_append_data = call ptr @realloc(ptr %push5_data, i64 %push5_append_bytes)
+  %push5_slot = getelementptr i32, ptr %push5_append_data, i64 %push5_length
+  %push5_value_cast = trunc i64 %arg to i32
+  store i32 %push5_value_cast, ptr %push5_slot, align 4
+  %push5_new_length = add i64 %push5_length, 1
+  %push5_array0 = insertvalue %sl.array.i32 poison, ptr %push5_append_data, 0
+  %push5_array1 = insertvalue %sl.array.i32 %push5_array0, i64 %push5_new_length, 1
+  %push5_array2 = insertvalue %sl.array.i32 %push5_array1, i64 %push5_append_capacity, 2
+  store %sl.array.i32 %push5_array2, ptr %slot3, align 8
+  %v9 = load %sl.array.i32, ptr %slot3, align 8
+  %v8_data = extractvalue %sl.array.i32 %v9, 0
+  %v8_ptr = getelementptr i32, ptr %v8_data, i64 0
+  %v8 = load i32, ptr %v8_ptr, align 4
+  %drop3_current = load %sl.array.i32, ptr %slot3, align 8
+  %drop3 = extractvalue %sl.array.i32 %drop3_current, 0
+  call void @free(ptr %drop3)
+  ret i32 %v8
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

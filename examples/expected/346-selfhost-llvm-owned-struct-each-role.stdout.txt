@@ -1,0 +1,101 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { %sl.array.i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
+define i32 @sl_m0_s2() {
+entry:
+  %slot2 = alloca %sl.array.i32, align 8
+  %slot3 = alloca i32, align 4
+  %slot4 = alloca i32, align 4
+  %v7_data = call ptr @malloc(i64 0)
+  %v7_0 = insertvalue %sl.array.i32 poison, ptr %v7_data, 0
+  %v7_1 = insertvalue %sl.array.i32 %v7_0, i64 0, 1
+  %v7 = insertvalue %sl.array.i32 %v7_1, i64 0, 2
+  store %sl.array.i32 %v7, ptr %slot2, align 8
+  %v9 = load %sl.array.i32, ptr %slot2, align 8
+  %v11_data = call ptr @malloc(i64 8)
+  %v11_ptr0 = getelementptr i32, ptr %v11_data, i64 0
+  store i32 1, ptr %v11_ptr0, align 4
+  %v11_ptr1 = getelementptr i32, ptr %v11_data, i64 1
+  store i32 2, ptr %v11_ptr1, align 4
+  %v11_0 = insertvalue %sl.array.i32 poison, ptr %v11_data, 0
+  %v11_1 = insertvalue %sl.array.i32 %v11_0, i64 2, 1
+  %v11 = insertvalue %sl.array.i32 %v11_1, i64 2, 2
+  %v10 = insertvalue %sl.struct.m0_s0 poison, %sl.array.i32 %v11, 0
+  %push8_data = extractvalue %sl.array.i32 %v9, 0
+  %push8_length = extractvalue %sl.array.i32 %v9, 1
+  %push8_capacity = extractvalue %sl.array.i32 %v9, 2
+  %push8_full = icmp eq i64 %push8_length, %push8_capacity
+  %push8_empty = icmp eq i64 %push8_capacity, 0
+  %push8_doubled = mul i64 %push8_capacity, 2
+  %push8_grown_capacity = select i1 %push8_empty, i64 4, i64 %push8_doubled
+  %push8_append_capacity = select i1 %push8_full, i64 %push8_grown_capacity, i64 %push8_capacity
+  %push8_append_bytes = mul i64 %push8_append_capacity, 24
+  %push8_append_data = call ptr @realloc(ptr %push8_data, i64 %push8_append_bytes)
+  %push8_slot = getelementptr %sl.struct.m0_s0, ptr %push8_append_data, i64 %push8_length
+  store %sl.struct.m0_s0 %v10, ptr %push8_slot, align 8
+  %push8_new_length = add i64 %push8_length, 1
+  %push8_array0 = insertvalue %sl.array.i32 poison, ptr %push8_append_data, 0
+  %push8_array1 = insertvalue %sl.array.i32 %push8_array0, i64 %push8_new_length, 1
+  %push8_array2 = insertvalue %sl.array.i32 %push8_array1, i64 %push8_append_capacity, 2
+  store %sl.array.i32 %push8_array2, ptr %slot2, align 8
+  store i32 0, ptr %slot3, align 4
+  %v16 = load %sl.array.i32, ptr %slot2, align 8
+  %each15_data = extractvalue %sl.array.i32 %v16, 0
+  %each15_length = extractvalue %sl.array.i32 %v16, 1
+  %each15_index_slot = alloca i64, align 8
+  store i64 0, ptr %each15_index_slot, align 8
+  br label %each15_header
+each15_header:
+  %each15_index = load i64, ptr %each15_index_slot, align 8
+  %each15_done = icmp eq i64 %each15_index, %each15_length
+  br i1 %each15_done, label %each15_exit, label %each15_body
+each15_body:
+  %each15_item_ptr = getelementptr %sl.struct.m0_s0, ptr %each15_data, i64 %each15_index
+  %each15_item = load %sl.struct.m0_s0, ptr %each15_item_ptr, align 8
+  %v23 = freeze %sl.struct.m0_s0 %each15_item
+  %v30 = freeze %sl.struct.m0_s0 %each15_item
+  store i32 0, ptr %slot4, align 4
+  br label %while24_header
+while24_header:
+  %while24_v20 = load i32, ptr %slot4, align 4
+  %while24_v22 = extractvalue %sl.struct.m0_s0 %v23, 0
+  %while24_v21 = extractvalue %sl.array.i32 %while24_v22, 1
+  %while24_v19_left_wide = sext i32 %while24_v20 to i64
+  %while24_v19 = icmp slt i64 %while24_v19_left_wide, %while24_v21
+  br i1 %while24_v19, label %while24_body, label %while24_exit
+while24_body:
+  %v27 = load i32, ptr %slot3, align 4
+  %v31 = load i32, ptr %slot4, align 4
+  %v29 = extractvalue %sl.struct.m0_s0 %v30, 0
+  %v28_data = extractvalue %sl.array.i32 %v29, 0
+  %v28_index = sext i32 %v31 to i64
+  %v28_ptr = getelementptr i32, ptr %v28_data, i64 %v28_index
+  %v28 = load i32, ptr %v28_ptr, align 4
+  %v26 = add i32 %v27, %v28
+  store i32 %v26, ptr %slot3, align 4
+  %v33 = load i32, ptr %slot4, align 4
+  %v32 = add i32 %v33, 1
+  store i32 %v32, ptr %slot4, align 4
+  br label %while24_header
+while24_exit:
+  br label %each15_continue
+each15_continue:
+  %each15_next = add i64 %each15_index, 1
+  store i64 %each15_next, ptr %each15_index_slot, align 8
+  br label %each15_header
+each15_exit:
+  %v35 = load i32, ptr %slot3, align 4
+  %drop2_current = load %sl.array.i32, ptr %slot2, align 8
+  %drop2 = extractvalue %sl.array.i32 %drop2_current, 0
+  call void @free(ptr %drop2)
+  ret i32 %v35
+}
+define i32 @main() {
+entry:
+  %v37 = call i32 @sl_m0_s2()
+  ret i32 0
+}

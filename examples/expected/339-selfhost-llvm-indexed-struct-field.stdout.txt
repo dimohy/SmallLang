@@ -1,0 +1,49 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { i32, i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s3(%sl.array.i32 %arg) {
+entry:
+  %slot3 = alloca %sl.array.i32, align 8
+  %slot4 = alloca i32, align 4
+  %slot5 = alloca i32, align 4
+  store %sl.array.i32 %arg, ptr %slot3, align 8
+  store i32 0, ptr %slot4, align 4
+  store i32 0, ptr %slot5, align 4
+  br label %while17_header
+while17_header:
+  %while17_v14 = load i32, ptr %slot4, align 4
+  %while17_v16 = load %sl.array.i32, ptr %slot3, align 8
+  %while17_v15 = extractvalue %sl.array.i32 %while17_v16, 1
+  %while17_v13_left_wide = sext i32 %while17_v14 to i64
+  %while17_v13 = icmp slt i64 %while17_v13_left_wide, %while17_v15
+  br i1 %while17_v13, label %while17_body, label %while17_exit
+while17_body:
+  %v22 = load %sl.array.i32, ptr %slot3, align 8
+  %v23 = load i32, ptr %slot4, align 4
+  %v21_data = extractvalue %sl.array.i32 %v22, 0
+  %v21_index = sext i32 %v23 to i64
+  %v21_ptr = getelementptr i32, ptr %v21_data, i64 %v21_index
+  %v21 = load i32, ptr %v21_ptr, align 4
+  %v19_f0 = insertvalue %sl.struct.m0_s0 poison, i32 7, 0
+  %v19 = insertvalue %sl.struct.m0_s0 %v19_f0, i32 %v21, 1
+  %v25 = freeze %sl.struct.m0_s0 %v19
+  %v24 = extractvalue %sl.struct.m0_s0 %v25, 1
+  store i32 %v24, ptr %slot5, align 4
+  %v27 = load i32, ptr %slot4, align 4
+  %v26 = add i32 %v27, 1
+  store i32 %v26, ptr %slot4, align 4
+  br label %while17_header
+while17_exit:
+  %v29 = load i32, ptr %slot5, align 4
+  %drop3_current = load %sl.array.i32, ptr %slot3, align 8
+  %drop3 = extractvalue %sl.array.i32 %drop3_current, 0
+  call void @free(ptr %drop3)
+  ret i32 %v29
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

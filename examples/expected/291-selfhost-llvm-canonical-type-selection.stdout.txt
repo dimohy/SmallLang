@@ -1,5 +1,9 @@
 array=%sl.array.i32
+struct=%sl.struct.m0_s0
+each-nominal-member=i32
 size=i64
 source-text=%sl.source_text
-struct=%sl.struct.m0_s0
+local-nominal-array=%sl.array.i32
+parallel-bool-array=%sl.array.i32
 plain-imported-struct=%sl.struct.m1_s0
+each-nominal-member-count=2

@@ -1,0 +1,54 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_6 = private unnamed_addr constant [3 x i8] c"abc"
+define i32 @sl_m0_s2(i1 %arg) {
+entry:
+  %slot3 = alloca %sl.array.i32, align 8
+  %v5_data = call ptr @malloc(i64 0)
+  %v5_0 = insertvalue %sl.array.i32 poison, ptr %v5_data, 0
+  %v5_1 = insertvalue %sl.array.i32 %v5_0, i64 0, 1
+  %v5 = insertvalue %sl.array.i32 %v5_1, i64 0, 2
+  %v6_ptr = insertvalue %sl.text poison, ptr @sl_str_6, 0
+  %v6 = insertvalue %sl.text %v6_ptr, i64 3, 1
+  store %sl.array.i32 %v5, ptr %slot3, align 8
+  br i1 %arg, label %if9_then, label %if9_merge
+if9_then:
+  %v12 = load %sl.array.i32, ptr %slot3, align 8
+  %v16 = freeze %sl.text %v6
+  %v15 = extractvalue %sl.text %v16, 1
+  %v14_field0_cast = trunc i64 %v15 to i32
+  %v14 = insertvalue %sl.struct.m0_s0 poison, i32 %v14_field0_cast, 0
+  %push11_data = extractvalue %sl.array.i32 %v12, 0
+  %push11_length = extractvalue %sl.array.i32 %v12, 1
+  %push11_capacity = extractvalue %sl.array.i32 %v12, 2
+  %push11_full = icmp eq i64 %push11_length, %push11_capacity
+  %push11_empty = icmp eq i64 %push11_capacity, 0
+  %push11_doubled = mul i64 %push11_capacity, 2
+  %push11_grown_capacity = select i1 %push11_empty, i64 4, i64 %push11_doubled
+  %push11_append_capacity = select i1 %push11_full, i64 %push11_grown_capacity, i64 %push11_capacity
+  %push11_append_bytes = mul i64 %push11_append_capacity, 4
+  %push11_append_data = call ptr @realloc(ptr %push11_data, i64 %push11_append_bytes)
+  %push11_slot = getelementptr %sl.struct.m0_s0, ptr %push11_append_data, i64 %push11_length
+  store %sl.struct.m0_s0 %v14, ptr %push11_slot, align 4
+  %push11_new_length = add i64 %push11_length, 1
+  %push11_array0 = insertvalue %sl.array.i32 poison, ptr %push11_append_data, 0
+  %push11_array1 = insertvalue %sl.array.i32 %push11_array0, i64 %push11_new_length, 1
+  %push11_array2 = insertvalue %sl.array.i32 %push11_array1, i64 %push11_append_capacity, 2
+  store %sl.array.i32 %push11_array2, ptr %slot3, align 8
+  br label %if9_merge
+if9_merge:
+  %drop3_current = load %sl.array.i32, ptr %slot3, align 8
+  %drop3 = extractvalue %sl.array.i32 %drop3_current, 0
+  call void @free(ptr %drop3)
+  ret i32 0
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

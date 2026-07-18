@@ -27,81 +27,61 @@ done:
 %sl.array.i32 = type { ptr, i64, i64 }
 declare ptr @malloc(i64)
 declare void @free(ptr)
-%sl.dict = type { ptr, ptr, i64, i64 }
-declare void @llvm.trap()
 %sl.text = type { ptr, i64 }
-@sl_str_34 = private unnamed_addr constant [6 x i8] c"normal"
-@sl_str_36 = private unnamed_addr constant [4 x i8] c"done"
+@sl_str_32 = private unnamed_addr constant [6 x i8] c"normal"
+@sl_str_34 = private unnamed_addr constant [4 x i8] c"done"
 define i32 @main() {
 entry:
   %slot1 = alloca i32, align 4
+  %v34_ptr = insertvalue %sl.text poison, ptr @sl_str_34, 0
+  %v34 = insertvalue %sl.text %v34_ptr, i64 4, 1
   store i32 0, ptr %slot1, align 4
-  br label %while10_header
-while10_header:
-  %while10_v8 = load i32, ptr %slot1, align 4
-  %while10_v7 = icmp slt i32 %while10_v8, 4
-  br i1 %while10_v7, label %while10_body, label %while10_exit
-while10_body:
-  %v13 = load i32, ptr %slot1, align 4
-  %v12 = add i32 %v13, 1
-  store i32 %v12, ptr %slot1, align 4
-  %v16 = load i32, ptr %slot1, align 4
-  %v18 = load i32, ptr %slot1, align 4
-  %v17 = add i32 %v18, 10
-  %v15_data = call ptr @malloc(i64 8)
-  %v15_ptr0 = getelementptr i32, ptr %v15_data, i64 0
-  store i32 %v16, ptr %v15_ptr0, align 4
-  %v15_ptr1 = getelementptr i32, ptr %v15_data, i64 1
-  store i32 %v17, ptr %v15_ptr1, align 4
-  %v15_0 = insertvalue %sl.array.i32 poison, ptr %v15_data, 0
-  %v15_1 = insertvalue %sl.array.i32 %v15_0, i64 2, 1
-  %v15 = insertvalue %sl.array.i32 %v15_1, i64 2, 2
+  br label %while9_header
+while9_header:
+  %while9_v7 = load i32, ptr %slot1, align 4
+  %while9_v6 = icmp slt i32 %while9_v7, 4
+  br i1 %while9_v6, label %while9_body, label %while9_exit
+while9_body:
+  %v12 = load i32, ptr %slot1, align 4
+  %v11 = add i32 %v12, 1
+  store i32 %v11, ptr %slot1, align 4
+  %v15 = load i32, ptr %slot1, align 4
+  %v17 = load i32, ptr %slot1, align 4
+  %v16 = add i32 %v17, 10
+  %v14_data = call ptr @malloc(i64 8)
+  %v14_ptr0 = getelementptr i32, ptr %v14_data, i64 0
+  store i32 %v15, ptr %v14_ptr0, align 4
+  %v14_ptr1 = getelementptr i32, ptr %v14_data, i64 1
+  store i32 %v16, ptr %v14_ptr1, align 4
+  %v14_0 = insertvalue %sl.array.i32 poison, ptr %v14_data, 0
+  %v14_1 = insertvalue %sl.array.i32 %v14_0, i64 2, 1
+  %v14 = insertvalue %sl.array.i32 %v14_1, i64 2, 2
+  %v19 = load i32, ptr %slot1, align 4
   %v21 = load i32, ptr %slot1, align 4
-  %v23 = load i32, ptr %slot1, align 4
-  %v22 = add i32 %v23, 100
-  %v20_keys = call ptr @malloc(i64 4)
-  %v20_values = call ptr @malloc(i64 4)
-  %v20_keys_ptr0 = getelementptr i32, ptr %v20_keys, i64 0
-  store i32 %v21, ptr %v20_keys_ptr0, align 4
-  %v20_values_ptr0 = getelementptr i32, ptr %v20_values, i64 0
-  store i32 %v22, ptr %v20_values_ptr0, align 4
-  %v20_0 = insertvalue %sl.dict poison, ptr %v20_keys, 0
-  %v20_1 = insertvalue %sl.dict %v20_0, ptr %v20_values, 1
-  %v20_2 = insertvalue %sl.dict %v20_1, i64 1, 2
-  %v20 = insertvalue %sl.dict %v20_2, i64 1, 3
-  %v27 = load i32, ptr %slot1, align 4
-  %v26 = icmp eq i32 %v27, 2
-  br i1 %v26, label %guard25_exit, label %guard25_next
-guard25_exit:
-  %cleanup258_b4_keys = extractvalue %sl.dict %v20, 0
-  call void @free(ptr %cleanup258_b4_keys)
-  %cleanup258_b4_values = extractvalue %sl.dict %v20, 1
-  call void @free(ptr %cleanup258_b4_values)
-  %cleanup258_b3 = extractvalue %sl.array.i32 %v15, 0
-  call void @free(ptr %cleanup258_b3)
-  br label %while10_header
-guard25_next:
-  %v31 = load i32, ptr %slot1, align 4
-  %v30 = icmp eq i32 %v31, 3
-  br i1 %v30, label %guard29_exit, label %guard29_next
-guard29_exit:
-  %cleanup298_b4_keys = extractvalue %sl.dict %v20, 0
-  call void @free(ptr %cleanup298_b4_keys)
-  %cleanup298_b4_values = extractvalue %sl.dict %v20, 1
-  call void @free(ptr %cleanup298_b4_values)
-  %cleanup298_b3 = extractvalue %sl.array.i32 %v15, 0
-  call void @free(ptr %cleanup298_b3)
-  br label %while10_exit
-guard29_next:
-  call void @sl_runtime_print(ptr @sl_str_34, i64 6, i1 true)
-  %cleanup103_b4_keys = extractvalue %sl.dict %v20, 0
-  call void @free(ptr %cleanup103_b4_keys)
-  %cleanup103_b4_values = extractvalue %sl.dict %v20, 1
-  call void @free(ptr %cleanup103_b4_values)
-  %cleanup103_b3 = extractvalue %sl.array.i32 %v15, 0
-  call void @free(ptr %cleanup103_b3)
-  br label %while10_header
-while10_exit:
-  call void @sl_runtime_print(ptr @sl_str_36, i64 4, i1 true)
+  %v20 = add i32 %v21, 100
+  %v25 = load i32, ptr %slot1, align 4
+  %v24 = icmp eq i32 %v25, 2
+  br i1 %v24, label %guard23_exit, label %guard23_next
+guard23_exit:
+  %cleanup238_b3 = extractvalue %sl.array.i32 %v14, 0
+  call void @free(ptr %cleanup238_b3)
+  br label %while9_header
+guard23_next:
+  %v29 = load i32, ptr %slot1, align 4
+  %v28 = icmp eq i32 %v29, 3
+  br i1 %v28, label %guard27_exit, label %guard27_next
+guard27_exit:
+  %cleanup278_b3 = extractvalue %sl.array.i32 %v14, 0
+  call void @free(ptr %cleanup278_b3)
+  br label %while9_exit
+guard27_next:
+  %v32_ptr = insertvalue %sl.text poison, ptr @sl_str_32, 0
+  %v32 = insertvalue %sl.text %v32_ptr, i64 6, 1
+  call void @sl_runtime_print(ptr @sl_str_32, i64 6, i1 true)
+  %cleanup93_b3 = extractvalue %sl.array.i32 %v14, 0
+  call void @free(ptr %cleanup93_b3)
+  br label %while9_header
+while9_exit:
+  call void @sl_runtime_print(ptr @sl_str_34, i64 4, i1 true)
   ret i32 0
 }

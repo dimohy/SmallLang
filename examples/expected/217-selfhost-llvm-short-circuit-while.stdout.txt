@@ -26,8 +26,8 @@ done:
 }
 %sl.text = type { ptr, i64 }
 @sl_str_4 = private unnamed_addr constant [5 x i8] c"check"
-@sl_str_25 = private unnamed_addr constant [8 x i8] c"run-done"
-@sl_str_32 = private unnamed_addr constant [9 x i8] c"main-done"
+@sl_str_24 = private unnamed_addr constant [8 x i8] c"run-done"
+@sl_str_31 = private unnamed_addr constant [9 x i8] c"main-done"
 define i1 @sl_m0_s0(i32 %arg) {
 entry:
   %v4_ptr = insertvalue %sl.text poison, ptr @sl_str_4, 0
@@ -39,29 +39,31 @@ entry:
 define void @sl_m0_s1(i1 %arg) {
 entry:
   %slot11 = alloca i32, align 4
-  %v25_ptr = insertvalue %sl.text poison, ptr @sl_str_25, 0
-  %v25 = insertvalue %sl.text %v25_ptr, i64 8, 1
+  %v24_ptr = insertvalue %sl.text poison, ptr @sl_str_24, 0
+  %v24 = insertvalue %sl.text %v24_ptr, i64 8, 1
   store i32 0, ptr %slot11, align 4
-  br label %while19_header
-while19_header:
-  br i1 %arg, label %while19_bool15_rhs, label %while19_exit
-while19_bool15_rhs:
-  %while19_v18 = load i32, ptr %slot11, align 4
-  %while19_v17 = call i1 @sl_m0_s0(i32 %while19_v18)
-  br i1 %while19_v17, label %while19_body, label %while19_exit
-while19_body:
-  %v22 = load i32, ptr %slot11, align 4
-  %v21 = add i32 %v22, 1
-  store i32 %v21, ptr %slot11, align 4
-  br label %while19_header
-while19_exit:
-  call void @sl_runtime_print(ptr @sl_str_25, i64 8, i1 true)
+  br label %while18_header
+while18_header:
+  br i1 %arg, label %while18_bool14_rhs, label %while18_exit
+while18_bool14_rhs:
+  %while18_v17 = load i32, ptr %slot11, align 4
+  %while18_v16 = call i1 @sl_m0_s0(i32 %while18_v17)
+  br i1 %while18_v16, label %while18_body, label %while18_exit
+while18_body:
+  %v21 = load i32, ptr %slot11, align 4
+  %v20 = add i32 %v21, 1
+  store i32 %v20, ptr %slot11, align 4
+  br label %while18_header
+while18_exit:
+  call void @sl_runtime_print(ptr @sl_str_24, i64 8, i1 true)
   ret void
 }
 define i32 @main() {
 entry:
+  %v31_ptr = insertvalue %sl.text poison, ptr @sl_str_31, 0
+  %v31 = insertvalue %sl.text %v31_ptr, i64 9, 1
   call void @sl_m0_s1(i1 1)
   call void @sl_m0_s1(i1 0)
-  call void @sl_runtime_print(ptr @sl_str_32, i64 9, i1 true)
+  call void @sl_runtime_print(ptr @sl_str_31, i64 9, i1 true)
   ret i32 0
 }

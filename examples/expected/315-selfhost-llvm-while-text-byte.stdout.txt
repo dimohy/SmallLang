@@ -5,40 +5,30 @@ define i64 @sl_m0_s0(%sl.text %arg) {
 entry:
   %slot3 = alloca i64, align 8
   %v5 = sext i32 0 to i64
-  %v11 = extractvalue %sl.text %arg, 1
-  %v17 = trunc i32 46 to i8
   store i64 %v5, ptr %slot3, align 8
-  %v10 = load i64, ptr %slot3, align 8
-  %v16 = load i64, ptr %slot3, align 8
-  %v9 = icmp slt i64 %v10, %v11
-  %v14_base = extractvalue %sl.text %arg, 0
-  %v14_address = getelementptr i8, ptr %v14_base, i64 %v16
-  %v14 = load i8, ptr %v14_address, align 1
-  %v13 = icmp ne i8 %v14, %v17
-  %v8 = and i1 %v9, %v13
-  br label %while19_header
-while19_header:
-  %while19_v10 = load i64, ptr %slot3, align 8
-  %while19_v11 = extractvalue %sl.text %arg, 1
-  %while19_v9 = icmp slt i64 %while19_v10, %while19_v11
-  br i1 %while19_v9, label %while19_bool8_rhs, label %while19_exit
-while19_bool8_rhs:
-  %while19_v16 = load i64, ptr %slot3, align 8
-  %while19_v14_base = extractvalue %sl.text %arg, 0
-  %while19_v14_address = getelementptr i8, ptr %while19_v14_base, i64 %while19_v16
-  %while19_v14 = load i8, ptr %while19_v14_address, align 1
-  %while19_v17 = trunc i32 46 to i8
-  %while19_v13 = icmp ne i8 %while19_v14, %while19_v17
-  br i1 %while19_v13, label %while19_body, label %while19_exit
-while19_body:
-  %v22 = load i64, ptr %slot3, align 8
-  %v23 = sext i32 1 to i64
-  %v21 = add i64 %v22, %v23
-  store i64 %v21, ptr %slot3, align 8
-  br label %while19_header
-while19_exit:
-  %v25 = load i64, ptr %slot3, align 8
-  ret i64 %v25
+  br label %while20_header
+while20_header:
+  %while20_v11 = load i64, ptr %slot3, align 8
+  %while20_v12 = extractvalue %sl.text %arg, 1
+  %while20_v10 = icmp ult i64 %while20_v11, %while20_v12
+  br i1 %while20_v10, label %while20_bool9_rhs, label %while20_exit
+while20_bool9_rhs:
+  %while20_v17 = load i64, ptr %slot3, align 8
+  %while20_v15_base = extractvalue %sl.text %arg, 0
+  %while20_v15_address = getelementptr i8, ptr %while20_v15_base, i64 %while20_v17
+  %while20_v15 = load i8, ptr %while20_v15_address, align 1
+  %while20_v18 = trunc i32 46 to i8
+  %while20_v14 = icmp ne i8 %while20_v15, %while20_v18
+  br i1 %while20_v14, label %while20_body, label %while20_exit
+while20_body:
+  %v23 = load i64, ptr %slot3, align 8
+  %v24 = sext i32 1 to i64
+  %v22 = add i64 %v23, %v24
+  store i64 %v22, ptr %slot3, align 8
+  br label %while20_header
+while20_exit:
+  %v26 = load i64, ptr %slot3, align 8
+  ret i64 %v26
 }
 define i32 @main() {
 entry:

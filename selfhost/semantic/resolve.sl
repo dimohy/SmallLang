@@ -94,7 +94,31 @@ public resolvePrepared request: ResolutionRequest -> [ResolvedName; ~] {
                                     request.nodes[referenceBlockSearch!].parent => referenceBlockSearch!
                                 }
                             }
-                            (candidateVisible! and (candidate.kind == 35 or candidateStart < nameAst.start) and candidate.astNode != bindingOwnerAst!) -> if {
+                            # A nested function is declared before the enclosing
+                            # function's executable bindings, but runs only after
+                            # those bindings have initialized its closure slots.
+                            # Permit that outer-function capture without making
+                            # ordinary same-scope forward references visible.
+                            false => forwardFunctionCapture!
+                            (candidate.kind == 9 and lexicalScope! >= 0 and searchScope! >= 0 and lexicalScope! != searchScope!) -> if {
+                                lexicalScope! => referenceFunctionScope!
+                                false => referenceFunctionFound!
+                                (referenceFunctionScope! >= 0 and not referenceFunctionFound!) -> while {
+                                    request.symbols[referenceFunctionScope!] => referenceOwnerCandidate
+                                    request.nodes[referenceOwnerCandidate.astNode] => referenceOwnerAst
+                                    (referenceOwnerAst.kind == 7 or referenceOwnerAst.kind == 29 or referenceOwnerAst.kind == 31) -> if {
+                                        true => referenceFunctionFound!
+                                    } else {
+                                        referenceOwnerCandidate.parent => referenceFunctionScope!
+                                    }
+                                }
+                                request.symbols[searchScope!] => candidateOwner
+                                request.nodes[candidateOwner.astNode] => candidateOwnerAst
+                                (referenceFunctionFound! and referenceFunctionScope! != searchScope! and (candidateOwnerAst.kind == 7 or candidateOwnerAst.kind == 29 or candidateOwnerAst.kind == 31)) -> if {
+                                    true => forwardFunctionCapture!
+                                }
+                            }
+                            ((candidateVisible! or forwardFunctionCapture!) and (candidate.kind == 35 or candidateStart < nameAst.start or forwardFunctionCapture!) and candidate.astNode != bindingOwnerAst!) -> if {
                                 (nearestSymbol! < 0 or candidateStart >= nearestStart!) -> if {
                                     candidateSymbolIndex! => nearestSymbol!
                                     candidateStart => nearestStart!

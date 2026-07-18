@@ -1,0 +1,74 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m1_s0 = type { i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i64, i64 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_7 = private unnamed_addr constant [7 x i8] c"main {}"
+define i64 @sl_m0_s0() {
+entry:
+  %slot2 = alloca %sl.array.i32, align 8
+  %slot4 = alloca i64, align 8
+  %v7_ptr = insertvalue %sl.text poison, ptr @sl_str_7, 0
+  %v7 = insertvalue %sl.text %v7_ptr, i64 7, 1
+  %v6 = call %sl.array.i32 @sl_m1_s13(%sl.text %v7)
+  %v12 = sext i32 10 to i64
+  store %sl.array.i32 %v6, ptr %slot2, align 8
+  store i64 %v12, ptr %slot4, align 8
+  %v10 = load %sl.array.i32, ptr %slot2, align 8
+  %v9_data = extractvalue %sl.array.i32 %v10, 0
+  %v9_ptr = getelementptr %sl.struct.m1_s0, ptr %v9_data, i64 0
+  %v9 = load %sl.struct.m1_s0, ptr %v9_ptr, align 8
+  %v8 = extractvalue %sl.struct.m1_s0 %v9, 10
+  br i1 1, label %if16_then, label %if16_merge
+if16_then:
+  %v20 = freeze i64 %v8
+  %v21 = load i64, ptr %slot4, align 8
+  %v19 = icmp ult i64 %v20, %v21
+  br i1 %v19, label %if22_then, label %if22_merge
+if22_then:
+  %v24 = freeze i64 %v8
+  store i64 %v24, ptr %slot4, align 8
+  br label %if22_merge
+if22_merge:
+  br label %if16_merge
+if16_merge:
+  %v25 = load i64, ptr %slot4, align 8
+  %drop2_current = load %sl.array.i32, ptr %slot2, align 8
+  %drop2 = extractvalue %sl.array.i32 %drop2_current, 0
+  call void @free(ptr %drop2)
+  ret i64 %v25
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}
+define %sl.array.i32 @sl_m1_s13(%sl.text %arg) {
+entry:
+  %v33 = sub i32 0, 1
+  %v40 = sub i32 0, 1
+  %v42 = sub i32 0, 1
+  %v44 = sub i32 0, 1
+  %v46 = sext i32 7 to i64
+  %v48 = sext i32 2 to i64
+  %v31_f0 = insertvalue %sl.struct.m1_s0 poison, i32 0, 0
+  %v31_f1 = insertvalue %sl.struct.m1_s0 %v31_f0, i32 %v33, 1
+  %v31_f2 = insertvalue %sl.struct.m1_s0 %v31_f1, i32 0, 2
+  %v31_f3 = insertvalue %sl.struct.m1_s0 %v31_f2, i32 0, 3
+  %v31_f4 = insertvalue %sl.struct.m1_s0 %v31_f3, i32 0, 4
+  %v31_f5 = insertvalue %sl.struct.m1_s0 %v31_f4, i32 0, 5
+  %v31_f6 = insertvalue %sl.struct.m1_s0 %v31_f5, i32 0, 6
+  %v31_f7 = insertvalue %sl.struct.m1_s0 %v31_f6, i32 %v40, 7
+  %v31_f8 = insertvalue %sl.struct.m1_s0 %v31_f7, i32 %v42, 8
+  %v31_f9 = insertvalue %sl.struct.m1_s0 %v31_f8, i32 %v44, 9
+  %v31_f10 = insertvalue %sl.struct.m1_s0 %v31_f9, i64 %v46, 10
+  %v31 = insertvalue %sl.struct.m1_s0 %v31_f10, i64 %v48, 11
+  %v30_data = call ptr @malloc(i64 56)
+  %v30_ptr0 = getelementptr %sl.struct.m1_s0, ptr %v30_data, i64 0
+  store %sl.struct.m1_s0 %v31, ptr %v30_ptr0, align 8
+  %v30_0 = insertvalue %sl.array.i32 poison, ptr %v30_data, 0
+  %v30_1 = insertvalue %sl.array.i32 %v30_0, i64 1, 1
+  %v30 = insertvalue %sl.array.i32 %v30_1, i64 1, 2
+  ret %sl.array.i32 %v30
+}

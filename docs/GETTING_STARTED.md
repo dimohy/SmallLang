@@ -408,6 +408,28 @@ printed as `[start n/total]`, and every completion is flushed immediately as
 Use `--jobs 1` for deterministic sequential diagnosis or an explicit positive
 worker count when measuring another machine. Compiler bootstrap and
 grammar-table determinism are still checked once before the parallel section.
+Add `--compare-compilers` to an executable self-host LLVM fixture when
+diagnosing backend drift. The runner materializes the fixture's embedded SL
+sources once, emits LLVM with both the C# reference compiler and the native SL
+compiler, keeps both `.ll` files under `artifacts/example-tests`, links both,
+and requires identical exit codes and normalized stdout. It intentionally
+compares observable behavior rather than raw LLVM text because the C# and SL
+backends use different platform-runtime implementations.
+
+Use the dedicated stage-2 gate to prove that a C#-bootstrapped SL compiler and
+the SL compiler rebuilt by that compiler produce the same normalized LLVM:
+
+```powershell
+.\scripts\verify-selfhost-stage2.ps1
+```
+
+The script reports `[stage2 n/6]`, caches the complete stage-2 executable until
+one of its 28 source inputs changes, compares normalized LLVM SHA-256 for both a
+single source and an imported two-file program, assembles and links both stage-2
+outputs, executes them, and finally runs the C#/SL runtime differential check.
+Pass `-Rebuild` to force the complete stage-2 emission. These gates are opt-in
+so the ordinary parallel edit loop does not pay for another full compiler
+generation.
 An unfiltered run always remains the commit-gate regression check.
 
 Multiple user source files may form one compilation unit. Declarations from all

@@ -1,0 +1,28 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+define i32 @sl_m0_s0(i1 %arg) {
+entry:
+  %slot3 = alloca i32, align 4
+  %slot4 = alloca i32, align 4
+  store i32 0, ptr %slot3, align 4
+  store i32 0, ptr %slot4, align 4
+  %if13_result = alloca i32, align 4
+  br i1 %arg, label %if13_then, label %if13_else
+if13_then:
+  store i32 1, ptr %slot3, align 4
+  store i32 2, ptr %slot4, align 4
+  store i32 2, ptr %if13_result, align 4
+  br label %if13_merge
+if13_else:
+  store i32 3, ptr %slot3, align 4
+  store i32 4, ptr %slot4, align 4
+  store i32 4, ptr %if13_result, align 4
+  br label %if13_merge
+if13_merge:
+  %v13 = load i32, ptr %if13_result, align 4
+  ret i32 %v13
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

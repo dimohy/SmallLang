@@ -1,0 +1,27 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @main() {
+entry:
+  %slot1 = alloca %sl.array.i32, align 8
+  %v3_data = call ptr @malloc(i64 8)
+  %v3_ptr0 = getelementptr i32, ptr %v3_data, i64 0
+  store i32 1, ptr %v3_ptr0, align 4
+  %v3_ptr1 = getelementptr i32, ptr %v3_data, i64 1
+  store i32 2, ptr %v3_ptr1, align 4
+  %v3_0 = insertvalue %sl.array.i32 poison, ptr %v3_data, 0
+  %v3_1 = insertvalue %sl.array.i32 %v3_0, i64 2, 1
+  %v3 = insertvalue %sl.array.i32 %v3_1, i64 2, 2
+  store %sl.array.i32 %v3, ptr %slot1, align 8
+  %v6 = sext i32 9 to i64
+  %v9 = freeze i64 %v6
+  %assign8_array = load %sl.array.i32, ptr %slot1, align 4
+  %assign8_data = extractvalue %sl.array.i32 %assign8_array, 0
+  %assign8_index = sext i32 0 to i64
+  %assign8_ptr = getelementptr i32, ptr %assign8_data, i64 %assign8_index
+  %assign8_value_cast = trunc i64 %v9 to i32
+  store i32 %assign8_value_cast, ptr %assign8_ptr, align 4
+  ret i32 0
+}

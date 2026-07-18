@@ -304,7 +304,11 @@ public analyzeContext prepared: semanticContext.CompilationContext -> EffectAnal
                 0 => effectBitIndex!
                 effectBitIndex! < 6 -> while {
                     effectBits[effectBitIndex!] => requiredEffect
-                    (HasEffectRequest { mask: requiredMask!, effect: requiredEffect } -> hasEffect) and not (HasEffectRequest { mask: callerMask!, effect: requiredEffect } -> hasEffect) -> if {
+                    HasEffectRequest { mask: requiredMask!, effect: requiredEffect } => requiredEffectRequest
+                    requiredEffectRequest -> hasEffect => requiresEffect
+                    HasEffectRequest { mask: callerMask!, effect: requiredEffect } => callerEffectRequest
+                    callerEffectRequest -> hasEffect => callerHasEffect
+                    (requiresEffect and not callerHasEffect) -> if {
                         diagnostics! -> push(EffectDiagnostic {
                             code: 1
                             sourceModule: call.sourceModule

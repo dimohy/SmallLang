@@ -1,0 +1,42 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s0(i32 %arg) {
+entry:
+  %v3 = add i32 %arg, 1
+  ret i32 %v3
+}
+define %sl.array.i32 @sl_m0_s1(%sl.array.i32 %arg) {
+entry:
+  %v9_input = extractvalue %sl.array.i32 %arg, 0
+  %v9_length = extractvalue %sl.array.i32 %arg, 1
+  %v9_bytes = mul i64 %v9_length, 4
+  %v9_data = call ptr @malloc(i64 %v9_bytes)
+  %v9_index_slot = alloca i64, align 8
+  store i64 0, ptr %v9_index_slot, align 8
+  br label %parallel9_header
+parallel9_header:
+  %v9_index = load i64, ptr %v9_index_slot, align 8
+  %v9_done = icmp eq i64 %v9_index, %v9_length
+  br i1 %v9_done, label %parallel9_exit, label %parallel9_body
+parallel9_body:
+  %v9_input_ptr = getelementptr i32, ptr %v9_input, i64 %v9_index
+  %v9_item = load i32, ptr %v9_input_ptr, align 4
+  %v9_mapped = call i32 @sl_m0_s0(i32 %v9_item)
+  %v9_output_ptr = getelementptr i32, ptr %v9_data, i64 %v9_index
+  store i32 %v9_mapped, ptr %v9_output_ptr, align 4
+  %v9_next = add i64 %v9_index, 1
+  store i64 %v9_next, ptr %v9_index_slot, align 8
+  br label %parallel9_header
+parallel9_exit:
+  %v9_0 = insertvalue %sl.array.i32 poison, ptr %v9_data, 0
+  %v9_1 = insertvalue %sl.array.i32 %v9_0, i64 %v9_length, 1
+  %v9 = insertvalue %sl.array.i32 %v9_1, i64 %v9_length, 2
+  ret %sl.array.i32 %v9
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

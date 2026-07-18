@@ -1,0 +1,69 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_14 = private unnamed_addr constant [10 x i8] c"unexpected"
+@sl_str_21 = private unnamed_addr constant [13 x i8] c"short-circuit"
+define void @sl_m0_s0(%sl.array.i32 %arg) {
+entry:
+  br i1 0, label %while11_bool4_rhs, label %while11_exit
+while11_bool4_rhs:
+  %while11_v7_data = extractvalue %sl.array.i32 %arg, 0
+  %while11_v7_index = sext i32 0 to i64
+  %while11_v7_ptr = getelementptr i32, ptr %while11_v7_data, i64 %while11_v7_index
+  %while11_v7 = load i32, ptr %while11_v7_ptr, align 4
+  %while11_v6 = icmp eq i32 %while11_v7, 1
+  br i1 %while11_v6, label %while11_body, label %while11_exit
+while11_body:
+  br label %if11_then
+while11_exit:
+  br label %if11_merge
+if11_then:
+  %v14_ptr = insertvalue %sl.text poison, ptr @sl_str_14, 0
+  %v14 = insertvalue %sl.text %v14_ptr, i64 10, 1
+  call void @sl_runtime_print(ptr @sl_str_14, i64 10, i1 true)
+  br label %if11_merge
+if11_merge:
+  ret void
+}
+define i32 @main() {
+entry:
+  %slot16 = alloca %sl.array.i32, align 8
+  %v17_data = call ptr @malloc(i64 0)
+  %v17_0 = insertvalue %sl.array.i32 poison, ptr %v17_data, 0
+  %v17_1 = insertvalue %sl.array.i32 %v17_0, i64 0, 1
+  %v17 = insertvalue %sl.array.i32 %v17_1, i64 0, 2
+  %v21_ptr = insertvalue %sl.text poison, ptr @sl_str_21, 0
+  %v21 = insertvalue %sl.text %v21_ptr, i64 13, 1
+  store %sl.array.i32 %v17, ptr %slot16, align 8
+  %v19 = load %sl.array.i32, ptr %slot16, align 8
+  call void @sl_m0_s0(%sl.array.i32 %v19)
+  call void @sl_runtime_print(ptr @sl_str_21, i64 13, i1 true)
+  ret i32 0
+}

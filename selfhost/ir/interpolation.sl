@@ -46,6 +46,12 @@ public struct PreparedInterpolationRequest {
 }
 
 public lowerPrepared request: move PreparedInterpolationRequest -> [InterpolationNode; ~] {
+    isIdentifierStart value: UInt8 -> Bool {
+        (value >= UInt8(65) and value <= UInt8(90)) or (value >= UInt8(97) and value <= UInt8(122)) or value == UInt8(95) or value >= UInt8(128)
+    }
+    isIdentifierContinue value: UInt8 -> Bool {
+        (value -> isIdentifierStart) or (value >= UInt8(48) and value <= UInt8(57))
+    }
     [InterpolationNode; ~] => nodes!
     request.source => source
     0 => segmentIndex!
@@ -59,25 +65,44 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
             contentStart => literalStart!
             contentStart => cursor!
             cursor! < contentEnd -> while {
-                ((source -> byte(cursor!)) == UInt8(36) and cursor! + UIntSize(1) < contentEnd and (source -> byte(cursor! + UIntSize(1))) == UInt8(40)) -> if {
-                    cursor! + UIntSize(2) => fragmentStart
-                    fragmentStart => fragmentEnd!
-                    1 => depth!
-                    false => inString!
-                    (fragmentEnd! < contentEnd and depth! > 0) -> while {
-                        source -> byte(fragmentEnd!) => fragmentByte
-                        fragmentByte == UInt8(34) -> if {
-                            not inString! => inString!
-                        } else {
-                            not inString! -> if {
-                                fragmentByte == UInt8(40) -> if { depth! + 1 => depth! }
-                                fragmentByte == UInt8(41) -> if { depth! - 1 => depth! }
-                            }
+                false => interpolationStart!
+                (source -> byte(cursor!)) == UInt8(36) -> if {
+                    cursor! + UIntSize(1) < contentEnd -> if {
+                        source -> byte(cursor! + UIntSize(1)) => interpolationNextByte
+                        interpolationNextByte == UInt8(40) -> if { true => interpolationStart! } else {
+                            interpolationNextByte -> isIdentifierStart => interpolationStart!
                         }
-                        depth! > 0 -> if { fragmentEnd! + UIntSize(1) => fragmentEnd! }
+                    }
+                }
+                interpolationStart! -> if {
+                    cursor! + UIntSize(1) => fragmentStart!
+                    fragmentStart! => fragmentEnd!
+                    0 => depth!
+                    false => inString!
+                    false => parenthesizedInterpolation!
+                    (source -> byte(cursor! + UIntSize(1))) == UInt8(40) -> if {
+                        true => parenthesizedInterpolation!
+                        cursor! + UIntSize(2) => fragmentStart!
+                        fragmentStart! => fragmentEnd!
+                        1 => depth!
+                        (fragmentEnd! < contentEnd and depth! > 0) -> while {
+                            source -> byte(fragmentEnd!) => fragmentByte
+                            fragmentByte == UInt8(34) -> if {
+                                not inString! => inString!
+                            } else {
+                                not inString! -> if {
+                                    fragmentByte == UInt8(40) -> if { depth! + 1 => depth! }
+                                    fragmentByte == UInt8(41) -> if { depth! - 1 => depth! }
+                                }
+                            }
+                            depth! > 0 -> if { fragmentEnd! + UIntSize(1) => fragmentEnd! }
+                        }
+                    } else {
+                        fragmentStart! => fragmentEnd!
+                        (fragmentEnd! < contentEnd and ((source -> byte(fragmentEnd!)) -> isIdentifierContinue)) -> while { fragmentEnd! + UIntSize(1) => fragmentEnd! }
                     }
                     depth! == 0 -> if {
-                        source -> slice(fragmentStart, fragmentEnd! - fragmentStart) => fragment
+                        source -> slice(fragmentStart!, fragmentEnd! - fragmentStart!) => fragment
                         fragment -> ast.lowerExpression => fragmentAst!
                         fragment -> lexer.lex => fragmentTokens!
                         [Int; ~] => astToNode!
@@ -124,6 +149,17 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                                 loweredKind! == 1 -> if {
                                     fragmentTokens![fragmentNode.payloadToken] => fragmentName
                                     -1 => ownerSymbol!
+                                    -1 => referenceAst!
+                                    0 => referenceAstSearch!
+                                    referenceAstSearch! < (request.nodes -> len) -> while {
+                                        request.nodes[referenceAstSearch!] => referenceCandidateAst
+                                        (referenceCandidateAst.start <= stringToken.span.start and stringToken.span.start + stringToken.span.length <= referenceCandidateAst.start + referenceCandidateAst.length) -> if {
+                                            (referenceAst! < 0 or referenceCandidateAst.length <= request.nodes[referenceAst!].length) -> if {
+                                                referenceAstSearch! => referenceAst!
+                                            }
+                                        }
+                                        referenceAstSearch! + 1 => referenceAstSearch!
+                                    }
                                     0 => ownerAstSearch!
                                     ownerAstSearch! < (request.nodes -> len) -> while {
                                         request.nodes[ownerAstSearch!] => ownerCandidateAst
@@ -139,22 +175,63 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                                         ownerAstSearch! + 1 => ownerAstSearch!
                                     }
                                     ownerSymbol! => resolvedOwner!
-                                    0 => candidateSymbol!
-                                    candidateSymbol! < (request.symbols -> len) -> while {
-                                        request.symbols[candidateSymbol!] => candidate
-                                        ((candidate.kind == 9 or candidate.kind == 35) and candidate.parent == ownerSymbol!) -> if {
-                                            request.tokens[candidate.nameToken] => candidateName
-                                            candidateName.span.length => candidateNameLength
-                                            fragmentName.span.length => fragmentNameLength
-                                            candidateNameLength == fragmentNameLength => nameEqual!
-                                            UIntSize(0) => nameByte!
-                                            (nameEqual! and nameByte! < fragmentNameLength) -> while {
-                                                (fragment -> byte(fragmentName.span.start + nameByte!)) != (source -> byte(candidateName.span.start + nameByte!)) -> if { false => nameEqual! }
-                                                nameByte! + UIntSize(1) => nameByte!
+                                    ownerSymbol! => searchScope!
+                                    false => scopesDone!
+                                    (resolvedSymbol! < 0 and not scopesDone!) -> while {
+                                        -1 => nearestSymbol!
+                                        UIntSize(0) => nearestStart!
+                                        0 => candidateSymbol!
+                                        candidateSymbol! < (request.symbols -> len) -> while {
+                                            request.symbols[candidateSymbol!] => candidate
+                                            ((candidate.kind == 9 or candidate.kind == 35) and candidate.parent == searchScope!) -> if {
+                                                request.tokens[candidate.nameToken] => candidateName
+                                                candidateName.span.length => candidateNameLength
+                                                fragmentName.span.length => fragmentNameLength
+                                                candidateNameLength == fragmentNameLength => nameEqual!
+                                                UIntSize(0) => nameByte!
+                                                (nameEqual! and nameByte! < fragmentNameLength) -> while {
+                                                    (fragment -> byte(fragmentName.span.start + nameByte!)) != (source -> byte(candidateName.span.start + nameByte!)) -> if { false => nameEqual! }
+                                                    nameByte! + UIntSize(1) => nameByte!
+                                                }
+                                                nameEqual! -> if {
+                                                    request.nodes[candidate.astNode].start => candidateStart
+                                                    candidate.kind == 35 => candidateVisible!
+                                                    candidate.kind == 9 -> if {
+                                                        -1 => candidateBlockAst!
+                                                        candidate.astNode => candidateOwnerAst!
+                                                        (candidateOwnerAst! >= 0 and candidateBlockAst! < 0) -> while {
+                                                            request.nodes[candidateOwnerAst!].kind == 43 -> if {
+                                                                candidateOwnerAst! => candidateBlockAst!
+                                                            } else {
+                                                                request.nodes[candidateOwnerAst!].parent => candidateOwnerAst!
+                                                            }
+                                                        }
+                                                        candidateBlockAst! < 0 => candidateVisible!
+                                                        referenceAst! => referenceBlockSearch!
+                                                        referenceBlockSearch! >= 0 -> while {
+                                                            referenceBlockSearch! == candidateBlockAst! -> if { true => candidateVisible! }
+                                                            request.nodes[referenceBlockSearch!].parent => referenceBlockSearch!
+                                                        }
+                                                        (searchScope! == ownerSymbol! and candidateStart >= stringToken.span.start) -> if { false => candidateVisible! }
+                                                    }
+                                                    candidateVisible! -> if {
+                                                        (nearestSymbol! < 0 or candidateStart >= nearestStart!) -> if {
+                                                            candidateSymbol! => nearestSymbol!
+                                                            candidateStart => nearestStart!
+                                                        }
+                                                    }
+                                                }
                                             }
-                                            nameEqual! -> if { candidateSymbol! => resolvedSymbol! }
+                                            candidateSymbol! + 1 => candidateSymbol!
                                         }
-                                        candidateSymbol! + 1 => candidateSymbol!
+                                        nearestSymbol! >= 0 -> if { nearestSymbol! => resolvedSymbol! }
+                                        resolvedSymbol! < 0 -> if {
+                                            searchScope! >= 0 -> if {
+                                                request.symbols[searchScope!].parent => searchScope!
+                                            } else {
+                                                true => scopesDone!
+                                            }
+                                        }
                                     }
                                 }
                                 -1 => loweredTypeSymbol!
@@ -166,6 +243,8 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                                 loweredKind! == 3 -> if {
                                     (fragmentNode.operatorKind == grammar.tokenIdEqualEqual or fragmentNode.operatorKind == grammar.tokenIdBangEqual or fragmentNode.operatorKind == grammar.tokenIdLess or fragmentNode.operatorKind == grammar.tokenIdLessEqual or fragmentNode.operatorKind == grammar.tokenIdGreater or fragmentNode.operatorKind == grammar.tokenIdGreaterEqual or fragmentNode.operatorKind == -24 or fragmentNode.operatorKind == -25) -> if { 23 => loweredTypeSymbol! } else { 2 => loweredTypeSymbol! }
                                 }
+                                fragmentStart! - contentStart => loweredExpressionStart!
+                                not parenthesizedInterpolation! -> if { cursor! - contentStart => loweredExpressionStart! }
                                 InterpolationNode {
                                     kind: loweredKind!
                                     segment: segmentIndex!
@@ -173,15 +252,15 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                                     symbol: resolvedSymbol!
                                     ownerSymbol: resolvedOwner!
                                     opcode: fragmentNode.operatorKind
-                                    payloadStart: fragmentStart + fragmentNode.start
+                                    payloadStart: fragmentStart! + fragmentNode.start
                                     payloadLength: fragmentNode.length
                                     operand0: -1
                                     operand1: -1
                                     sourceToken: stringTokenIndex!
                                     literalStart: literalStart! - contentStart
                                     literalLength: cursor! - literalStart!
-                                    expressionStart: fragmentStart - contentStart
-                                    expressionLength: fragmentEnd! - fragmentStart
+                                    expressionStart: loweredExpressionStart!
+                                    expressionLength: fragmentEnd! - fragmentStart!
                                     typeSymbol: loweredTypeSymbol!
                                 } => lowered
                                 nodes! -> len => loweredIndex
@@ -191,8 +270,10 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                             fragmentAstIndex! + 1 => fragmentAstIndex!
                         }
                         segmentIndex! + 1 => segmentIndex!
-                        fragmentEnd! + UIntSize(1) => literalStart!
-                        fragmentEnd! => cursor!
+                        fragmentEnd! => interpolationEnd!
+                        parenthesizedInterpolation! -> if { fragmentEnd! + UIntSize(1) => interpolationEnd! }
+                        interpolationEnd! => literalStart!
+                        interpolationEnd! - UIntSize(1) => cursor!
                     }
                 }
                 cursor! + UIntSize(1) => cursor!

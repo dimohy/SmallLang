@@ -25,63 +25,75 @@ done:
   ret void
 }
 %sl.text = type { ptr, i64 }
-@sl_str_7 = private unnamed_addr constant [4 x i8] c"tick"
-@sl_str_16 = private unnamed_addr constant [7 x i8] c"waiting"
-@sl_str_29 = private unnamed_addr constant [12 x i8] c"wrong-nested"
-@sl_str_32 = private unnamed_addr constant [10 x i8] c"wrong-else"
-@sl_str_43 = private unnamed_addr constant [5 x i8] c"wrong"
-@sl_str_45 = private unnamed_addr constant [4 x i8] c"done"
+@sl_str_6 = private unnamed_addr constant [4 x i8] c"tick"
+@sl_str_14 = private unnamed_addr constant [7 x i8] c"waiting"
+@sl_str_26 = private unnamed_addr constant [12 x i8] c"wrong-nested"
+@sl_str_29 = private unnamed_addr constant [10 x i8] c"wrong-else"
+@sl_str_39 = private unnamed_addr constant [5 x i8] c"wrong"
+@sl_str_41 = private unnamed_addr constant [4 x i8] c"done"
 define void @sl_m0_s0() {
 entry:
-  br label %while4_header
-while4_header:
-  br i1 1, label %while4_body, label %while4_exit
-while4_body:
-  call void @sl_runtime_print(ptr @sl_str_7, i64 4, i1 true)
-  br label %while4_header
-while4_exit:
+  br label %while3_header
+while3_header:
+  br i1 1, label %while3_body, label %while3_exit
+while3_body:
+  %v6_ptr = insertvalue %sl.text poison, ptr @sl_str_6, 0
+  %v6 = insertvalue %sl.text %v6_ptr, i64 4, 1
+  call void @sl_runtime_print(ptr @sl_str_6, i64 4, i1 true)
+  br label %while3_header
+while3_exit:
   ret void
 }
 define void @sl_m0_s1(i1 %arg) {
 entry:
-  br label %while13_header
-while13_header:
-  br i1 %arg, label %while13_body, label %while13_exit
-while13_body:
-  call void @sl_runtime_print(ptr @sl_str_16, i64 7, i1 true)
-  br label %while13_header
-while13_exit:
+  br label %while11_header
+while11_header:
+  br i1 %arg, label %while11_body, label %while11_exit
+while11_body:
+  %v14_ptr = insertvalue %sl.text poison, ptr @sl_str_14, 0
+  %v14 = insertvalue %sl.text %v14_ptr, i64 7, 1
+  call void @sl_runtime_print(ptr @sl_str_14, i64 7, i1 true)
+  br label %while11_header
+while11_exit:
   ret void
 }
 define void @sl_m0_s2(i1 %arg) {
 entry:
-  br i1 %arg, label %if22_then, label %if22_else
-if22_then:
-  br label %while26_header
-while26_header:
-  br i1 0, label %while26_body, label %while26_exit
-while26_body:
-  call void @sl_runtime_print(ptr @sl_str_29, i64 12, i1 true)
-  br label %while26_header
-while26_exit:
-  br label %if22_merge
-if22_else:
-  call void @sl_runtime_print(ptr @sl_str_32, i64 10, i1 true)
-  br label %if22_merge
-if22_merge:
+  br i1 %arg, label %if20_then, label %if20_else
+if20_then:
+  br label %while23_header
+while23_header:
+  br i1 0, label %while23_body, label %while23_exit
+while23_body:
+  %v26_ptr = insertvalue %sl.text poison, ptr @sl_str_26, 0
+  %v26 = insertvalue %sl.text %v26_ptr, i64 12, 1
+  call void @sl_runtime_print(ptr @sl_str_26, i64 12, i1 true)
+  br label %while23_header
+while23_exit:
+  br label %if20_merge
+if20_else:
+  %v29_ptr = insertvalue %sl.text poison, ptr @sl_str_29, 0
+  %v29 = insertvalue %sl.text %v29_ptr, i64 10, 1
+  call void @sl_runtime_print(ptr @sl_str_29, i64 10, i1 true)
+  br label %if20_merge
+if20_merge:
   ret void
 }
 define i32 @main() {
 entry:
+  %v41_ptr = insertvalue %sl.text poison, ptr @sl_str_41, 0
+  %v41 = insertvalue %sl.text %v41_ptr, i64 4, 1
   call void @sl_m0_s2(i1 1)
   call void @sl_m0_s1(i1 0)
-  br label %while40_header
-while40_header:
-  br i1 0, label %while40_body, label %while40_exit
-while40_body:
-  call void @sl_runtime_print(ptr @sl_str_43, i64 5, i1 true)
-  br label %while40_header
-while40_exit:
-  call void @sl_runtime_print(ptr @sl_str_45, i64 4, i1 true)
+  br label %while36_header
+while36_header:
+  br i1 0, label %while36_body, label %while36_exit
+while36_body:
+  %v39_ptr = insertvalue %sl.text poison, ptr @sl_str_39, 0
+  %v39 = insertvalue %sl.text %v39_ptr, i64 5, 1
+  call void @sl_runtime_print(ptr @sl_str_39, i64 5, i1 true)
+  br label %while36_header
+while36_exit:
+  call void @sl_runtime_print(ptr @sl_str_41, i64 4, i1 true)
   ret i32 0
 }

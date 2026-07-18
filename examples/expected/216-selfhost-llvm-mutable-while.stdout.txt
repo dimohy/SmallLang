@@ -25,44 +25,46 @@ done:
   ret void
 }
 %sl.text = type { ptr, i64 }
-@sl_str_16 = private unnamed_addr constant [13 x i8] c"function-done"
-@sl_str_33 = private unnamed_addr constant [9 x i8] c"main-done"
+@sl_str_15 = private unnamed_addr constant [13 x i8] c"function-done"
+@sl_str_31 = private unnamed_addr constant [9 x i8] c"main-done"
 define void @sl_m0_s0(i32 %arg) {
 entry:
   %slot3 = alloca i32, align 4
-  %v16_ptr = insertvalue %sl.text poison, ptr @sl_str_16, 0
-  %v16 = insertvalue %sl.text %v16_ptr, i64 13, 1
+  %v15_ptr = insertvalue %sl.text poison, ptr @sl_str_15, 0
+  %v15 = insertvalue %sl.text %v15_ptr, i64 13, 1
   store i32 0, ptr %slot3, align 4
-  br label %while10_header
-while10_header:
-  %while10_v8 = load i32, ptr %slot3, align 4
-  %while10_v7 = icmp slt i32 %while10_v8, %arg
-  br i1 %while10_v7, label %while10_body, label %while10_exit
-while10_body:
-  %v13 = load i32, ptr %slot3, align 4
-  %v12 = add i32 %v13, 1
-  store i32 %v12, ptr %slot3, align 4
-  br label %while10_header
-while10_exit:
-  call void @sl_runtime_print(ptr @sl_str_16, i64 13, i1 true)
+  br label %while9_header
+while9_header:
+  %while9_v7 = load i32, ptr %slot3, align 4
+  %while9_v6 = icmp slt i32 %while9_v7, %arg
+  br i1 %while9_v6, label %while9_body, label %while9_exit
+while9_body:
+  %v12 = load i32, ptr %slot3, align 4
+  %v11 = add i32 %v12, 1
+  store i32 %v11, ptr %slot3, align 4
+  br label %while9_header
+while9_exit:
+  call void @sl_runtime_print(ptr @sl_str_15, i64 13, i1 true)
   ret void
 }
 define i32 @main() {
 entry:
-  %slot18 = alloca i32, align 4
+  %slot17 = alloca i32, align 4
+  %v31_ptr = insertvalue %sl.text poison, ptr @sl_str_31, 0
+  %v31 = insertvalue %sl.text %v31_ptr, i64 9, 1
   call void @sl_m0_s0(i32 3)
-  store i32 0, ptr %slot18, align 4
-  br label %while27_header
-while27_header:
-  %while27_v25 = load i32, ptr %slot18, align 4
-  %while27_v24 = icmp slt i32 %while27_v25, 2
-  br i1 %while27_v24, label %while27_body, label %while27_exit
-while27_body:
-  %v30 = load i32, ptr %slot18, align 4
-  %v29 = add i32 %v30, 1
-  store i32 %v29, ptr %slot18, align 4
-  br label %while27_header
-while27_exit:
-  call void @sl_runtime_print(ptr @sl_str_33, i64 9, i1 true)
+  store i32 0, ptr %slot17, align 4
+  br label %while25_header
+while25_header:
+  %while25_v23 = load i32, ptr %slot17, align 4
+  %while25_v22 = icmp slt i32 %while25_v23, 2
+  br i1 %while25_v22, label %while25_body, label %while25_exit
+while25_body:
+  %v28 = load i32, ptr %slot17, align 4
+  %v27 = add i32 %v28, 1
+  store i32 %v27, ptr %slot17, align 4
+  br label %while25_header
+while25_exit:
+  call void @sl_runtime_print(ptr @sl_str_31, i64 9, i1 true)
   ret i32 0
 }

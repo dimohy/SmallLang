@@ -126,6 +126,18 @@ public emitWindows runtimeModule: Int -> Unit uses Console {
     """ -> println
 }
 
+public emitWindowsSourceTextDeclarations: -> Unit uses Console {
+    """
+    declare dllimport ptr @CreateFileA(ptr, i32, i32, ptr, i32, i32, ptr)
+    declare dllimport i32 @CloseHandle(ptr)
+    declare dllimport i32 @GetFileSizeEx(ptr, ptr)
+    declare dllimport ptr @CreateFileMappingA(ptr, ptr, i32, i32, i32, ptr)
+    declare dllimport ptr @MapViewOfFile(ptr, i32, i32, i32, i64)
+    declare dllimport i32 @UnmapViewOfFile(ptr)
+    declare void @llvm.trap()
+    """ -> println
+}
+
 public emitWindowsSourceText: -> Unit uses Console {
     """
     define %sl.source_text @sl_runtime_map_text(%sl.text %path) {

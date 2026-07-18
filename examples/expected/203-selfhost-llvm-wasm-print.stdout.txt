@@ -18,6 +18,8 @@ attributes #1 = { "wasm-import-module"="env" "wasm-import-name"="smalllang_write
 @sl_str_2 = private unnamed_addr constant [5 x i8] c"hello"
 define i32 @main() {
 entry:
+  %v2_ptr = insertvalue %sl.text poison, ptr @sl_str_2, 0
+  %v2 = insertvalue %sl.text %v2_ptr, i64 5, 1
   call void @sl_runtime_print(ptr @sl_str_2, i64 5, i1 true)
   ret i32 0
 }

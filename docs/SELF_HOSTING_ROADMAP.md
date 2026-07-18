@@ -212,9 +212,18 @@ Current native bootstrap chain:
 - [x] Invoke `clang`/`lld` from `slc` and produce ordinary final executables directly.
 - [x] Closure-convert local compiler functions so native optimization partitions use all cores.
 - [x] Emit and assemble the complete stage-2 module with `llvm-as`.
-- [ ] Link stage 2 with the platform entry shim, runtime, and imported stdlib definitions.
-- [ ] Run stage 2 and compile a multi-file SL smoke program with it.
-- [ ] Rebuild `slc` with stage 1 and compare a reproducible stage-2 artifact.
+- [x] Link stage 2 with the platform entry shim, runtime, and imported stdlib definitions.
+- [x] Run stage 2 and compile single-file and imported multi-file SL smoke programs with it.
+- [x] Rebuild `slc` with stage 1 and compare reproducible stage-2 LLVM artifacts.
+
+The native bootstrap chain is now **10/10 complete (100%)**. The complete
+28-source compiler emits a 6,730,900-byte Windows LLVM module, which assembles
+and links as a stage-2 compiler. Examples 365 and 366 cover a minimal program
+and a two-file imported module. After newline normalization, stage 1 and stage 2
+produce identical LLVM SHA-256 values for both programs; both stage-2 outputs
+also assemble, link, and execute. `scripts/verify-selfhost-stage2.ps1` preserves
+this as a six-step cached differential gate. This completes the bootstrap
+milestone without changing the broader 60-gate language-capability score.
 
 ## Gate Inventory
 
@@ -879,15 +888,16 @@ entry so unoptimized loop execution has bounded stack use.
 - [x] redirect LLVM to a file through a typed, shell-free process API;
 - [x] invoke Clang and produce a runnable native executable;
 - [x] prove the path with a multi-module SL program;
-- [ ] emit the complete 27-module compiler without an LLVM-lowering trap;
-- [ ] build `slc-stage2` from that complete module;
-- [ ] compare stage-1 and stage-2 output reproducibly.
+- [x] emit the complete 28-source compiler without an LLVM-lowering trap;
+- [x] build `slc-stage2` from that complete module;
+- [x] compare stage-1 and stage-2 output reproducibly.
 
-The full compiler attempt reaches self-host LLVM emission after semantic and
-typed-IR lowering, but the last three items remain open. The formal roadmap
-score is unchanged at 42 complete, 13 partial, 5 missing (48.5/60, 80.8%). The
-coordinated final regression passed 428/428 in 37.0 seconds with eight workers
-and a zero-warning, zero-error Release build.
+The stage-2 checklist is now **8/8 complete (100%)**. The cached verifier checks
+the complete compiler link, single-file execution, imported multi-file
+execution, normalized stage-1/stage-2 LLVM identity, and C#/SL runtime parity.
+The formal language-capability score remains 42 complete, 13 partial, 5 missing
+(48.5/60, 80.8%) until the remaining ownership, generic-container, package,
+tooling, and library gates are implemented.
 
 ## Immediate Implementation Order
 

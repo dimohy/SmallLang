@@ -1,0 +1,102 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_11 = private unnamed_addr constant [4 x i8] c"done"
+define i64 @sl_m0_s0(%sl.array.i32 %arg) {
+entry:
+  %slot3 = alloca %sl.array.i32, align 8
+  %v4_data = call ptr @malloc(i64 0)
+  %v4_0 = insertvalue %sl.array.i32 poison, ptr %v4_data, 0
+  %v4_1 = insertvalue %sl.array.i32 %v4_0, i64 0, 1
+  %v4 = insertvalue %sl.array.i32 %v4_1, i64 0, 2
+  %v11_ptr = insertvalue %sl.text poison, ptr @sl_str_11, 0
+  %v11 = insertvalue %sl.text %v11_ptr, i64 4, 1
+  store %sl.array.i32 %v4, ptr %slot3, align 8
+  %each5_data = extractvalue %sl.array.i32 %arg, 0
+  %each5_length = extractvalue %sl.array.i32 %arg, 1
+  %each5_index_slot = alloca i64, align 8
+  store i64 0, ptr %each5_index_slot, align 8
+  br label %each5_header
+each5_header:
+  %each5_index = load i64, ptr %each5_index_slot, align 8
+  %each5_done = icmp eq i64 %each5_index, %each5_length
+  br i1 %each5_done, label %each5_exit, label %each5_body
+each5_body:
+  %each5_item_ptr = getelementptr i32, ptr %each5_data, i64 %each5_index
+  %each5_item = load i32, ptr %each5_item_ptr, align 4
+  %v9 = freeze i32 %each5_item
+  %v8 = load %sl.array.i32, ptr %slot3, align 8
+  %push7_data = extractvalue %sl.array.i32 %v8, 0
+  %push7_length = extractvalue %sl.array.i32 %v8, 1
+  %push7_capacity = extractvalue %sl.array.i32 %v8, 2
+  %push7_full = icmp eq i64 %push7_length, %push7_capacity
+  %push7_empty = icmp eq i64 %push7_capacity, 0
+  %push7_doubled = mul i64 %push7_capacity, 2
+  %push7_grown_capacity = select i1 %push7_empty, i64 4, i64 %push7_doubled
+  %push7_append_capacity = select i1 %push7_full, i64 %push7_grown_capacity, i64 %push7_capacity
+  %push7_append_bytes = mul i64 %push7_append_capacity, 4
+  %push7_append_data = call ptr @realloc(ptr %push7_data, i64 %push7_append_bytes)
+  %push7_slot = getelementptr i32, ptr %push7_append_data, i64 %push7_length
+  store i32 %v9, ptr %push7_slot, align 4
+  %push7_new_length = add i64 %push7_length, 1
+  %push7_array0 = insertvalue %sl.array.i32 poison, ptr %push7_append_data, 0
+  %push7_array1 = insertvalue %sl.array.i32 %push7_array0, i64 %push7_new_length, 1
+  %push7_array2 = insertvalue %sl.array.i32 %push7_array1, i64 %push7_append_capacity, 2
+  store %sl.array.i32 %push7_array2, ptr %slot3, align 8
+  br label %each5_continue
+each5_continue:
+  %each5_next = add i64 %each5_index, 1
+  store i64 %each5_next, ptr %each5_index_slot, align 8
+  br label %each5_header
+each5_exit:
+  call void @sl_runtime_print(ptr @sl_str_11, i64 4, i1 true)
+  %v13 = load %sl.array.i32, ptr %slot3, align 8
+  %v12 = extractvalue %sl.array.i32 %v13, 1
+  %drop3_current = load %sl.array.i32, ptr %slot3, align 8
+  %drop3 = extractvalue %sl.array.i32 %drop3_current, 0
+  call void @free(ptr %drop3)
+  ret i64 %v12
+}
+define i32 @main() {
+entry:
+  %v17_data = call ptr @malloc(i64 12)
+  %v17_ptr0 = getelementptr i32, ptr %v17_data, i64 0
+  store i32 1, ptr %v17_ptr0, align 4
+  %v17_ptr1 = getelementptr i32, ptr %v17_data, i64 1
+  store i32 2, ptr %v17_ptr1, align 4
+  %v17_ptr2 = getelementptr i32, ptr %v17_data, i64 2
+  store i32 3, ptr %v17_ptr2, align 4
+  %v17_0 = insertvalue %sl.array.i32 poison, ptr %v17_data, 0
+  %v17_1 = insertvalue %sl.array.i32 %v17_0, i64 3, 1
+  %v17 = insertvalue %sl.array.i32 %v17_1, i64 3, 2
+  %v16 = call i64 @sl_m0_s0(%sl.array.i32 %v17)
+  ret i32 0
+}

@@ -1,0 +1,53 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s0() {
+entry:
+  %slot2 = alloca %sl.array.i32, align 8
+  %slot3 = alloca i32, align 4
+  %v5_data = call ptr @malloc(i64 8)
+  %v5_ptr0 = getelementptr i32, ptr %v5_data, i64 0
+  store i32 1, ptr %v5_ptr0, align 4
+  %v5_ptr1 = getelementptr i32, ptr %v5_data, i64 1
+  store i32 2, ptr %v5_ptr1, align 4
+  %v5_0 = insertvalue %sl.array.i32 poison, ptr %v5_data, 0
+  %v5_1 = insertvalue %sl.array.i32 %v5_0, i64 2, 1
+  %v5 = insertvalue %sl.array.i32 %v5_1, i64 2, 2
+  store %sl.array.i32 %v5, ptr %slot2, align 8
+  store i32 0, ptr %slot3, align 4
+  %v10 = load %sl.array.i32, ptr %slot2, align 8
+  %each9_data = extractvalue %sl.array.i32 %v10, 0
+  %each9_length = extractvalue %sl.array.i32 %v10, 1
+  %each9_index_slot = alloca i64, align 8
+  store i64 0, ptr %each9_index_slot, align 8
+  br label %each9_header
+each9_header:
+  %each9_index = load i64, ptr %each9_index_slot, align 8
+  %each9_done = icmp eq i64 %each9_index, %each9_length
+  br i1 %each9_done, label %each9_exit, label %each9_body
+each9_body:
+  %each9_item_ptr = getelementptr i32, ptr %each9_data, i64 %each9_index
+  %each9_item = load i32, ptr %each9_item_ptr, align 4
+  %v13 = freeze i32 %each9_item
+  %v12 = load i32, ptr %slot3, align 4
+  %v11 = add i32 %v12, %v13
+  store i32 %v11, ptr %slot3, align 4
+  br label %each9_continue
+each9_continue:
+  %each9_next = add i64 %each9_index, 1
+  store i64 %each9_next, ptr %each9_index_slot, align 8
+  br label %each9_header
+each9_exit:
+  %v14 = load i32, ptr %slot3, align 4
+  %drop2_current = load %sl.array.i32, ptr %slot2, align 8
+  %drop2 = extractvalue %sl.array.i32 %drop2_current, 0
+  call void @free(ptr %drop2)
+  ret i32 %v14
+}
+define i32 @main() {
+entry:
+  %v16 = call i32 @sl_m0_s0()
+  ret i32 0
+}

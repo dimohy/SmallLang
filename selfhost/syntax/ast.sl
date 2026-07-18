@@ -393,8 +393,8 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
     ast! -> len => infixAstCount
     0 => infixIndex!
     infixIndex! < infixAstCount -> while {
-        ast![infixIndex!] => infixNode
-        (infixNode.kind >= 18 and infixNode.kind <= 25) -> if {
+        ast![infixIndex!] => infixNode!
+        (infixNode!.kind >= 18 and infixNode!.kind <= 25) -> if {
             [Int; ~] => infixChildren!
             0 => infixChildSearch!
             infixChildSearch! < infixAstCount -> while {
@@ -408,20 +408,35 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                     infixChildren![infixChildIndex!] => infixRight
                     ast![infixLeft!] => infixLeftNode!
                     ast![infixRight] => infixRightNode!
+                    infixChildren![infixChildIndex! - 1] => infixPrevious
+                    ast![infixPrevious] => infixPreviousNode
+                    infixPreviousNode.firstToken + infixPreviousNode.tokenCount => infixOperatorSearch!
+                    infixNode!.operatorKind => nestedInfixOperator!
+                    infixNode!.payloadToken => nestedInfixPayload!
+                    infixOperatorSearch! < infixRightNode!.firstToken -> while {
+                        tokens![infixOperatorSearch!].kind => infixCandidateOperator
+                        (infixCandidateOperator != grammar.triviaIdWhitespace and infixCandidateOperator != grammar.triviaIdComment) -> if {
+                            infixCandidateOperator => nestedInfixOperator!
+                            infixNode!.kind == 24 -> if { -24 => nestedInfixOperator! }
+                            infixNode!.kind == 25 -> if { -25 => nestedInfixOperator! }
+                            infixOperatorSearch! => nestedInfixPayload!
+                        }
+                        infixOperatorSearch! + 1 => infixOperatorSearch!
+                    }
                     ast! -> len => nestedInfixIndex
                     nestedInfixIndex => infixLeftNode!.parent
                     nestedInfixIndex => infixRightNode!.parent
                     infixLeftNode! => ast![infixLeft!]
                     infixRightNode! => ast![infixRight]
                     ast! -> push(AstNode {
-                        kind: infixNode.kind
+                        kind: infixNode!.kind
                         parent: infixIndex!
-                        cstRuleId: infixNode.cstRuleId
-                        operatorKind: infixNode.operatorKind
-                        payloadToken: infixNode.payloadToken
-                        secondaryToken: infixNode.secondaryToken
-                        tertiaryToken: infixNode.tertiaryToken
-                        flags: infixNode.flags
+                        cstRuleId: infixNode!.cstRuleId
+                        operatorKind: nestedInfixOperator!
+                        payloadToken: nestedInfixPayload!
+                        secondaryToken: infixNode!.secondaryToken
+                        tertiaryToken: infixNode!.tertiaryToken
+                        flags: infixNode!.flags
                         firstToken: infixLeftNode!.firstToken
                         tokenCount: infixRightNode!.firstToken + infixRightNode!.tokenCount - infixLeftNode!.firstToken
                         start: infixLeftNode!.start
@@ -430,6 +445,23 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
                     nestedInfixIndex => infixLeft!
                     infixChildIndex! + 1 => infixChildIndex!
                 }
+                (infixChildren! -> len) - 1 => rootRightChildIndex
+                infixChildren![rootRightChildIndex] => rootRightChild
+                infixChildren![rootRightChildIndex - 1] => rootPreviousChild
+                ast![rootRightChild] => rootRightNode
+                ast![rootPreviousChild] => rootPreviousNode
+                rootPreviousNode.firstToken + rootPreviousNode.tokenCount => rootOperatorSearch!
+                rootOperatorSearch! < rootRightNode.firstToken -> while {
+                    tokens![rootOperatorSearch!].kind => rootCandidateOperator
+                    (rootCandidateOperator != grammar.triviaIdWhitespace and rootCandidateOperator != grammar.triviaIdComment) -> if {
+                        rootCandidateOperator => infixNode!.operatorKind
+                        infixNode!.kind == 24 -> if { -24 => infixNode!.operatorKind }
+                        infixNode!.kind == 25 -> if { -25 => infixNode!.operatorKind }
+                        rootOperatorSearch! => infixNode!.payloadToken
+                    }
+                    rootOperatorSearch! + 1 => rootOperatorSearch!
+                }
+                infixNode! => ast![infixIndex!]
             }
         }
         infixIndex! + 1 => infixIndex!

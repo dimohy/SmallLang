@@ -82,6 +82,8 @@ entry:
 }
 define i32 @main() {
 entry:
+  %v24_ptr = insertvalue %sl.text poison, ptr @sl_str_24, 0
+  %v24 = insertvalue %sl.text %v24_ptr, i64 90, 1
   call void @sl_m0_s0(i1 1)
   call void @sl_m0_s1(i32 7)
   %v20 = icmp sgt i32 3, 9

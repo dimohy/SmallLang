@@ -50,10 +50,13 @@ public analyze source: Text -> [SyntaxDiagnostic; ~] {
 public expectedCodes source: Text -> [Int; ~] {
     source -> parser.parseEvents => events!
     [Int; ~] => expected!
-    events! -> each event {
+    0 => eventIndex!
+    eventIndex! < (events! -> len) -> while {
+        events![eventIndex!] => event
         event.kind == 4 -> if {
             expected! -> push(event.value)
         }
+        eventIndex! + 1 => eventIndex!
     }
     expected!
 }

@@ -1,0 +1,17 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define %sl.struct.m0_s0 @sl_m0_s2(%sl.array.i32 %arg) {
+entry:
+  %v7 = extractvalue %sl.array.i32 %arg, 1
+  %v6 = trunc i64 %v7 to i32
+  %v4 = insertvalue %sl.struct.m0_s0 poison, i32 %v6, 0
+  ret %sl.struct.m0_s0 %v4
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

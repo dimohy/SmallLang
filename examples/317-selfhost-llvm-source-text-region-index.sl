@@ -7,7 +7,7 @@ main {
 
         scan owners: [file.SourceText; ~] -> UIntSize {
             UIntSize(0) => total!
-            0 => index!
+            UIntSize(0) => index!
             index! < (owners -> len) -> while {
                 owners[index!] -> len => sourceLength
                 total! + sourceLength => total!

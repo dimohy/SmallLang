@@ -58,55 +58,103 @@ emit:
   call void @sl_runtime_print(ptr %start, i64 %length, i1 %newline)
   ret void
 }
+define internal void @sl_runtime_print_i64(i64 %value, i1 %signed, i1 %newline) {
+entry:
+  %buffer = alloca [21 x i8], align 1
+  %end = getelementptr [21 x i8], ptr %buffer, i64 0, i64 21
+  %negative_value = icmp slt i64 %value, 0
+  %negative = and i1 %signed, %negative_value
+  %negated = sub i64 0, %value
+  %magnitude = select i1 %negative, i64 %negated, i64 %value
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sl_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
 %sl.text = type { ptr, i64 }
-@sl_str_31 = private unnamed_addr constant [11 x i8] c"wrong-inner"
-@sl_str_34 = private unnamed_addr constant [6 x i8] c"nested"
-@sl_str_37 = private unnamed_addr constant [11 x i8] c"wrong-outer"
-@sl_str_43 = private unnamed_addr constant [21 x i8] c"values=$first,$second"
+@sl_str_28 = private unnamed_addr constant [11 x i8] c"wrong-inner"
+@sl_str_31 = private unnamed_addr constant [6 x i8] c"nested"
+@sl_str_34 = private unnamed_addr constant [11 x i8] c"wrong-outer"
+@sl_str_40 = private unnamed_addr constant [21 x i8] c"values=$first,$second"
 define i32 @sl_m0_s0(i1 %arg) {
 entry:
+  %if5_result = alloca i32, align 4
   br i1 %arg, label %if5_then, label %if5_else
 if5_then:
+  %if9_result = alloca i32, align 4
   br i1 0, label %if9_then, label %if9_else
 if9_then:
+  store i32 1, ptr %if9_result, align 4
   br label %if9_merge
 if9_else:
+  store i32 2, ptr %if9_result, align 4
   br label %if9_merge
 if9_merge:
-  %v9 = phi i32 [ 1, %if9_then ], [ 2, %if9_else ]
+  %v9 = load i32, ptr %if9_result, align 4
+  store i32 %v9, ptr %if5_result, align 4
   br label %if5_merge
 if5_else:
+  store i32 3, ptr %if5_result, align 4
   br label %if5_merge
 if5_merge:
-  %v5 = phi i32 [ %v9, %if9_merge ], [ 3, %if5_else ]
+  %v5 = load i32, ptr %if5_result, align 4
   ret i32 %v5
 }
 define i32 @main() {
 entry:
-  br i1 1, label %if24_then, label %if24_else
-if24_then:
-  br i1 0, label %if28_then, label %if28_else
-if28_then:
-  call void @sl_runtime_print(ptr @sl_str_31, i64 11, i1 true)
-  br label %if28_merge
-if28_else:
-  call void @sl_runtime_print(ptr @sl_str_34, i64 6, i1 true)
-  br label %if28_merge
-if28_merge:
-  br label %if24_merge
-if24_else:
-  call void @sl_runtime_print(ptr @sl_str_37, i64 11, i1 true)
-  br label %if24_merge
-if24_merge:
-  %v38 = call i32 @sl_m0_s0(i1 1)
-  %v40 = call i32 @sl_m0_s0(i1 0)
-  %v42_interpolation_part0 = getelementptr i8, ptr @sl_str_43, i64 0
-  call void @sl_runtime_print(ptr %v42_interpolation_part0, i64 7, i1 false)
-  call void @sl_runtime_print_i32(i32 %v38, i1 false)
-  %v42_interpolation_part1 = getelementptr i8, ptr @sl_str_43, i64 13
-  call void @sl_runtime_print(ptr %v42_interpolation_part1, i64 1, i1 false)
-  call void @sl_runtime_print_i32(i32 %v40, i1 false)
-  %v42_interpolation_suffix = getelementptr i8, ptr @sl_str_43, i64 21
-  call void @sl_runtime_print(ptr %v42_interpolation_suffix, i64 0, i1 true)
+  br i1 1, label %if21_then, label %if21_else
+if21_then:
+  br i1 0, label %if25_then, label %if25_else
+if25_then:
+  %v28_ptr = insertvalue %sl.text poison, ptr @sl_str_28, 0
+  %v28 = insertvalue %sl.text %v28_ptr, i64 11, 1
+  call void @sl_runtime_print(ptr @sl_str_28, i64 11, i1 true)
+  br label %if25_merge
+if25_else:
+  %v31_ptr = insertvalue %sl.text poison, ptr @sl_str_31, 0
+  %v31 = insertvalue %sl.text %v31_ptr, i64 6, 1
+  call void @sl_runtime_print(ptr @sl_str_31, i64 6, i1 true)
+  br label %if25_merge
+if25_merge:
+  br label %if21_merge
+if21_else:
+  %v34_ptr = insertvalue %sl.text poison, ptr @sl_str_34, 0
+  %v34 = insertvalue %sl.text %v34_ptr, i64 11, 1
+  call void @sl_runtime_print(ptr @sl_str_34, i64 11, i1 true)
+  br label %if21_merge
+if21_merge:
+  %v40_ptr = insertvalue %sl.text poison, ptr @sl_str_40, 0
+  %v40 = insertvalue %sl.text %v40_ptr, i64 21, 1
+  %v35 = call i32 @sl_m0_s0(i1 1)
+  %v37 = call i32 @sl_m0_s0(i1 0)
+  %v39_expression_literal0 = getelementptr i8, ptr @sl_str_40, i64 0
+  call void @sl_runtime_print(ptr %v39_expression_literal0, i64 7, i1 false)
+  call void @sl_runtime_print_i32(i32 %v35, i1 false)
+  %v39_expression_literal1 = getelementptr i8, ptr @sl_str_40, i64 13
+  call void @sl_runtime_print(ptr %v39_expression_literal1, i64 1, i1 false)
+  call void @sl_runtime_print_i32(i32 %v37, i1 false)
+  %v39_expression_suffix = getelementptr i8, ptr @sl_str_40, i64 21
+  call void @sl_runtime_print(ptr %v39_expression_suffix, i64 0, i1 true)
   ret i32 0
 }

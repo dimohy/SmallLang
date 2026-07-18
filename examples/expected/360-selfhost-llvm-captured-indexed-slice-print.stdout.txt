@@ -1,0 +1,75 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+%sl.text = type { ptr, i64 }
+@sl_str_6 = private unnamed_addr constant [0 x i8] c""
+@sl_str_25 = private unnamed_addr constant [4 x i8] c"abcd"
+define void @sl_m0_s0(%sl.array.i32 %arg) {
+entry:
+  %v6_ptr = insertvalue %sl.text poison, ptr @sl_str_6, 0
+  %v6 = insertvalue %sl.text %v6_ptr, i64 0, 1
+  call void @sl_m0_s1(%sl.array.i32 %arg, i32 0)
+  call void @sl_runtime_print(ptr @sl_str_6, i64 0, i1 true)
+  ret void
+}
+define void @sl_m0_s1(%sl.array.i32 %capture_0, i32 %arg) {
+entry:
+  %v16 = freeze %sl.array.i32 %capture_0
+  br i1 1, label %if12_then, label %if12_merge
+if12_then:
+  %v15_data = extractvalue %sl.array.i32 %v16, 0
+  %v15_index = sext i32 %arg to i64
+  %v15_ptr = getelementptr %sl.text, ptr %v15_data, i64 %v15_index
+  %v15 = load %sl.text, ptr %v15_ptr, align 8
+  %v18 = sext i32 1 to i64
+  %v20 = sext i32 1 to i64
+  %v14_base = extractvalue %sl.text %v15, 0
+  %v14_start = getelementptr i8, ptr %v14_base, i64 %v18
+  %v14_ptr = insertvalue %sl.text poison, ptr %v14_start, 0
+  %v14 = insertvalue %sl.text %v14_ptr, i64 %v20, 1
+  %v14_runtime_ptr = extractvalue %sl.text %v14, 0
+  %v14_runtime_len = extractvalue %sl.text %v14, 1
+  call void @sl_runtime_print(ptr %v14_runtime_ptr, i64 %v14_runtime_len, i1 false)
+  br label %if12_merge
+if12_merge:
+  ret void
+}
+define i32 @main() {
+entry:
+  %v25_ptr = insertvalue %sl.text poison, ptr @sl_str_25, 0
+  %v25 = insertvalue %sl.text %v25_ptr, i64 4, 1
+  %v24_data = call ptr @malloc(i64 16)
+  %v24_ptr0 = getelementptr %sl.text, ptr %v24_data, i64 0
+  store %sl.text %v25, ptr %v24_ptr0, align 8
+  %v24_0 = insertvalue %sl.array.i32 poison, ptr %v24_data, 0
+  %v24_1 = insertvalue %sl.array.i32 %v24_0, i64 1, 1
+  %v24 = insertvalue %sl.array.i32 %v24_1, i64 1, 2
+  call void @sl_m0_s0(%sl.array.i32 %v24)
+  ret i32 0
+}

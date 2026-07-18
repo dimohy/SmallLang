@@ -59,13 +59,13 @@ buildWindows: -> Unit uses Console, File, Process {
                 clangArgv! -> process.run => compiled
                 compiled -> when {
                     Ok(clangCode) => "native build = $(clangCode)" -> println
-                    Err(error) => error -> println
+                    Err(error) => "native compiler invocation failed" -> println
                 }
             } else {
                 "emit failed" -> println
             }
         }
-        Err(error) => error -> println
+        Err(error) => "compiler emission failed" -> println
     }
 }
 

@@ -1,0 +1,48 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.text = type { ptr, i64 }
+@sl_str_11 = private unnamed_addr constant [4 x i8] c"abcd"
+define void @sl_m0_s0(%sl.text %arg) {
+entry:
+  %v5 = sext i32 1 to i64
+  %v7 = sext i32 2 to i64
+  %v3_base = extractvalue %sl.text %arg, 0
+  %v3_start = getelementptr i8, ptr %v3_base, i64 %v5
+  %v3_ptr = insertvalue %sl.text poison, ptr %v3_start, 0
+  %v3 = insertvalue %sl.text %v3_ptr, i64 %v7, 1
+  %v3_runtime_ptr = extractvalue %sl.text %v3, 0
+  %v3_runtime_len = extractvalue %sl.text %v3, 1
+  call void @sl_runtime_print(ptr %v3_runtime_ptr, i64 %v3_runtime_len, i1 true)
+  ret void
+}
+define i32 @main() {
+entry:
+  %v11_ptr = insertvalue %sl.text poison, ptr @sl_str_11, 0
+  %v11 = insertvalue %sl.text %v11_ptr, i64 4, 1
+  call void @sl_m0_s0(%sl.text { ptr @sl_str_11, i64 4 })
+  ret i32 0
+}

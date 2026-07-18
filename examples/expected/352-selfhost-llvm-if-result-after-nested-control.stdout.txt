@@ -1,0 +1,38 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+define i1 @sl_m0_s0(i32 %arg) {
+entry:
+  %slot3 = alloca i32, align 4
+  %v7 = icmp sge i32 %arg, 0
+  %if10_result = alloca i1, align 1
+  br i1 %v7, label %if10_then, label %if10_else
+if10_then:
+  store i32 0, ptr %slot3, align 4
+  %v14 = icmp eq i32 %arg, 1
+  %if17_result = alloca i32, align 4
+  br i1 %v14, label %if17_then, label %if17_else
+if17_then:
+  store i32 1, ptr %slot3, align 4
+  store i32 1, ptr %if17_result, align 4
+  br label %if17_merge
+if17_else:
+  store i32 2, ptr %slot3, align 4
+  store i32 2, ptr %if17_result, align 4
+  br label %if17_merge
+if17_merge:
+  %v17 = load i32, ptr %if17_result, align 4
+  %v23 = load i32, ptr %slot3, align 4
+  %v22 = icmp sgt i32 %v23, 0
+  store i1 %v22, ptr %if10_result, align 1
+  br label %if10_merge
+if10_else:
+  store i1 0, ptr %if10_result, align 1
+  br label %if10_merge
+if10_merge:
+  %v10 = load i1, ptr %if10_result, align 1
+  ret i1 %v10
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

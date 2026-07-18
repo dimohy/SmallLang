@@ -5,9 +5,9 @@ entry:
   %v3 = call i32 @sl_m0_s1(i32 %arg, i32 3)
   ret i32 %v3
 }
-define i32 @sl_m0_s1(i32 %env, i32 %arg) {
+define i32 @sl_m0_s1(i32 %capture_0, i32 %arg) {
 entry:
-  %v9 = freeze i32 %env
+  %v9 = freeze i32 %capture_0
   %v8 = add i32 %v9, %arg
   ret i32 %v8
 }

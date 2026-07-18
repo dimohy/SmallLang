@@ -1,0 +1,35 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s0(%sl.array.i32 %arg) {
+entry:
+  %v3 = call i32 @sl_m0_s1(%sl.array.i32 %arg)
+  ret i32 %v3
+}
+define i32 @sl_m0_s1(%sl.array.i32 %capture_0) {
+entry:
+  %v13 = freeze %sl.array.i32 %capture_0
+  %slot6 = alloca i32, align 4
+  store i32 0, ptr %slot6, align 4
+  br label %while14_header
+while14_header:
+  %while14_v11 = load i32, ptr %slot6, align 4
+  %while14_v12 = extractvalue %sl.array.i32 %v13, 1
+  %while14_v10_left_wide = sext i32 %while14_v11 to i64
+  %while14_v10 = icmp slt i64 %while14_v10_left_wide, %while14_v12
+  br i1 %while14_v10, label %while14_body, label %while14_exit
+while14_body:
+  %v17 = load i32, ptr %slot6, align 4
+  %v16 = add i32 %v17, 1
+  store i32 %v16, ptr %slot6, align 4
+  br label %while14_header
+while14_exit:
+  %v19 = load i32, ptr %slot6, align 4
+  ret i32 %v19
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

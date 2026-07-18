@@ -5,7 +5,8 @@ main {
         """
         main {
             [1, 2, ~] => values!
-            9 => values![0]
+            UIntSize(0) => index
+            9 => values![index]
         }
         """,
         ~

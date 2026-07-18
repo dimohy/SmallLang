@@ -1,0 +1,7 @@
+return-struct=0,0,0,operandKind=18
+binding=3,type=23
+binding=4,type=13
+binding=5,type=23
+binding=6,type=13
+binding=7,type=1
+binding=8,type=23

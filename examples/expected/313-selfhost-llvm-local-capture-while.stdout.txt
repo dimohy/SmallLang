@@ -8,37 +8,30 @@ entry:
   %v3 = call i32 @sl_m0_s1(%sl.array.i32 %arg, i32 2)
   ret i32 %v3
 }
-define i32 @sl_m0_s1(%sl.array.i32 %env, i32 %arg) {
+define i32 @sl_m0_s1(%sl.array.i32 %capture_0, i32 %arg) {
 entry:
-  %v16 = freeze %sl.array.i32 %env
+  %v17 = freeze %sl.array.i32 %capture_0
   %slot8 = alloca i32, align 4
   store i32 0, ptr %slot8, align 4
-  %v14 = load i32, ptr %slot8, align 4
-  %v15_raw = extractvalue %sl.array.i32 %v16, 1
-  %v15 = trunc i64 %v15_raw to i32
-  %v18 = load i32, ptr %slot8, align 4
-  %v13 = icmp slt i32 %v14, %v15
-  %v17 = icmp slt i32 %v18, %arg
-  %v12 = and i1 %v13, %v17
-  br label %while20_header
-while20_header:
-  %while20_v14 = load i32, ptr %slot8, align 4
-  %while20_v15_raw = extractvalue %sl.array.i32 %v16, 1
-  %while20_v15 = trunc i64 %while20_v15_raw to i32
-  %while20_v13 = icmp slt i32 %while20_v14, %while20_v15
-  br i1 %while20_v13, label %while20_bool12_rhs, label %while20_exit
-while20_bool12_rhs:
-  %while20_v18 = load i32, ptr %slot8, align 4
-  %while20_v17 = icmp slt i32 %while20_v18, %arg
-  br i1 %while20_v17, label %while20_body, label %while20_exit
-while20_body:
-  %v23 = load i32, ptr %slot8, align 4
-  %v22 = add i32 %v23, 1
-  store i32 %v22, ptr %slot8, align 4
-  br label %while20_header
-while20_exit:
-  %v25 = load i32, ptr %slot8, align 4
-  ret i32 %v25
+  br label %while21_header
+while21_header:
+  %while21_v15 = load i32, ptr %slot8, align 4
+  %while21_v16 = extractvalue %sl.array.i32 %v17, 1
+  %while21_v14_left_wide = sext i32 %while21_v15 to i64
+  %while21_v14 = icmp slt i64 %while21_v14_left_wide, %while21_v16
+  br i1 %while21_v14, label %while21_bool13_rhs, label %while21_exit
+while21_bool13_rhs:
+  %while21_v19 = load i32, ptr %slot8, align 4
+  %while21_v18 = icmp slt i32 %while21_v19, %arg
+  br i1 %while21_v18, label %while21_body, label %while21_exit
+while21_body:
+  %v24 = load i32, ptr %slot8, align 4
+  %v23 = add i32 %v24, 1
+  store i32 %v23, ptr %slot8, align 4
+  br label %while21_header
+while21_exit:
+  %v26 = load i32, ptr %slot8, align 4
+  ret i32 %v26
 }
 define i32 @main() {
 entry:

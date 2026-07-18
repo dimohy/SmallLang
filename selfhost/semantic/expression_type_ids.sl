@@ -219,7 +219,15 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
             # type pass has already resolved that AST through TypeReference;
             # retain the ID so local owner bindings do not fall back to a
             # shallow element module/symbol projection.
+            false => typedArrayTypeSyntax!
             node.kind == 37 -> if {
+                node.firstToken => typedArraySyntaxToken!
+                typedArraySyntaxToken! < node.firstToken + node.tokenCount -> while {
+                    prepared.package.tokens[sourceRange.tokenStart + typedArraySyntaxToken!].kind == grammar.tokenIdSemicolon -> if { true => typedArrayTypeSyntax! }
+                    typedArraySyntaxToken! + 1 => typedArraySyntaxToken!
+                }
+            }
+            (node.kind == 37 and typedArrayTypeSyntax!) -> if {
                 0 => arrayReferenceSearch!
                 arrayReferenceSearch! < (references! -> len) -> while {
                     references![arrayReferenceSearch!] => arrayReference
@@ -235,14 +243,22 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                     0 => typedArrayChildSearch!
                     typedArrayChildSearch! < sourceRange.astCount -> while {
                         prepared.package.nodes[sourceRange.astStart + typedArrayChildSearch!] => typedArrayChild
-                        (typedArrayChild.parent == astIndex! and typedArrayChild.kind == 16) -> if { typedArrayChildSearch! => typedArrayPathAst! }
+                        (typedArrayChild.kind == 16 and typedArrayPathAst! < 0) -> if {
+                            typedArrayChild.parent => typedArrayPathAncestor!
+                            (typedArrayPathAncestor! >= 0 and typedArrayPathAncestor! != astIndex!) -> while {
+                                prepared.package.nodes[sourceRange.astStart + typedArrayPathAncestor!].parent => typedArrayPathAncestor!
+                            }
+                            typedArrayPathAncestor! == astIndex! -> if { typedArrayChildSearch! => typedArrayPathAst! }
+                        }
                         typedArrayChildSearch! + 1 => typedArrayChildSearch!
                     }
                     -1 => typedArrayElementType!
                     -1 => typedArrayNameToken!
                     node.firstToken => typedArrayTokenIndex!
-                    (typedArrayTokenIndex! < node.firstToken + node.tokenCount and typedArrayNameToken! < 0) -> while {
+                    typedArrayTokenIndex! < node.firstToken + node.tokenCount -> while {
                         prepared.package.tokens[sourceRange.tokenStart + typedArrayTokenIndex!] => typedArrayToken
+                        # The element name of a qualified type is its final
+                        # identifier (`SourceText` in `file.SourceText`).
                         typedArrayToken.kind == grammar.tokenIdIdentifier -> if { typedArrayTokenIndex! => typedArrayNameToken! }
                         typedArrayTokenIndex! + 1 => typedArrayTokenIndex!
                     }
@@ -274,6 +290,39 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                         TextMatchRequest { source: source, start: typedArrayName.span.start, length: typedArrayName.span.length, expected: "Bool" } -> textMatches -> if { 23 => typedArrayElementType! }
                         TextMatchRequest { source: source, start: typedArrayName.span.start, length: typedArrayName.span.length, expected: "SourceText" } -> textMatches -> if { 24 => typedArrayElementType! }
                     }
+                    # Resolve a module-local nominal element before consulting
+                    # imported qualified paths. Without this, `[LocalTask; ~]`
+                    # leaves the array untyped and later member projections see
+                    # the element name as a standalone nominal expression.
+                    (typedArrayElementType! < 0 and typedArrayNameToken! >= 0) -> if {
+                        prepared.package.tokens[sourceRange.tokenStart + typedArrayNameToken!] => localArrayElementName
+                        -1 => localArrayElementSymbol!
+                        0 => localArrayElementSymbolSearch!
+                        localArrayElementSymbolSearch! < sourceRange.symbolCount -> while {
+                            prepared.package.symbols[sourceRange.symbolStart + localArrayElementSymbolSearch!] => localArrayElementCandidate
+                            (localArrayElementCandidate.kind == 3 and localArrayElementCandidate.parent < 0) -> if {
+                                prepared.package.tokens[sourceRange.tokenStart + localArrayElementCandidate.nameToken] => localArrayElementDeclarationName
+                                localArrayElementName.span.length == localArrayElementDeclarationName.span.length => localArrayElementEqual!
+                                UIntSize(0) => localArrayElementByte!
+                                (localArrayElementEqual! and localArrayElementByte! < localArrayElementName.span.length) -> while {
+                                    (source -> byte(localArrayElementName.span.start + localArrayElementByte!)) != (source -> byte(localArrayElementDeclarationName.span.start + localArrayElementByte!)) -> if { false => localArrayElementEqual! }
+                                    localArrayElementByte! + UIntSize(1) => localArrayElementByte!
+                                }
+                                localArrayElementEqual! -> if { localArrayElementSymbolSearch! => localArrayElementSymbol! }
+                            }
+                            localArrayElementSymbolSearch! + 1 => localArrayElementSymbolSearch!
+                        }
+                        localArrayElementSymbol! >= 0 -> if {
+                            0 => localArrayElementTypeSearch!
+                            localArrayElementTypeSearch! < (types! -> len) -> while {
+                                types![localArrayElementTypeSearch!] => localArrayElementTypeCandidate
+                                (localArrayElementTypeCandidate.kind == 1 and localArrayElementTypeCandidate.module == sourceIndex! and localArrayElementTypeCandidate.symbol == localArrayElementSymbol! and localArrayElementTypeCandidate.status == 0) -> if {
+                                    localArrayElementTypeSearch! => typedArrayElementType!
+                                }
+                                localArrayElementTypeSearch! + 1 => localArrayElementTypeSearch!
+                            }
+                        }
+                    }
                     typedArrayElementType! < 0 -> if {
                         -1 => typedArrayQualifiedIndex!
                         0 => typedArrayQualifiedSearch!
@@ -287,6 +336,7 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                             0 => typedArrayElementSearch!
                             typedArrayElementSearch! < (types! -> len) -> while {
                                 types![typedArrayElementSearch!] => typedArrayElementCandidate
+                                (typedArrayElementCandidate.kind == 1 and typedArrayQualified.targetModule == sourceTextModule! and typedArrayQualified.targetSymbol == sourceTextSymbol! and typedArrayElementCandidate.origin == 1 and typedArrayElementCandidate.symbol == 24) -> if { typedArrayElementSearch! => typedArrayElementType! }
                                 (typedArrayElementCandidate.kind == 1 and typedArrayElementCandidate.module == typedArrayQualified.targetModule and typedArrayElementCandidate.symbol == typedArrayQualified.targetSymbol) -> if { typedArrayElementSearch! => typedArrayElementType! }
                                 typedArrayElementSearch! + 1 => typedArrayElementSearch!
                             }
@@ -525,6 +575,42 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                         expressions! -> len => exactExpressionIndex
                         expressions! -> push(exactType)
                         exactExpressionIndex => expressionIndexByAst![sourceRange.astStart + resolvedName.astNode]
+                    }
+                }
+                referenceIndex! < 0 -> if {
+                    prepared.package.nodes[sourceRange.astStart + valueSymbol.typeNode] => unresolvedValueType
+                    -1 => unresolvedValueTypeNameToken!
+                    unresolvedValueType.firstToken => unresolvedValueTypeTokenIndex!
+                    unresolvedValueTypeTokenIndex! < unresolvedValueType.firstToken + unresolvedValueType.tokenCount -> while {
+                        prepared.package.tokens[sourceRange.tokenStart + unresolvedValueTypeTokenIndex!] => unresolvedValueTypeToken
+                        unresolvedValueTypeToken.kind == grammar.tokenIdIdentifier -> if { unresolvedValueTypeTokenIndex! => unresolvedValueTypeNameToken! }
+                        unresolvedValueTypeTokenIndex! + 1 => unresolvedValueTypeTokenIndex!
+                    }
+                    unresolvedValueTypeNameToken! >= 0 -> if {
+                        prepared.package.tokens[sourceRange.tokenStart + unresolvedValueTypeNameToken!] => unresolvedValueTypeName
+                        TextMatchRequest { source: source, start: unresolvedValueTypeName.span.start, length: unresolvedValueTypeName.span.length, expected: "SourceText" } -> textMatches => unresolvedValueIsSourceText
+                        unresolvedValueIsSourceText -> if {
+                            -1 => unresolvedValueSourceTextType!
+                            0 => unresolvedValueSourceTextSearch!
+                            unresolvedValueSourceTextSearch! < (types! -> len) -> while {
+                                types![unresolvedValueSourceTextSearch!] => unresolvedValueSourceTextCandidate
+                                (unresolvedValueSourceTextCandidate.kind == 1 and unresolvedValueSourceTextCandidate.origin == 1 and unresolvedValueSourceTextCandidate.symbol == 24) -> if {
+                                    unresolvedValueSourceTextSearch! => unresolvedValueSourceTextType!
+                                }
+                                unresolvedValueSourceTextSearch! + 1 => unresolvedValueSourceTextSearch!
+                            }
+                            unresolvedValueSourceTextType! >= 0 -> if {
+                                expressionIndexByAst![sourceRange.astStart + resolvedName.astNode] => unresolvedValueExpressionIndex!
+                                ExpressionTypeId { sourceModule: sourceIndex!, astNode: resolvedName.astNode, typeId: unresolvedValueSourceTextType!, status: 0 } => unresolvedValueExactType
+                                unresolvedValueExpressionIndex! >= 0 -> if {
+                                    unresolvedValueExactType => expressions![unresolvedValueExpressionIndex!]
+                                } else {
+                                    expressions! -> len => unresolvedValueExpressionIndex!
+                                    expressions! -> push(unresolvedValueExactType)
+                                    unresolvedValueExpressionIndex! => expressionIndexByAst![sourceRange.astStart + resolvedName.astNode]
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -775,6 +861,88 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
         callIndex! + 1 => callIndex!
     }
 
+    # A result-producing parallel role returns one value per source element.
+    # Its result generic is selected by the block value rather than by the
+    # ordinary input argument, so specialize the canonical result to [R; ~]
+    # before binding and subsequent each-role propagation.
+    0 => parallelSourceIndex!
+    parallelSourceIndex! < (prepared.package.ranges -> len) -> while {
+        prepared.package.ranges[parallelSourceIndex!] => parallelRange
+        prepared.package.sources[parallelSourceIndex!] -> len => parallelSourceLength
+        prepared.package.sources[parallelSourceIndex!] -> slice(UIntSize(0), parallelSourceLength) => parallelSource
+        0 => parallelAstIndex!
+        parallelAstIndex! < parallelRange.astCount -> while {
+            prepared.package.nodes[parallelRange.astStart + parallelAstIndex!] => parallelAst
+            (parallelAst.kind == 48 and parallelAst.payloadToken >= 0) -> if {
+                prepared.package.tokens[parallelRange.tokenStart + parallelAst.payloadToken] => parallelName
+                TextMatchRequest { source: parallelSource, start: parallelName.span.start, length: parallelName.span.length, expected: "parallel" } -> textMatches => intrinsicParallel
+                intrinsicParallel -> if {
+                    -1 => parallelBlockExpression!
+                    UIntSize(0) => parallelBlockEnd!
+                    UIntSize(0) => parallelBlockLength!
+                    0 => parallelExpressionSearch!
+                    parallelExpressionSearch! < (expressions! -> len) -> while {
+                        expressions![parallelExpressionSearch!] => parallelCandidate
+                        parallelCandidate.sourceModule == parallelSourceIndex! -> if {
+                            prepared.package.nodes[parallelRange.astStart + parallelCandidate.astNode] => parallelCandidateNode
+                            parallelCandidateNode.parent => parallelAncestor!
+                            false => parallelBelongs!
+                            (parallelAncestor! >= 0 and not parallelBelongs!) -> while {
+                                parallelAncestor! == parallelAstIndex! -> if { true => parallelBelongs! } else { prepared.package.nodes[parallelRange.astStart + parallelAncestor!].parent => parallelAncestor! }
+                            }
+                            parallelCandidateNode.start + parallelCandidateNode.length => parallelCandidateEnd
+                            (parallelBelongs! and parallelCandidate.astNode != parallelAstIndex! and parallelCandidateNode.start >= parallelName.span.start + parallelName.span.length and (parallelBlockExpression! < 0 or parallelCandidateEnd > parallelBlockEnd! or (parallelCandidateEnd == parallelBlockEnd! and parallelCandidateNode.length > parallelBlockLength!))) -> if {
+                                parallelExpressionSearch! => parallelBlockExpression!
+                                parallelCandidateEnd => parallelBlockEnd!
+                                parallelCandidateNode.length => parallelBlockLength!
+                            }
+                        }
+                        parallelExpressionSearch! + 1 => parallelExpressionSearch!
+                    }
+                    parallelBlockExpression! >= 0 -> if {
+                        expressions![parallelBlockExpression!].typeId => parallelElementType
+                        -1 => parallelArrayType!
+                        0 => parallelArraySearch!
+                        parallelArraySearch! < (types! -> len) -> while {
+                            types![parallelArraySearch!] => parallelArrayCandidate
+                            (parallelArrayCandidate.kind == 3 and parallelArrayCandidate.first == parallelElementType and parallelArrayCandidate.status == 0) -> if { parallelArraySearch! => parallelArrayType! }
+                            parallelArraySearch! + 1 => parallelArraySearch!
+                        }
+                        parallelArrayType! < 0 -> if {
+                            types! -> len => parallelArrayType!
+                            types! -> push(typeIds.SemanticType {
+                                kind: 3
+                                origin: -1
+                                module: -1
+                                symbol: -1
+                                first: parallelElementType
+                                second: -1
+                                length: -1
+                                lengthHash: UInt64(0)
+                                containsParameter: false
+                                status: 0
+                            })
+                        }
+                        parallelRange.astStart + parallelAstIndex! => parallelGlobalAst
+                        expressionIndexByAst![parallelGlobalAst] => parallelExistingExpression!
+                        parallelExistingExpression! < 0 -> if {
+                            expressions! -> len => parallelExpressionIndex
+                            expressions! -> push(ExpressionTypeId { sourceModule: parallelSourceIndex!, astNode: parallelAstIndex!, typeId: parallelArrayType!, status: 0 })
+                            parallelExpressionIndex => expressionIndexByAst![parallelGlobalAst]
+                        } else {
+                            expressions![parallelExistingExpression!] => parallelExisting!
+                            parallelArrayType! => parallelExisting!.typeId
+                            0 => parallelExisting!.status
+                            parallelExisting! => expressions![parallelExistingExpression!]
+                        }
+                    }
+                }
+            }
+            parallelAstIndex! + 1 => parallelAstIndex!
+        }
+        parallelSourceIndex! + 1 => parallelSourceIndex!
+    }
+
     # Resolve member and index paths from the canonical type-id arena. Each
     # round walks typed expressions once and records the nearest usable base
     # for every still-untyped path, avoiding the legacy AST x expression scan.
@@ -800,6 +968,71 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
     true => pathChanged!
     pathChanged! -> while {
         false => pathChanged!
+        # The intrinsic each role binds its block item to the source
+        # collection's element type. Repeat this with the surrounding fixed
+        # point because the collection can itself be a newly inferred local.
+        0 => eachReferenceSource!
+        eachReferenceSource! < (prepared.package.ranges -> len) -> while {
+            prepared.package.ranges[eachReferenceSource!] => eachReferenceRange
+            prepared.package.sources[eachReferenceSource!] -> len => eachSourceLength
+            prepared.package.sources[eachReferenceSource!] -> slice(UIntSize(0), eachSourceLength) => eachSource
+            0 => eachReferenceIndex!
+            eachReferenceIndex! < eachReferenceRange.nameCount -> while {
+                prepared.package.names[eachReferenceRange.nameStart + eachReferenceIndex!] => eachReference
+                prepared.package.symbols[eachReferenceRange.symbolStart + eachReference.symbol] => eachSymbol
+                (eachSymbol.kind == 35 and eachSymbol.astNode >= 0 and prepared.package.nodes[eachReferenceRange.astStart + eachSymbol.astNode].kind == 48) -> if {
+                    prepared.package.nodes[eachReferenceRange.astStart + eachSymbol.astNode] => eachRoleAst
+                    false => intrinsicEach!
+                    eachRoleAst.payloadToken >= 0 -> if {
+                        prepared.package.tokens[eachReferenceRange.tokenStart + eachRoleAst.payloadToken] => eachRoleName
+                        TextMatchRequest { source: eachSource, start: eachRoleName.span.start, length: eachRoleName.span.length, expected: "each" } -> textMatches -> if { true => intrinsicEach! }
+                    }
+                    intrinsicEach! -> if {
+                        -1 => eachSourceExpression!
+                        1000000 => eachSourceDistance!
+                        0 => eachSourceSearch!
+                        eachSourceSearch! < (expressions! -> len) -> while {
+                            expressions![eachSourceSearch!] => eachSourceCandidate
+                            eachSourceCandidate.sourceModule == eachReferenceSource! -> if {
+                                prepared.package.nodes[eachReferenceRange.astStart + eachSourceCandidate.astNode] => eachSourceNode
+                                eachSourceNode.start + eachSourceNode.length <= prepared.package.tokens[eachReferenceRange.tokenStart + eachRoleAst.payloadToken].span.start -> if {
+                                    eachSourceNode.parent => eachSourceAncestor!
+                                    1 => eachDistance!
+                                    false => belongsToEach!
+                                    (eachSourceAncestor! >= 0 and not belongsToEach!) -> while {
+                                        eachSourceAncestor! == eachSymbol.astNode -> if { true => belongsToEach! } else {
+                                            prepared.package.nodes[eachReferenceRange.astStart + eachSourceAncestor!].parent => eachSourceAncestor!
+                                            eachDistance! + 1 => eachDistance!
+                                        }
+                                    }
+                                    (belongsToEach! and eachDistance! < eachSourceDistance!) -> if {
+                                        eachSourceSearch! => eachSourceExpression!
+                                        eachDistance! => eachSourceDistance!
+                                    }
+                                }
+                            }
+                            eachSourceSearch! + 1 => eachSourceSearch!
+                        }
+                        eachSourceExpression! >= 0 -> if {
+                            types![expressions![eachSourceExpression!].typeId] => eachCollectionType
+                            -1 => eachElementType!
+                            (eachCollectionType.kind >= 2 and eachCollectionType.kind <= 4) -> if { eachCollectionType.first => eachElementType! }
+                            eachElementType! >= 0 -> if {
+                                eachReferenceRange.astStart + eachReference.astNode => eachReferenceGlobalAst
+                                expressionIndexByAst![eachReferenceGlobalAst] < 0 -> if {
+                                    expressions! -> len => eachExpressionIndex
+                                    expressions! -> push(ExpressionTypeId { sourceModule: eachReferenceSource!, astNode: eachReference.astNode, typeId: eachElementType!, status: 0 })
+                                    eachExpressionIndex => expressionIndexByAst![eachReferenceGlobalAst]
+                                    true => pathChanged!
+                                }
+                            }
+                        }
+                    }
+                }
+                eachReferenceIndex! + 1 => eachReferenceIndex!
+            }
+            eachReferenceSource! + 1 => eachReferenceSource!
+        }
         [Int; ~] => bindingValueType!
         [Int; ~] => bindingValueDistance!
         0 => bindingValueSeed!
@@ -813,6 +1046,12 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
             expressions![bindingCandidateIndex!] => bindingCandidate
             (bindingCandidate.status == 0 and bindingCandidate.typeId >= 0) -> if {
                 prepared.package.ranges[bindingCandidate.sourceModule] => bindingCandidateRange
+                bindingCandidateRange.astStart + bindingCandidate.astNode => bindingCandidateGlobalAst
+                bindingSymbolByAst![bindingCandidateGlobalAst] => directBindingGlobalSymbol
+                directBindingGlobalSymbol >= 0 -> if {
+                    bindingCandidate.typeId => bindingValueType![directBindingGlobalSymbol]
+                    0 => bindingValueDistance![directBindingGlobalSymbol]
+                }
                 prepared.package.nodes[bindingCandidateRange.astStart + bindingCandidate.astNode].parent => bindingAncestor!
                 1 => bindingDistance!
                 bindingAncestor! >= 0 -> while {
@@ -880,17 +1119,19 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                 pathAncestor! >= 0 -> while {
                     pathCandidateRange.astStart + pathAncestor! => pathAncestorGlobal
                     prepared.package.nodes[pathAncestorGlobal] => pathAncestorNode
-                    expressionIndexByAst![pathAncestorGlobal] < 0 -> if {
-                        false => usablePathBase!
-                        pathAncestorNode.kind == 36 -> if { true => usablePathBase! }
-                        pathAncestorNode.kind == 41 -> if {
-                            types![pathCandidate.typeId] => indexedCandidateType
-                            ((indexedCandidateType.kind >= 2 and indexedCandidateType.kind <= 5) or (indexedCandidateType.kind == 1 and indexedCandidateType.origin == 1 and (indexedCandidateType.symbol == 16 or indexedCandidateType.symbol == 24))) -> if { true => usablePathBase! }
-                        }
-                        (usablePathBase! and pathDistance! < pathBaseDistance![pathAncestorGlobal]) -> if {
-                            pathCandidateIndex! => pathBaseExpression![pathAncestorGlobal]
-                            pathDistance! => pathBaseDistance![pathAncestorGlobal]
-                        }
+                    # Canonical path resolution must also revisit an AST that
+                    # has a legacy inferred entry. Indexed-member chains can
+                    # initially inherit the aggregate base type; skipping an
+                    # existing entry permanently preserves that stale type.
+                    false => usablePathBase!
+                    pathAncestorNode.kind == 36 -> if { true => usablePathBase! }
+                    pathAncestorNode.kind == 41 -> if {
+                        types![pathCandidate.typeId] => indexedCandidateType
+                        ((indexedCandidateType.kind >= 2 and indexedCandidateType.kind <= 5) or (indexedCandidateType.kind == 1 and indexedCandidateType.origin == 1 and (indexedCandidateType.symbol == 16 or indexedCandidateType.symbol == 24))) -> if { true => usablePathBase! }
+                    }
+                    (usablePathBase! and pathDistance! < pathBaseDistance![pathAncestorGlobal]) -> if {
+                        pathCandidateIndex! => pathBaseExpression![pathAncestorGlobal]
+                        pathDistance! => pathBaseDistance![pathAncestorGlobal]
                     }
                     pathAncestorNode.parent => pathAncestor!
                     pathDistance! + 1 => pathDistance!
@@ -951,10 +1192,21 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                             memberTokenIndex! + 1 => memberTokenIndex!
                         }
                         (memberPathValid! and memberResolvedField!) -> if {
-                            expressions! -> len => memberExpressionIndex
-                            expressions! -> push(ExpressionTypeId { sourceModule: pathSourceIndex!, astNode: pathAstIndex!, typeId: memberCurrentType!, status: 0 })
-                            memberExpressionIndex => expressionIndexByAst![pathGlobalAst]
-                            true => pathChanged!
+                            expressionIndexByAst![pathGlobalAst] => memberExpressionIndex!
+                            memberExpressionIndex! < 0 -> if {
+                                expressions! -> len => memberExpressionIndex!
+                                expressions! -> push(ExpressionTypeId { sourceModule: pathSourceIndex!, astNode: pathAstIndex!, typeId: memberCurrentType!, status: 0 })
+                                memberExpressionIndex! => expressionIndexByAst![pathGlobalAst]
+                                true => pathChanged!
+                            } else {
+                                expressions![memberExpressionIndex!] => existingMemberExpression!
+                                (existingMemberExpression!.typeId != memberCurrentType! or existingMemberExpression!.status != 0) -> if {
+                                    memberCurrentType! => existingMemberExpression!.typeId
+                                    0 => existingMemberExpression!.status
+                                    existingMemberExpression! => expressions![memberExpressionIndex!]
+                                    true => pathChanged!
+                                }
+                            }
                         }
                     }
                     pathNode.kind == 41 -> if {
@@ -965,10 +1217,21 @@ public resolveContext prepared: semanticContext.CompilationContext -> Expression
                         (indexedBaseType.kind == 1 and indexedBaseType.origin == 1 and indexedBaseType.symbol == 16) -> if { 1 => indexedElementType! }
                         (indexedBaseType.kind == 1 and indexedBaseType.origin == 1 and indexedBaseType.symbol == 24) -> if { 3 => indexedElementType! }
                         indexedElementType! >= 0 -> if {
-                            expressions! -> len => indexExpressionIndex
-                            expressions! -> push(ExpressionTypeId { sourceModule: pathSourceIndex!, astNode: pathAstIndex!, typeId: indexedElementType!, status: 0 })
-                            indexExpressionIndex => expressionIndexByAst![pathGlobalAst]
-                            true => pathChanged!
+                            expressionIndexByAst![pathGlobalAst] => indexExpressionIndex!
+                            indexExpressionIndex! < 0 -> if {
+                                expressions! -> len => indexExpressionIndex!
+                                expressions! -> push(ExpressionTypeId { sourceModule: pathSourceIndex!, astNode: pathAstIndex!, typeId: indexedElementType!, status: 0 })
+                                indexExpressionIndex! => expressionIndexByAst![pathGlobalAst]
+                                true => pathChanged!
+                            } else {
+                                expressions![indexExpressionIndex!] => existingIndexExpression!
+                                (existingIndexExpression!.typeId != indexedElementType! or existingIndexExpression!.status != 0) -> if {
+                                    indexedElementType! => existingIndexExpression!.typeId
+                                    0 => existingIndexExpression!.status
+                                    existingIndexExpression! => expressions![indexExpressionIndex!]
+                                    true => pathChanged!
+                                }
+                            }
                         }
                     }
                 }

@@ -1,0 +1,58 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sl_runtime_newline = private constant [1 x i8] c"\0A"
+declare i32 @putchar(i32)
+define internal void @sl_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  br label %loop
+loop:
+  %index = phi i64 [ 0, %entry ], [ %next, %body ]
+  %in_range = icmp ult i64 %index, %len
+  br i1 %in_range, label %body, label %end
+body:
+  %slot = getelementptr i8, ptr %data, i64 %index
+  %byte = load i8, ptr %slot, align 1
+  %value = zext i8 %byte to i32
+  %written = call i32 @putchar(i32 %value)
+  %next = add i64 %index, 1
+  br label %loop
+end:
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i32 @putchar(i32 10)
+  br label %done
+done:
+  ret void
+}
+%sl.text = type { ptr, i64 }
+@sl_str_27 = private unnamed_addr constant [18 x i8] c"transitive-capture"
+define i32 @sl_m0_s0(i32 %arg) {
+entry:
+  %v3 = call i32 @sl_m0_s2(i32 %arg, i32 5)
+  ret i32 %v3
+}
+define i32 @sl_m0_s1(i32 %capture_0, i32 %arg) {
+entry:
+  %v10 = freeze i32 %capture_0
+  %v8 = add i32 %arg, %v10
+  ret i32 %v8
+}
+define i32 @sl_m0_s2(i32 %capture_0, i32 %arg) {
+entry:
+  %v14 = call i32 @sl_m0_s1(i32 %capture_0, i32 %arg)
+  ret i32 %v14
+}
+define i32 @main() {
+entry:
+  %v18 = call i32 @sl_m0_s0(i32 7)
+  %v22 = freeze i32 %v18
+  %v21 = icmp eq i32 %v22, 12
+  br i1 %v21, label %if24_then, label %if24_merge
+if24_then:
+  %v27_ptr = insertvalue %sl.text poison, ptr @sl_str_27, 0
+  %v27 = insertvalue %sl.text %v27_ptr, i64 18, 1
+  call void @sl_runtime_print(ptr @sl_str_27, i64 18, i1 true)
+  br label %if24_merge
+if24_merge:
+  ret i32 0
+}

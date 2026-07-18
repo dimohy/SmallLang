@@ -1,0 +1,35 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+%sl.struct.m0_s0 = type { %sl.array.i32, %sl.array.i32 }
+%sl.array.i32 = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define i32 @sl_m0_s3(%sl.struct.m0_s0 %arg) {
+entry:
+  %v4 = sext i32 0 to i64
+  %if8_result = alloca i32, align 4
+  br i1 1, label %if8_then, label %if8_else
+if8_then:
+  %v16 = freeze i64 %v4
+  %v11 = extractvalue %sl.struct.m0_s0 %arg, 0
+  %v14 = extractvalue %sl.struct.m0_s0 %arg, 1
+  %v13_data = extractvalue %sl.array.i32 %v14, 0
+  %v13_ptr = getelementptr i32, ptr %v13_data, i64 %v16
+  %v13 = load i32, ptr %v13_ptr, align 4
+  %v10_data = extractvalue %sl.array.i32 %v11, 0
+  %v10_index = sext i32 %v13 to i64
+  %v10_ptr = getelementptr i32, ptr %v10_data, i64 %v10_index
+  %v10 = load i32, ptr %v10_ptr, align 4
+  store i32 %v10, ptr %if8_result, align 4
+  br label %if8_merge
+if8_else:
+  store i32 0, ptr %if8_result, align 4
+  br label %if8_merge
+if8_merge:
+  %v8 = load i32, ptr %if8_result, align 4
+  ret i32 %v8
+}
+define i32 @main() {
+entry:
+  ret i32 0
+}

@@ -8,6 +8,15 @@ main {
         value
     }
 
+    outer: -> Int {
+        readLater: -> Int {
+            later => copied
+            copied
+        }
+        7 => later
+        readLater
+    }
+
     main { }
     """ => source
     source -> resolve.resolve => names!
