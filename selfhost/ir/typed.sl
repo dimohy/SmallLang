@@ -3552,6 +3552,32 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
         }
         canonicalScalarIndex! + 1 => canonicalScalarIndex!
     }
+    # Collection literals returned directly from a function are contextually
+    # typed by that function's declared result. Perform this after source IR
+    # merging, when the final function -> return -> literal edges are stable.
+    0 => contextualCollectionFunctionIndex!
+    contextualCollectionFunctionIndex! < (results! -> len) -> while {
+        results![contextualCollectionFunctionIndex!] => contextualCollectionFunction
+        (contextualCollectionFunction.kind == 0 and contextualCollectionFunction.typeId >= 0 and contextualCollectionFunction.operand0 >= 0) -> if {
+            results![contextualCollectionFunction.operand0] => contextualCollectionReturn
+            contextualCollectionReturn.kind == 1 -> if {
+                contextualCollectionReturn.operand0 => contextualCollectionLiteralIndex!
+                contextualCollectionLiteralIndex! >= 0 -> if {
+                    results![contextualCollectionLiteralIndex!] => contextualCollectionLiteral!
+                    ((contextualCollectionFunction.typeKind == 3 and contextualCollectionLiteral!.kind == 14) or (contextualCollectionFunction.typeKind == 5 and contextualCollectionLiteral!.kind == 16)) -> if {
+                        contextualCollectionFunction.typeId => contextualCollectionLiteral!.typeId
+                        contextualCollectionFunction.typeKind => contextualCollectionLiteral!.typeKind
+                        contextualCollectionFunction.typeOrigin => contextualCollectionLiteral!.typeOrigin
+                        contextualCollectionFunction.typeModule => contextualCollectionLiteral!.typeModule
+                        contextualCollectionFunction.typeSymbol => contextualCollectionLiteral!.typeSymbol
+                        contextualCollectionFunction.typeFlags => contextualCollectionLiteral!.typeFlags
+                        contextualCollectionLiteral! => results![contextualCollectionLiteralIndex!]
+                    }
+                }
+            }
+        }
+        contextualCollectionFunctionIndex! + 1 => contextualCollectionFunctionIndex!
+    }
     # A canonical type id is authoritative. Earlier shallow inference can
     # discover a useful id before its legacy origin/module/symbol projection is
     # updated (notably array indexing through imported intrinsic nominals).

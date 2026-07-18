@@ -6030,3 +6030,39 @@ Windows inventory remains 523 cases, and the Release solution builds with zero
 warnings and zero errors. Parallel compilation therefore reaches 28/28 checks
 (100%). This feature-local completion does not promote the canonical self-host
 roadmap, which remains 48.5/60 equivalent gates (80.8%).
+
+## D188 - Specialize Generic Containers From Canonical Component Types
+
+Status: contextual array/dictionary layout and lookup implemented
+Date: 2026-07-19
+
+SmallLang uses a statically specialized value-witness model for generic
+containers. Once a collection is concrete, its canonical component type IDs
+are the authority for size, alignment, LLVM representation, and recursive
+ownership traits. The compiler does not add runtime metadata to every value.
+This matches SL's existing monomorphization model while preserving the useful
+part of Swift value witnesses and the sound generic-drop constraints described
+by Rust and Mojo.
+
+The self-host typed IR now applies a function's declared collection return
+context to its literal in the final canonicalization pass. Dynamic arrays
+therefore allocate and address by
+their canonical element stride. Dictionaries independently select canonical
+key and value size, alignment, LLVM type, store, comparison, and load rules.
+Recursive ownership classification remains carried on typed-IR values; the
+container component lowering in this decision consumes canonical layout facts.
+
+Example 397 exposed the previous ABI mismatch: a function declared to return
+`{UInt16: Int64}` stored both sides as default `Int32`, while its consumer loaded
+`i16` and `i64`, producing `21474836489` instead of `9`. It now allocates 4 key
+bytes and 16 value bytes for two entries and executes with result `9`. Example
+398 proves a `[UInt16; ~]` producer and consumer use a 2-byte element stride.
+Both examples assemble, link, and execute on Windows and Linux.
+
+Recursive owned-element destruction, indexed move extraction, and fixed-array
+generic function contracts remain. The focused generic-container migration is
+5/8 checks (62.5%), and the canonical score remains 48.5/60 (80.8%).
+
+- [Rust drop check](https://doc.rust-lang.org/nightly/nomicon/dropck.html)
+- [Swift generics implementation model](https://download.swift.org/docs/assets/generics.pdf)
+- [Mojo generic traits and containers](https://mojolang.org/docs/manual/traits/)

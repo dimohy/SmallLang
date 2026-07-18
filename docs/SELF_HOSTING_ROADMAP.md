@@ -119,15 +119,15 @@ not lines of code.
 
 Current count-based progress: **80.8% (48.5 of 60 equivalent gates)**.
 
-The frontend parallel-compilation subproject is **25/28 checks (89.3%)**. Its
+The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
 identity regression, Windows native compute pool, and source-local parallel
 frontend execution are complete. Owned source-analysis results and ordered
 LLVM-body sinks now cross worker boundaries safely, and parallel callbacks
 reject mutable or structurally non-sendable captures. The submitting parent now
-helps drain its task group before the structured join. Linux parity and exact
-cancellation/partial-result destruction remain pending. This subproject does
-not promote a roadmap gate yet.
+helps drain its task group before the structured join. Exact cancellation and
+partial-result destruction plus full Windows/Linux suite parity are proven.
+This completed feature-local subproject does not promote a roadmap gate.
 There are **11.5 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
@@ -891,13 +891,19 @@ entry so unoptimized loop execution has bounded stack use.
 - [x] redirect LLVM to a file through a typed, shell-free process API;
 - [x] invoke Clang and produce a runnable native executable;
 - [x] prove the path with a multi-module SL program;
-- [x] emit the complete 28-source compiler without an LLVM-lowering trap;
-- [x] build `slc-stage2` from that complete module;
-- [x] compare stage-1 and stage-2 output reproducibly.
+- [ ] restore complete compiler emission after the structured native-build path;
+- [ ] rebuild `slc-stage2` from that complete module;
+- [ ] re-establish reproducible stage-1/stage-2 output comparison.
 
-The stage-2 checklist is now **8/8 complete (100%)**. The cached verifier checks
-the complete compiler link, single-file execution, imported multi-file
-execution, normalized stage-1/stage-2 LLVM identity, and C#/SL runtime parity.
+The stage-2 checklist is currently **5/8 complete (62.5%)**. The previous 8/8
+fixed point remains historical evidence, but the 2026-07-19 revalidation found
+that `buildWindows` now depends on `sys.process.run`/`runToFile` while the
+self-host input manifest omits that stdlib module. Adding the declaration alone
+resolves its `Result<Int, Text>` match subject but exposes the next missing
+piece: the self-host LLVM backend does not yet lower the process intrinsic ABI.
+The cached verifier must again prove the complete compiler link, single-file
+execution, imported multi-file execution, normalized stage-1/stage-2 LLVM
+identity, and C#/SL runtime parity before these three checks close.
 The formal language-capability score remains 42 complete, 13 partial, 5 missing
 (48.5/60, 80.8%) until the remaining ownership, generic-container, package,
 tooling, and library gates are implemented.
@@ -1010,6 +1016,40 @@ self-host examples emit Linux LLVM, every module assembles, and cases with
 runtime expectations link and execute natively. The Linux suite passes 523/523,
 so the parallel checklist reaches 28/28 (100%). This closes the feature-local
 parallel plan; the canonical roadmap remains 48.5/60 (80.8%).
+
+## Canonical Generic-Container Specialization Baseline (2026-07-19)
+
+SL follows a statically specialized value-witness model. A concrete collection
+type carries canonical component IDs into LLVM lowering; those IDs select size,
+alignment, LLVM representation, and recursive ownership traits. This keeps the
+runtime representation compact and avoids a per-value metadata pointer while
+retaining the same essential information that Swift value witnesses expose.
+Rust's sound generic-drop rule and Mojo's trait-constrained containers support
+making ownership behavior a property of the concrete element type rather than
+of a shallow container spelling.
+
+- [x] globally intern recursive collection component type IDs;
+- [x] compute target-aware component size and alignment from those IDs;
+- [x] specialize contextual dynamic-array return literals;
+- [x] specialize contextual dictionary return literals;
+- [x] use canonical dictionary key/value types for lookup and LLVM loads;
+- [ ] recursively destroy owned dynamic-array and dictionary elements;
+- [ ] implement move extraction of owned indexed elements;
+- [ ] complete fixed-array generic function contracts.
+
+This focused migration is **5/8 checks (62.5%)**. Examples 397 and 398 assemble,
+link, and execute on Windows and Linux. They prove that `{UInt16: Int64}` uses
+2-byte keys and 8-byte values and that `[UInt16; ~]` uses a 2-byte stride. Before
+this correction the producer stored default `Int32` components while the
+consumer loaded the declared widths, producing `21474836489` instead of `9`.
+The formal roadmap remains **48.5/60 (80.8%)** until recursive container drop,
+owned extraction, and fixed-array contracts close the canonical gate.
+
+Research basis:
+
+- [Rust drop check](https://doc.rust-lang.org/nightly/nomicon/dropck.html)
+- [Swift generics implementation model](https://download.swift.org/docs/assets/generics.pdf)
+- [Mojo generic traits and containers](https://mojolang.org/docs/manual/traits/)
 
 ## Immediate Implementation Order
 
