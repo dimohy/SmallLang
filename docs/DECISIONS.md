@@ -6307,3 +6307,61 @@ Research basis:
 - [Rust generic parameters](https://doc.rust-lang.org/stable/reference/items/generics.html)
 - [Mojo parameters](https://docs.modular.com/mojo/manual/parameters/)
 - [Mojo generics](https://docs.modular.com/mojo/manual/generics/)
+
+## D195 - Keep the Fluent Subject While Adding Positional Runtime Arguments
+
+Status: implemented and cross-target verified
+Date: 2026-07-19
+
+The first declared function input remains SmallLang's fluent subject. A
+function declares additional runtime inputs after commas, and a fluent call
+supplies only those additional values in parentheses:
+
+```sl
+weighted value: Int, scale: Int, offset: Int -> Int {
+    value * scale + offset
+}
+
+7 -> weighted(3, 2) => flowed
+weighted(7, 3, 2) => direct
+```
+
+This keeps existing one-input pipeline syntax unchanged and gives direct calls
+an unsurprising positional form. Compile-time generic parameters stay in angle
+brackets, so runtime arguments and compile-time specialization remain visibly
+distinct. Parameter labels improve declarations and diagnostics without adding
+a second named-argument call syntax.
+
+The C# compiler carries additional parameters through parsing, binding,
+specialization, ownership analysis, and LLVM lowering. Direct, fluent, method,
+generic, inline-standard-library, Arena, and structured-async calls share the
+same ABI. Every parameter independently supports readonly, `mut`, and `move`;
+moved additional owners participate in transfer, failure cleanup, cancellation,
+and returned-owner analysis.
+
+The SL compiler represents each additional declaration explicitly in its AST,
+resolves it as a lexical parameter symbol, preserves its type in typed IR, and
+emits `%arg1`, `%arg2`, and later LLVM parameters after the fluent `%arg`.
+Nested calls and calls inside control regions use the same ordered argument
+walker. Self-host type checking reports both arity and per-position type
+mismatches before LLVM generation.
+
+Examples 406-409 cover reference execution, methods, generics, `mut`, `move`,
+async ownership, self-host LLVM execution, and self-host arity/type diagnostics.
+Owned aggregate values in additional self-host LLVM arguments remain part of
+the separate ownership-and-storage completeness gate; this decision closes the
+general syntax, binding, scalar/copyable ABI, and diagnostic path without
+claiming that broader storage gate.
+
+The final Release solution build has zero warnings and errors. The fast suite
+passes 439/439 and the complete Windows and Linux suites each pass 543/543.
+Windows Stage2 passes 6/6 with 8,392,752 LLVM bytes; Linux Stage2 passes 5/5
+with 8,392,614 bytes. Single-file, grouped-not, and imported multi-file
+differential hashes agree between the C# stage-1 compiler and the SL stage-2
+compiler, and both native products assemble, link, and execute.
+
+Research basis:
+
+- [Gleam pipelines](https://tour.gleam.run/functions/pipelines/)
+- [Swift functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/)
+- [Mojo functions](https://docs.modular.com/mojo/manual/functions/)

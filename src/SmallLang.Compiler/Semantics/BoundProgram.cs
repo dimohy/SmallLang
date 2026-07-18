@@ -52,7 +52,15 @@ internal sealed record BoundFunction(
     BoundType? BlockResultType = null,
     string? BlockResultTypeTemplate = null,
     string? InputTypeTemplate = null,
-    string? ReturnTypeTemplate = null);
+    string? ReturnTypeTemplate = null,
+    IReadOnlyList<BoundFunctionParameter>? AdditionalParameters = null);
+
+internal sealed record BoundFunctionParameter(
+    string Name,
+    BoundType Type,
+    BoundFunctionInputOwnership Ownership,
+    int Line,
+    int Column);
 
 internal sealed record BoundTraitMethod(
     string Name,

@@ -222,11 +222,13 @@ internal sealed partial class LlvmEmitter
         }
 
         RuntimeValue? argument = null;
+        var additionalParameterCount = function.AdditionalParameters?.Count ?? 0;
         if (methodReceiverName is not null)
         {
-            if (expression.Arguments.Count != 0)
+            if (expression.Arguments.Count != additionalParameterCount)
             {
-                throw new SmallLangException($"method '{path}' does not accept additional arguments in this slice");
+                throw new SmallLangException(
+                    $"method '{path}' expects {additionalParameterCount} additional argument(s)");
             }
 
             argument = ResolveLocal(methodReceiverName);
@@ -234,21 +236,27 @@ internal sealed partial class LlvmEmitter
         }
         else if (function.InputType is null)
         {
-            if (expression.Arguments.Count != 0)
+            if (expression.Arguments.Count != additionalParameterCount)
             {
-                throw new SmallLangException($"function '{path}' does not accept arguments");
+                throw new SmallLangException(
+                    $"function '{path}' expects {additionalParameterCount} argument(s)");
             }
         }
         else
         {
-            if (expression.Arguments.Count != 1)
+            if (expression.Arguments.Count != 1 + additionalParameterCount)
             {
-                throw new SmallLangException($"function '{path}' expects exactly one argument");
+                throw new SmallLangException(
+                    $"function '{path}' expects {1 + additionalParameterCount} argument(s)");
             }
 
             if (function.InputOwnership == BoundFunctionInputOwnership.MutableBorrow)
             {
-                argument = CreateMutableBorrowArgument(expression.Arguments[0], function, path);
+                argument = CreateMutableBorrowArgument(
+                    expression.Arguments[0],
+                    function.InputType!.Value,
+                    path,
+                    function.InputName ?? "it");
             }
             else
             {
@@ -259,8 +267,20 @@ internal sealed partial class LlvmEmitter
             }
         }
 
-        var value = EmitFunctionCall(function, argument);
-        RemoveOwnedParameterArgumentIfNeeded(function, expression.Arguments);
+        var additionalArgumentOffset = methodReceiverName is not null || function.InputType is null ? 0 : 1;
+        var additionalArguments = (function.AdditionalParameters ?? [])
+            .Select((parameter, index) =>
+            {
+                var argumentExpression = expression.Arguments[additionalArgumentOffset + index];
+                var value = parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow
+                    ? CreateMutableBorrowArgument(argumentExpression, parameter.Type, path, parameter.Name)
+                    : EmitFunctionArgumentExpression(argumentExpression, parameter.Type);
+                EnsureFunctionArgumentRuntimeType(value, parameter.Type, path);
+                return value;
+            })
+            .ToArray();
+        var value = EmitFunctionCall(function, argument, additionalArguments);
+        RemoveOwnedParameterArgumentsIfNeeded(function, expression.Arguments, additionalArgumentOffset);
         return value;
     }
 
@@ -315,7 +335,11 @@ internal sealed partial class LlvmEmitter
         return RuntimeUnit.Instance;
     }
 
-    private RuntimeValue EmitFlowFunctionCall(BoundFunction function, RuntimeValue argument, Expression source)
+    private RuntimeValue EmitFlowFunctionCall(
+        BoundFunction function,
+        RuntimeValue argument,
+        Expression source,
+        IReadOnlyList<Expression> additionalExpressions)
     {
         if (function.InputType is null)
         {
@@ -323,11 +347,26 @@ internal sealed partial class LlvmEmitter
         }
 
         var functionArgument = function.InputOwnership == BoundFunctionInputOwnership.MutableBorrow
-            ? CreateMutableBorrowArgument(source, function, function.Name)
+            ? CreateMutableBorrowArgument(
+                source,
+                function.InputType.Value,
+                function.Name,
+                function.InputName ?? "it")
             : argument;
         EnsureFunctionArgumentRuntimeType(functionArgument, function.InputType.Value, function.Name);
-        var value = EmitFunctionCall(function, functionArgument);
-        RemoveOwnedParameterFlowSourceIfNeeded(function, source);
+        var additionalArguments = (function.AdditionalParameters ?? [])
+            .Select((parameter, index) =>
+            {
+                var value = parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow
+                    ? CreateMutableBorrowArgument(
+                        additionalExpressions[index], parameter.Type, function.Name, parameter.Name)
+                    : EmitFunctionArgumentExpression(additionalExpressions[index], parameter.Type);
+                EnsureFunctionArgumentRuntimeType(value, parameter.Type, function.Name);
+                return value;
+            })
+            .ToArray();
+        var value = EmitFunctionCall(function, functionArgument, additionalArguments);
+        RemoveOwnedParameterFlowArgumentsIfNeeded(function, source, additionalExpressions);
         return value;
     }
 
@@ -546,7 +585,10 @@ internal sealed partial class LlvmEmitter
         return true;
     }
 
-    private RuntimeValue EmitInlineFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeValue EmitInlineFunctionCall(
+        BoundFunction function,
+        RuntimeValue? argument,
+        IReadOnlyList<RuntimeValue>? additionalArguments = null)
     {
         if (function.Body is null && function.ReturnType != BoundType.Unit)
         {
@@ -601,6 +643,38 @@ internal sealed partial class LlvmEmitter
                 }
             }
 
+            var parameters = function.AdditionalParameters ?? [];
+            additionalArguments ??= [];
+            if (parameters.Count != additionalArguments.Count)
+            {
+                throw new SmallLangException(
+                    $"function '{function.Name}' expects {parameters.Count} additional argument(s)");
+            }
+            for (var index = 0; index < parameters.Count; index++)
+            {
+                var parameter = parameters[index];
+                var parameterValue = additionalArguments[index];
+                EnsureFunctionArgumentRuntimeType(parameterValue, parameter.Type, function.Name);
+                if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+                {
+                    BindInlineMutableBorrowFunctionParameter(
+                        parameter.Name, parameter.Type, parameterValue, function.Name);
+                    continue;
+                }
+
+                _locals[parameter.Name] = parameter.Type switch
+                {
+                    BoundType.IntSlice => CreateRuntimeIntSlice(parameterValue),
+                    BoundType.IntDictionaryView => CreateRuntimeIntDictionaryView(parameterValue),
+                    _ => parameterValue
+                };
+                if (parameter.Ownership == BoundFunctionInputOwnership.Default
+                    && _program.Types.ContainsOwnedStorage(parameter.Type))
+                {
+                    _borrowedOwnedLocals.Add(parameter.Name);
+                }
+            }
+
             EmitStatements(function.BlockBody);
             var value = function.Body is null
                 ? RuntimeUnit.Instance
@@ -620,7 +694,10 @@ internal sealed partial class LlvmEmitter
         }
     }
 
-    private RuntimeValue EmitFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeValue EmitFunctionCall(
+        BoundFunction function,
+        RuntimeValue? argument,
+        IReadOnlyList<RuntimeValue>? additionalArguments = null)
     {
         if (function.Kind is BoundFunctionKind.RuntimePrint or BoundFunctionKind.RuntimePrintLine)
         {
@@ -820,58 +897,58 @@ internal sealed partial class LlvmEmitter
 
         if (function.IsStandardLibrary || function.Kind == BoundFunctionKind.UserBlock)
         {
-            return EmitInlineFunctionCall(function, argument);
+            return EmitInlineFunctionCall(function, argument, additionalArguments);
         }
 
         if (function.IsAsync)
         {
-            return EmitAsyncFunctionCall(function, argument);
+            return EmitAsyncFunctionCall(function, argument, additionalArguments);
         }
 
         if (IsNumericType(function.ReturnType))
         {
-            return EmitNumericFunctionCall(function, argument);
+            return EmitNumericFunctionCall(function, argument, additionalArguments);
         }
 
         return function.ReturnType switch
         {
-            BoundType.Unit => EmitUnitFunctionCall(function, argument),
-            BoundType.Text => EmitTextFunctionCall(function, argument),
-            BoundType.Int => EmitIntFunctionCall(function, argument),
-            BoundType.Bool => EmitBoolFunctionCall(function, argument),
-            BoundType.DynamicIntArray => EmitDynamicIntArrayFunctionCall(function, argument),
-            _ when _program.Types.IsDynamicArray(function.ReturnType) => EmitDynamicInlineArrayFunctionCall(function, argument),
-            BoundType.IntDictionary => EmitIntDictionaryFunctionCall(function, argument),
-            BoundType.Arena => EmitArenaFunctionCall(function, argument),
-            _ when _program.Types.IsDictionary(function.ReturnType) => EmitInlineDictionaryFunctionCall(function, argument),
+            BoundType.Unit => EmitUnitFunctionCall(function, argument, additionalArguments),
+            BoundType.Text => EmitTextFunctionCall(function, argument, additionalArguments),
+            BoundType.Int => EmitIntFunctionCall(function, argument, additionalArguments),
+            BoundType.Bool => EmitBoolFunctionCall(function, argument, additionalArguments),
+            BoundType.DynamicIntArray => EmitDynamicIntArrayFunctionCall(function, argument, additionalArguments),
+            _ when _program.Types.IsDynamicArray(function.ReturnType) => EmitDynamicInlineArrayFunctionCall(function, argument, additionalArguments),
+            BoundType.IntDictionary => EmitIntDictionaryFunctionCall(function, argument, additionalArguments),
+            BoundType.Arena => EmitArenaFunctionCall(function, argument, additionalArguments),
+            _ when _program.Types.IsDictionary(function.ReturnType) => EmitInlineDictionaryFunctionCall(function, argument, additionalArguments),
             _ when _program.Types.IsStruct(function.ReturnType)
                 || _program.Types.IsEnum(function.ReturnType)
                 || _program.Types.IsBox(function.ReturnType)
-                => EmitStructFunctionCall(function, argument),
+                => EmitStructFunctionCall(function, argument, additionalArguments),
             _ => throw new SmallLangException($"unsupported function return type {function.ReturnType}")
         };
     }
 
-    private RuntimeValue EmitStructFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeValue EmitStructFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var value = NextTemp("struct_call");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         var llvmType = LlvmType(function.ReturnType);
         EmitCall(value, llvmType, SymbolForFunction(function)[1..], arguments);
         return DematerializeAggregateValue(function.ReturnType, value);
     }
 
-    private RuntimeUnit EmitUnitFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeUnit EmitUnitFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(target: null, "void", SymbolForFunction(function)[1..], arguments);
         return RuntimeUnit.Instance;
     }
 
-    private RuntimeText EmitTextFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeText EmitTextFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("text");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(aggregate, "%smalllang.text", SymbolForFunction(function)[1..], arguments);
 
         var pointer = NextTemp("text_ptr");
@@ -883,36 +960,36 @@ internal sealed partial class LlvmEmitter
         return new RuntimeText(pointer, length);
     }
 
-    private RuntimeInt EmitIntFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeInt EmitIntFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var value = NextTemp("call");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(value, "i64", SymbolForFunction(function)[1..], arguments);
         return new RuntimeInt(value);
     }
 
-    private RuntimeValue EmitNumericFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeValue EmitNumericFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var value = NextTemp("numeric_call");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(value, LlvmType(function.ReturnType), SymbolForFunction(function)[1..], arguments);
         return IsIntegerType(function.ReturnType)
             ? new RuntimeInt(function.ReturnType, value)
             : new RuntimeFloat(function.ReturnType, value);
     }
 
-    private RuntimeBool EmitBoolFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeBool EmitBoolFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var value = NextTemp("call");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(value, "i1", SymbolForFunction(function)[1..], arguments);
         return new RuntimeBool(value);
     }
 
-    private RuntimeDynamicIntArray EmitDynamicIntArrayFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeDynamicIntArray EmitDynamicIntArrayFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("array");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(aggregate, "%smalllang.dynamic_int_array", SymbolForFunction(function)[1..], arguments);
 
         var pointer = NextTemp("array_ptr");
@@ -927,11 +1004,11 @@ internal sealed partial class LlvmEmitter
         return new RuntimeDynamicIntArray(pointer, length, capacity);
     }
 
-    private RuntimeDynamicInlineArray EmitDynamicInlineArrayFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeDynamicInlineArray EmitDynamicInlineArrayFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("generic_array");
         EmitCall(aggregate, "%smalllang.dynamic_int_array", SymbolForFunction(function)[1..],
-            FunctionCallArgumentList(function, argument));
+            FunctionCallArgumentList(function, argument, additionalArguments));
         var pointer = NextTemp("generic_array_ptr");
         EmitAssign(pointer, $"extractvalue %smalllang.dynamic_int_array {aggregate}, 0");
         var length = NextTemp("generic_array_len");
@@ -943,10 +1020,10 @@ internal sealed partial class LlvmEmitter
             pointer, length, capacity);
     }
 
-    private RuntimeIntDictionary EmitIntDictionaryFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeIntDictionary EmitIntDictionaryFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("dict");
-        var arguments = FunctionCallArgumentList(function, argument);
+        var arguments = FunctionCallArgumentList(function, argument, additionalArguments);
         EmitCall(aggregate, "%smalllang.int_dictionary", SymbolForFunction(function)[1..], arguments);
 
         var pointer = NextTemp("dict_ptr");
@@ -961,11 +1038,11 @@ internal sealed partial class LlvmEmitter
         return new RuntimeIntDictionary(pointer, length, capacity);
     }
 
-    private RuntimeInlineDictionary EmitInlineDictionaryFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeInlineDictionary EmitInlineDictionaryFunctionCall(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("generic_dict");
         EmitCall(aggregate, "%smalllang.int_dictionary", SymbolForFunction(function)[1..],
-            FunctionCallArgumentList(function, argument));
+            FunctionCallArgumentList(function, argument, additionalArguments));
         var pointer = NextTemp("generic_dict_ptr");
         EmitAssign(pointer, $"extractvalue %smalllang.int_dictionary {aggregate}, 0");
         var length = NextTemp("generic_dict_len");
@@ -977,13 +1054,13 @@ internal sealed partial class LlvmEmitter
             pointer, length, capacity);
     }
 
-    private string FunctionCallArgumentList(BoundFunction function, RuntimeValue? argument)
+    private string FunctionCallArgumentList(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments = null)
     {
         const string runtimeContext = "ptr %stdin, ptr %stdout, ptr %written, ptr %read, ptr %ok_state";
         var explicitArguments = string.Join(", ", new[]
             {
                 CaptureFunctionCallArgumentList(function),
-                ExplicitFunctionCallArgumentList(function, argument)
+                ExplicitFunctionCallArgumentList(function, argument, additionalArguments)
             }
             .Where(static part => part.Length > 0));
         return explicitArguments.Length == 0
@@ -1026,7 +1103,45 @@ internal sealed partial class LlvmEmitter
         return string.Join(", ", arguments);
     }
 
-    private string ExplicitFunctionCallArgumentList(BoundFunction function, RuntimeValue? argument)
+    private string ExplicitFunctionCallArgumentList(BoundFunction function, RuntimeValue? argument, IReadOnlyList<RuntimeValue>? additionalArguments)
+    {
+        var parts = new List<string>();
+        var primary = ExplicitPrimaryFunctionCallArgument(function, argument);
+        if (primary.Length > 0)
+        {
+            parts.Add(primary);
+        }
+
+        var parameters = function.AdditionalParameters ?? [];
+        additionalArguments ??= [];
+        if (additionalArguments.Count != parameters.Count)
+        {
+            throw new SmallLangException(
+                $"function '{function.Name}' expects {parameters.Count} additional argument(s)");
+        }
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            var parameter = parameters[index];
+            var value = additionalArguments[index];
+            EnsureFunctionArgumentRuntimeType(value, parameter.Type, function.Name);
+            if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+            {
+                parts.Add(value switch
+                {
+                    RuntimeMutableStructReference reference => $"ptr {reference.PointerAddress}",
+                    RuntimeMutableContainerReference reference => BuildMutableContainerArgument(reference),
+                    _ => throw new SmallLangException(
+                        $"function '{function.Name}' parameter '{parameter.Name}' requires a mutable borrow")
+                });
+                continue;
+            }
+            var materialized = MaterializeAggregateValue(value);
+            parts.Add($"{materialized.TypeName} {materialized.ValueName}");
+        }
+        return string.Join(", ", parts);
+    }
+
+    private string ExplicitPrimaryFunctionCallArgument(BoundFunction function, RuntimeValue? argument)
     {
         if (function.InputType is null)
         {
@@ -1126,8 +1241,9 @@ internal sealed partial class LlvmEmitter
 
     private RuntimeValue CreateMutableBorrowArgument(
         Expression argument,
-        BoundFunction function,
-        string path)
+        BoundType expectedType,
+        string path,
+        string parameterName)
     {
         if (argument is not NameExpression name)
         {
@@ -1140,10 +1256,10 @@ internal sealed partial class LlvmEmitter
         }
 
         var value = ResolveLocal(name.Name);
-        EnsureRuntimeType(value, function.InputType!.Value, path);
+        EnsureRuntimeType(value, expectedType, path);
         if (_mutableStructSlots.TryGetValue(name.Name, out var structPointer))
         {
-            return new RuntimeMutableStructReference(function.InputType.Value, structPointer);
+            return new RuntimeMutableStructReference(expectedType, structPointer);
         }
 
         if (!_mutableContainerSlots.TryGetValue(name.Name, out var slot))
@@ -1152,7 +1268,7 @@ internal sealed partial class LlvmEmitter
         }
 
         return new RuntimeMutableContainerReference(
-            function.InputType.Value,
+            expectedType,
             slot.PointerAddress,
             slot.LengthAddress,
             slot.CapacityAddress);
@@ -1160,23 +1276,34 @@ internal sealed partial class LlvmEmitter
 
     private void BindInlineMutableBorrowFunctionParameter(BoundFunction function, RuntimeValue argument)
     {
+        BindInlineMutableBorrowFunctionParameter(
+            function.InputName ?? "it",
+            function.InputType!.Value,
+            argument,
+            function.Name);
+    }
+
+    private void BindInlineMutableBorrowFunctionParameter(
+        string name,
+        BoundType type,
+        RuntimeValue argument,
+        string functionName)
+    {
         if (argument is RuntimeMutableStructReference structReference)
         {
-            var structName = function.InputName ?? "it";
-            _locals[structName] = new RuntimeStruct(structReference.TargetType, "");
-            _mutableLocals.Add(structName);
-            _borrowedMutableLocals.Add(structName);
-            _mutableStructSlots[structName] = structReference.PointerAddress;
+            _locals[name] = new RuntimeStruct(structReference.TargetType, "");
+            _mutableLocals.Add(name);
+            _borrowedMutableLocals.Add(name);
+            _mutableStructSlots[name] = structReference.PointerAddress;
             return;
         }
 
         if (argument is not RuntimeMutableContainerReference reference)
         {
-            throw new SmallLangException($"function '{function.Name}' expects a mutable borrow argument");
+            throw new SmallLangException($"function '{functionName}' expects a mutable borrow argument");
         }
 
-        var name = function.InputName ?? "it";
-        _locals[name] = reference.TargetType switch
+        _locals[name] = type switch
         {
             BoundType.DynamicIntArray => new RuntimeDynamicIntArray("", "", ""),
             _ when _program.Types.IsDynamicArray(reference.TargetType) => CreateEmptyRuntimeDynamicInlineArray(reference.TargetType),
@@ -1305,27 +1432,49 @@ internal sealed partial class LlvmEmitter
         return new RuntimeInlineDictionary(type, definition.KeyType, definition.ValueType, "", "", "");
     }
 
-    private void RemoveOwnedParameterArgumentIfNeeded(BoundFunction function, IReadOnlyList<Expression> arguments)
+    private void RemoveOwnedParameterArgumentsIfNeeded(
+        BoundFunction function,
+        IReadOnlyList<Expression> arguments,
+        int additionalArgumentOffset)
     {
-        if (!FunctionConsumesOwnedHeapInput(function)
-            || arguments.Count != 1
-            || arguments[0] is not NameExpression name)
+        if (FunctionConsumesOwnedHeapInput(function)
+            && function.InputType is not null
+            && additionalArgumentOffset > 0
+            && arguments[0] is NameExpression primaryName)
         {
-            return;
+            RemoveLocal(primaryName.Name);
         }
 
-        RemoveLocal(name.Name);
+        var parameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            if (parameters[index].Ownership == BoundFunctionInputOwnership.Move
+                && arguments[additionalArgumentOffset + index] is NameExpression name)
+            {
+                RemoveLocal(name.Name);
+            }
+        }
     }
 
-    private void RemoveOwnedParameterFlowSourceIfNeeded(BoundFunction function, Expression source)
+    private void RemoveOwnedParameterFlowArgumentsIfNeeded(
+        BoundFunction function,
+        Expression source,
+        IReadOnlyList<Expression> additionalArguments)
     {
-        if (!FunctionConsumesOwnedHeapInput(function)
-            || source is not NameExpression name)
+        if (FunctionConsumesOwnedHeapInput(function) && source is NameExpression primaryName)
         {
-            return;
+            RemoveLocal(primaryName.Name);
         }
 
-        RemoveLocal(name.Name);
+        var parameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            if (parameters[index].Ownership == BoundFunctionInputOwnership.Move
+                && additionalArguments[index] is NameExpression name)
+            {
+                RemoveLocal(name.Name);
+            }
+        }
     }
 
     private static bool FunctionConsumesOwnedHeapInput(BoundFunction function)

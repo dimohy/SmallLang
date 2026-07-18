@@ -44,7 +44,7 @@ struct LowerRequest {
 # 50 effect declaration, 51 effect operation, 52 effect reference,
 # 53 index assignment, 54 mutable struct member assignment.
 # 55 generic enum constructor, 56 subject when target, 57 standalone when,
-# 58 when arm, 59 enum pattern.
+# 58 when arm, 59 enum pattern, 60 additional function input.
 # Function flags: 1 move input, 2 mutable input, 4 public, 8 async.
 # Keyword operator codes use the same
 # -(keywordIndex + 1) representation as syntax diagnostics.
@@ -111,6 +111,7 @@ classifyRule rule: Int -> Int {
     rule == grammar.ruleIdWhenExpression -> if { 57 => kind! }
     (rule == grammar.ruleIdWhenArm or rule == grammar.ruleIdSubjectWhenArm) -> if { 58 => kind! }
     rule == grammar.ruleIdEnumPattern -> if { 59 => kind! }
+    rule == grammar.ruleIdAdditionalFunctionInput -> if { 60 => kind! }
     kind! => selected
     selected
 }
@@ -567,6 +568,41 @@ lowerFrom request: LowerRequest -> [AstNode; ~] {
     0 => declarationIndex!
     declarationIndex! < astCount -> while {
         ast![declarationIndex!] => declaration!
+        declaration!.kind == 60 -> if {
+            false => parameterNameFound!
+            false => parameterAfterColon!
+            declaration!.firstToken => parameterTokenIndex!
+            declaration!.firstToken + declaration!.tokenCount => parameterTokenEnd
+            parameterTokenIndex! < parameterTokenEnd -> while {
+                tokens![parameterTokenIndex!].kind == grammar.tokenIdColon -> if {
+                    true => parameterAfterColon!
+                }
+                tokens![parameterTokenIndex!].kind == grammar.tokenIdIdentifier -> if {
+                    parameterNameFound! -> if {
+                        parameterAfterColon! -> if {
+                            tokens![parameterTokenIndex!] => parameterModifier
+                            parameterModifier.span.length == UIntSize(4) -> if {
+                                source -> byte(parameterModifier.span.start) => parameterMove0
+                                source -> byte(parameterModifier.span.start + UIntSize(1)) => parameterMove1
+                                source -> byte(parameterModifier.span.start + UIntSize(2)) => parameterMove2
+                                source -> byte(parameterModifier.span.start + UIntSize(3)) => parameterMove3
+                                (parameterMove0 == UInt8(109) and parameterMove1 == UInt8(111) and parameterMove2 == UInt8(118) and parameterMove3 == UInt8(101)) -> if { 1 => declaration!.flags }
+                            }
+                            parameterModifier.span.length == UIntSize(3) -> if {
+                                source -> byte(parameterModifier.span.start) => parameterMut0
+                                source -> byte(parameterModifier.span.start + UIntSize(1)) => parameterMut1
+                                source -> byte(parameterModifier.span.start + UIntSize(2)) => parameterMut2
+                                (parameterMut0 == UInt8(109) and parameterMut1 == UInt8(117) and parameterMut2 == UInt8(116)) -> if { 2 => declaration!.flags }
+                            }
+                        }
+                    } else {
+                        parameterTokenIndex! => declaration!.payloadToken
+                        true => parameterNameFound!
+                    }
+                }
+                parameterTokenIndex! + 1 => parameterTokenIndex!
+            }
+        }
         (declaration!.kind == 1 or declaration!.kind == 2 or declaration!.kind == 6 or declaration!.kind == 7) -> if {
             false => pathPayloadFound!
             0 => childIndex!

@@ -536,7 +536,8 @@ semantics before the memory and value model are decided.
 
 ## Function Inputs
 
-One-input functions use the same naming idea as range loops:
+The first function input is the fluent subject. Additional runtime inputs are
+declared after it and supplied positionally in parentheses:
 
 ```smalllang
 square: Int -> Int {
@@ -546,12 +547,27 @@ square: Int -> Int {
 square n: Int -> Int {
     n * n
 }
+
+weighted value: Int, scale: Int, offset: Int -> Int {
+    value * scale + offset
+}
+
+7 -> weighted(3, 2) => flowed
+weighted(7, 3, 2) => direct
 ```
 
 When the input name is omitted, the function body receives the value as `it`.
 When the input name is supplied after the function name, the body receives the
 value through that binding. This mirrors `start..end -> each { ... }` and
-`start..end -> each item { ... }`.
+`start..end -> each item { ... }`. In a direct call every runtime input appears
+inside the parentheses. In a fluent call the value on the left supplies the
+first declared input, and the parenthesized arguments supply the remaining
+inputs in declaration order.
+
+Each input independently accepts the existing readonly, `mut`, or `move`
+ownership mode. Compile-time generic parameters remain in angle brackets and
+are not counted as runtime inputs. Additional runtime arguments are statically
+checked for count, type, ownership, and duplicate parameter names.
 
 ## Structured Async Functions
 

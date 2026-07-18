@@ -81,7 +81,15 @@ internal sealed record FunctionDeclaration(
     bool IsPublic = false,
     bool IsAsync = false,
     IReadOnlyList<string>? Effects = null,
-    string? BlockResultType = null);
+    string? BlockResultType = null,
+    IReadOnlyList<FunctionParameterDeclaration>? AdditionalParameters = null);
+
+internal sealed record FunctionParameterDeclaration(
+    string Name,
+    string TypeName,
+    FunctionInputOwnership Ownership,
+    int Line,
+    int Column);
 
 internal enum FunctionInputOwnership
 {

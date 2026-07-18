@@ -21,7 +21,7 @@ $multiMainSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\se
 $groupedNotSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-grouped-not-smoke.sl"
 $semanticContextSource = Join-Path $repoRoot "selfhost\semantic\context.sl"
 $processSource = Join-Path $repoRoot "stdlib\sys\process.sl"
-$expectedStage2Bytes = 8343036L
+$expectedStage2Bytes = 8392752L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 

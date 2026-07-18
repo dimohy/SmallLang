@@ -1,0 +1,1 @@
+define internal i32 @sl_m0_s0(i32 %arg, i32 %arg1, i32 %arg2)

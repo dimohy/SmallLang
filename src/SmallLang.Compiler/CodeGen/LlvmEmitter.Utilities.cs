@@ -750,6 +750,15 @@ internal sealed partial class LlvmEmitter
                 return inputName;
             }
         }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            if (parameter.Ownership == BoundFunctionInputOwnership.Move
+                && parameter.Type == function.ReturnType
+                && TransfersOwnerName(expression, parameter.Name, isResult: true))
+            {
+                return parameter.Name;
+            }
+        }
 
         return GetBlockResultTransferredOwnerName(expression);
     }

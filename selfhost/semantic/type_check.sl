@@ -342,6 +342,219 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                 # arguments such as <3> are compile-time inputs, not the
                 # runtime parameter counted here.
                 (callNode.kind == 10 or callNode.kind == 48) -> if { true => hasArgument! }
+                0 => expectedRuntimeArgumentCount!
+                0 => expectedParameterSearch!
+                expectedParameterSearch! < (targetTable! -> len) -> while {
+                    targetTable![expectedParameterSearch!] => expectedParameter
+                    (expectedParameter.kind == 35 and expectedParameter.parent == call.functionSymbol) -> if {
+                        expectedRuntimeArgumentCount! + 1 => expectedRuntimeArgumentCount!
+                    }
+                    expectedParameterSearch! + 1 => expectedParameterSearch!
+                }
+                0 => actualRuntimeArgumentCount!
+                callNode.kind == 10 -> if { 1 => actualRuntimeArgumentCount! }
+                false => inRuntimeArgumentList!
+                0 => runtimeParenDepth!
+                0 => runtimeBracketDepth!
+                0 => runtimeBraceDepth!
+                false => runtimeArgumentHasToken!
+                callNode.start => runtimeArgumentSyntaxStart!
+                callNode.kind == 10 -> if { callRuntimeArgumentEnd! => runtimeArgumentSyntaxStart! }
+                callNode.firstToken => runtimeArgumentTokenIndex!
+                runtimeArgumentTokenIndex! < callNode.firstToken + callNode.tokenCount -> while {
+                    prepared.package.tokens[sourceRange.tokenStart + runtimeArgumentTokenIndex!] => runtimeArgumentToken
+                    runtimeArgumentToken.span.start >= runtimeArgumentSyntaxStart! -> if {
+                        runtimeArgumentToken.kind == grammar.tokenIdLeftParen -> if {
+                            inRuntimeArgumentList! -> if {
+                                runtimeParenDepth! + 1 => runtimeParenDepth!
+                                true => runtimeArgumentHasToken!
+                            } else {
+                                true => inRuntimeArgumentList!
+                                1 => runtimeParenDepth!
+                            }
+                        } else {
+                            (inRuntimeArgumentList! and runtimeArgumentToken.kind == grammar.tokenIdRightParen) -> if {
+                                runtimeParenDepth! == 1 -> if {
+                                    runtimeArgumentHasToken! -> if { actualRuntimeArgumentCount! + 1 => actualRuntimeArgumentCount! }
+                                    false => inRuntimeArgumentList!
+                                    0 => runtimeParenDepth!
+                                } else {
+                                    runtimeParenDepth! - 1 => runtimeParenDepth!
+                                    true => runtimeArgumentHasToken!
+                                }
+                            } else {
+                                inRuntimeArgumentList! -> if {
+                                    runtimeArgumentToken.kind == grammar.tokenIdLeftBracket -> if { runtimeBracketDepth! + 1 => runtimeBracketDepth! }
+                                    runtimeArgumentToken.kind == grammar.tokenIdRightBracket -> if { runtimeBracketDepth! - 1 => runtimeBracketDepth! }
+                                    runtimeArgumentToken.kind == grammar.tokenIdLeftBrace -> if { runtimeBraceDepth! + 1 => runtimeBraceDepth! }
+                                    runtimeArgumentToken.kind == grammar.tokenIdRightBrace -> if { runtimeBraceDepth! - 1 => runtimeBraceDepth! }
+                                    (runtimeArgumentToken.kind == grammar.tokenIdComma and runtimeParenDepth! == 1 and runtimeBracketDepth! == 0 and runtimeBraceDepth! == 0) -> if {
+                                        runtimeArgumentHasToken! -> if { actualRuntimeArgumentCount! + 1 => actualRuntimeArgumentCount! }
+                                        false => runtimeArgumentHasToken!
+                                    } else {
+                                        (runtimeArgumentToken.kind != grammar.triviaIdWhitespace and runtimeArgumentToken.kind != grammar.triviaIdComment) -> if { true => runtimeArgumentHasToken! }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    runtimeArgumentTokenIndex! + 1 => runtimeArgumentTokenIndex!
+                }
+                false => runtimeArityMismatch!
+                (targetFunction.kind == 7 and callNode.kind != 48 and actualRuntimeArgumentCount! != expectedRuntimeArgumentCount!) -> if {
+                    true => runtimeArityMismatch!
+                    diagnostics! -> push(TypeCheckDiagnostic {
+                        code: 10
+                        sourceModule: sourceIndex!
+                        functionSymbol: call.functionSymbol
+                        expectedOrigin: expectedRuntimeArgumentCount!
+                        expectedModule: call.targetModule
+                        expectedSymbol: -1
+                        actualOrigin: actualRuntimeArgumentCount!
+                        actualModule: -1
+                        actualSymbol: -1
+                        actualBuiltin: -1
+                        span: syntax.SourceSpan { fileId: sourceIndex!, start: callNode.start, length: callNode.length }
+                    })
+                }
+                (targetFunction.kind == 7 and callNode.kind != 48 and not runtimeArityMismatch! and expectedRuntimeArgumentCount! > 1) -> if {
+                    [Int; ~] => additionalParameterSymbols!
+                    [Bool; ~] => selectedTargetSymbols!
+                    0 => selectedTargetSymbolIndex!
+                    selectedTargetSymbolIndex! < (targetTable! -> len) -> while {
+                        selectedTargetSymbols! -> push(false)
+                        selectedTargetSymbolIndex! + 1 => selectedTargetSymbolIndex!
+                    }
+                    true => findAdditionalParameter!
+                    findAdditionalParameter! -> while {
+                        -1 => nextAdditionalParameter!
+                        UIntSize(0) => nextAdditionalParameterStart!
+                        0 => additionalParameterCandidateIndex!
+                        additionalParameterCandidateIndex! < (targetTable! -> len) -> while {
+                            targetTable![additionalParameterCandidateIndex!] => additionalParameterCandidate
+                            (additionalParameterCandidate.kind == 35 and additionalParameterCandidate.parent == call.functionSymbol and additionalParameterCandidate.astNode != targetFunction.astNode and not selectedTargetSymbols![additionalParameterCandidateIndex!]) -> if {
+                                prepared.package.ranges[call.targetSourceModule] => additionalParameterRange
+                                prepared.package.nodes[additionalParameterRange.astStart + additionalParameterCandidate.astNode] => additionalParameterAst
+                                (nextAdditionalParameter! < 0 or additionalParameterAst.start < nextAdditionalParameterStart!) -> if {
+                                    additionalParameterCandidateIndex! => nextAdditionalParameter!
+                                    additionalParameterAst.start => nextAdditionalParameterStart!
+                                }
+                            }
+                            additionalParameterCandidateIndex! + 1 => additionalParameterCandidateIndex!
+                        }
+                        nextAdditionalParameter! >= 0 -> if {
+                            additionalParameterSymbols! -> push(nextAdditionalParameter!)
+                            true => selectedTargetSymbols![nextAdditionalParameter!]
+                        } else { false => findAdditionalParameter! }
+                    }
+
+                    [Int; ~] => argumentRootAsts!
+                    [Int; ~] => argumentTypeExpressions!
+                    [Int; ~] => argumentTypeDistances!
+                    0 => recursiveCallArgumentSearch!
+                    recursiveCallArgumentSearch! < (recursiveTypes.expressions -> len) -> while {
+                        recursiveTypes.expressions[recursiveCallArgumentSearch!] => recursiveCallArgument
+                        (recursiveCallArgument.sourceModule == sourceIndex! and recursiveCallArgument.astNode != call.callAst) -> if {
+                            recursiveCallArgument.astNode => recursiveCallArgumentRoot!
+                            prepared.package.nodes[sourceRange.astStart + recursiveCallArgument.astNode].parent => recursiveCallArgumentAncestor!
+                            1 => recursiveCallArgumentDistance!
+                            false => recursiveCallArgumentBelongs!
+                            (recursiveCallArgumentAncestor! >= 0 and not recursiveCallArgumentBelongs!) -> while {
+                                recursiveCallArgumentAncestor! == call.callAst -> if {
+                                    true => recursiveCallArgumentBelongs!
+                                } else {
+                                    recursiveCallArgumentAncestor! => recursiveCallArgumentRoot!
+                                    prepared.package.nodes[sourceRange.astStart + recursiveCallArgumentAncestor!].parent => recursiveCallArgumentAncestor!
+                                    recursiveCallArgumentDistance! + 1 => recursiveCallArgumentDistance!
+                                }
+                            }
+                            recursiveCallArgumentBelongs! -> if {
+                                -1 => existingArgumentRoot!
+                                0 => existingArgumentRootSearch!
+                                existingArgumentRootSearch! < (argumentRootAsts! -> len) -> while {
+                                    argumentRootAsts![existingArgumentRootSearch!] == recursiveCallArgumentRoot! -> if { existingArgumentRootSearch! => existingArgumentRoot! }
+                                    existingArgumentRootSearch! + 1 => existingArgumentRootSearch!
+                                }
+                                existingArgumentRoot! < 0 -> if {
+                                    argumentRootAsts! -> push(recursiveCallArgumentRoot!)
+                                    argumentTypeExpressions! -> push(recursiveCallArgumentSearch!)
+                                    argumentTypeDistances! -> push(recursiveCallArgumentDistance!)
+                                } else {
+                                    recursiveCallArgumentDistance! < argumentTypeDistances![existingArgumentRoot!] -> if {
+                                        recursiveCallArgumentSearch! => argumentTypeExpressions![existingArgumentRoot!]
+                                        recursiveCallArgumentDistance! => argumentTypeDistances![existingArgumentRoot!]
+                                    }
+                                }
+                            }
+                        }
+                        recursiveCallArgumentSearch! + 1 => recursiveCallArgumentSearch!
+                    }
+                    [Int; ~] => orderedArgumentTypeExpressions!
+                    [Bool; ~] => selectedArgumentRoots!
+                    0 => selectedArgumentRootIndex!
+                    selectedArgumentRootIndex! < (argumentRootAsts! -> len) -> while {
+                        selectedArgumentRoots! -> push(false)
+                        selectedArgumentRootIndex! + 1 => selectedArgumentRootIndex!
+                    }
+                    0 => orderedArgumentIndex!
+                    orderedArgumentIndex! < (argumentRootAsts! -> len) -> while {
+                        -1 => nextArgumentRoot!
+                        UIntSize(0) => nextArgumentRootStart!
+                        0 => argumentRootCandidateIndex!
+                        argumentRootCandidateIndex! < (argumentRootAsts! -> len) -> while {
+                            not selectedArgumentRoots![argumentRootCandidateIndex!] -> if {
+                                prepared.package.nodes[sourceRange.astStart + argumentRootAsts![argumentRootCandidateIndex!]] => argumentRootCandidate
+                                (nextArgumentRoot! < 0 or argumentRootCandidate.start < nextArgumentRootStart!) -> if {
+                                    argumentRootCandidateIndex! => nextArgumentRoot!
+                                    argumentRootCandidate.start => nextArgumentRootStart!
+                                }
+                            }
+                            argumentRootCandidateIndex! + 1 => argumentRootCandidateIndex!
+                        }
+                        nextArgumentRoot! >= 0 -> if {
+                            orderedArgumentTypeExpressions! -> push(argumentTypeExpressions![nextArgumentRoot!])
+                            true => selectedArgumentRoots![nextArgumentRoot!]
+                        }
+                        orderedArgumentIndex! + 1 => orderedArgumentIndex!
+                    }
+
+                    0 => additionalArgumentOrdinal!
+                    (additionalArgumentOrdinal! < (additionalParameterSymbols! -> len) and additionalArgumentOrdinal! + 1 < (orderedArgumentTypeExpressions! -> len)) -> while {
+                        targetTable![additionalParameterSymbols![additionalArgumentOrdinal!]] => checkedAdditionalParameter
+                        -1 => checkedAdditionalReference!
+                        0 => checkedAdditionalReferenceSearch!
+                        checkedAdditionalReferenceSearch! < (recursiveTypes.references -> len) -> while {
+                            recursiveTypes.references[checkedAdditionalReferenceSearch!] => checkedAdditionalReferenceCandidate
+                            (checkedAdditionalReferenceCandidate.status == 0 and checkedAdditionalReferenceCandidate.sourceModule == call.targetSourceModule and checkedAdditionalReferenceCandidate.typeAst == checkedAdditionalParameter.typeNode) -> if {
+                                checkedAdditionalReferenceSearch! => checkedAdditionalReference!
+                            }
+                            checkedAdditionalReferenceSearch! + 1 => checkedAdditionalReferenceSearch!
+                        }
+                        recursiveTypes.expressions[orderedArgumentTypeExpressions![additionalArgumentOrdinal! + 1]] => checkedAdditionalArgument
+                        checkedAdditionalReference! >= 0 -> if {
+                            recursiveTypes.references[checkedAdditionalReference!] => checkedAdditionalExpectedReference
+                            recursiveTypes.types[checkedAdditionalExpectedReference.typeId] => checkedAdditionalExpected
+                            recursiveTypes.types[checkedAdditionalArgument.typeId] => checkedAdditionalActual
+                            (checkedAdditionalArgument.status == 0 and not checkedAdditionalExpected.containsParameter and not checkedAdditionalActual.containsParameter and checkedAdditionalExpectedReference.typeId != checkedAdditionalArgument.typeId) -> if {
+                                prepared.package.nodes[sourceRange.astStart + checkedAdditionalArgument.astNode] => checkedAdditionalArgumentAst
+                                diagnostics! -> push(TypeCheckDiagnostic {
+                                    code: 6
+                                    sourceModule: sourceIndex!
+                                    functionSymbol: call.functionSymbol
+                                    expectedOrigin: checkedAdditionalExpected.kind == 1 -> if { checkedAdditionalExpected.origin } else { 10 + checkedAdditionalExpected.kind }
+                                    expectedModule: checkedAdditionalExpected.module
+                                    expectedSymbol: checkedAdditionalExpected.symbol
+                                    actualOrigin: checkedAdditionalActual.kind == 1 -> if { checkedAdditionalActual.origin } else { 10 + checkedAdditionalActual.kind }
+                                    actualModule: checkedAdditionalActual.module
+                                    actualSymbol: checkedAdditionalActual.symbol
+                                    actualBuiltin: (checkedAdditionalActual.kind == 1 and checkedAdditionalActual.origin == 1) -> if { checkedAdditionalActual.symbol } else { -1 }
+                                    span: syntax.SourceSpan { fileId: sourceIndex!, start: checkedAdditionalArgumentAst.start, length: checkedAdditionalArgumentAst.length }
+                                })
+                            }
+                        }
+                        additionalArgumentOrdinal! + 1 => additionalArgumentOrdinal!
+                    }
+                }
                 targetFunction.secondaryTypeNode >= 0 -> if {
                     -1 => expectedInputIndex!
                     -1 => expectedInputCompositeIndex!
@@ -585,7 +798,7 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                             })
                         }
                     }
-                    not hasArgument! -> if {
+                    (not hasArgument! and not runtimeArityMismatch!) -> if {
                         diagnostics! -> push(TypeCheckDiagnostic {
                             code: 10
                             sourceModule: sourceIndex!
@@ -601,7 +814,7 @@ public analyze sources: [Text; ~] -> [TypeCheckDiagnostic; ~] {
                         })
                     }
                 } else {
-                    true -> if {
+                    not runtimeArityMismatch! -> if {
                         diagnostics! -> push(TypeCheckDiagnostic {
                             code: 10
                             sourceModule: sourceIndex!

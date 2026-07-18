@@ -90,7 +90,7 @@ internal sealed partial class LlvmEmitter
                 || TryResolveFunction(target.Path, out function)
                 || TryResolveInstanceMethod(current.Type, path, out function))
             {
-                if (target.Arguments.Count != 0)
+                if (function.Kind != BoundFunctionKind.User && target.Arguments.Count != 0)
                 {
                     throw new SmallLangException($"function value-flow target '{path}' does not accept additional arguments in this slice");
                 }
@@ -189,7 +189,7 @@ internal sealed partial class LlvmEmitter
                         current = EmitRuntimeSleepIntrinsic(function, current, path);
                         continue;
                     case BoundFunctionKind.User:
-                        current = EmitFlowFunctionCall(function, current, expression.Source);
+                        current = EmitFlowFunctionCall(function, current, expression.Source, target.Arguments);
                         continue;
                     default:
                         throw new SmallLangException($"unsupported runtime function kind '{function.Kind}'");

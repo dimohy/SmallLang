@@ -24,7 +24,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
@@ -43,11 +43,14 @@ internal sealed partial class LlvmEmitter
         }
     }
 
-    private RuntimeArena EmitArenaFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeArena EmitArenaFunctionCall(
+        BoundFunction function,
+        RuntimeValue? argument,
+        IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("arena_call");
         EmitCall(aggregate, "%smalllang.dynamic_int_array", SymbolForFunction(function)[1..],
-            FunctionCallArgumentList(function, argument));
+            FunctionCallArgumentList(function, argument, additionalArguments));
         var pointer = NextTemp("arena_ptr");
         EmitAssign(pointer, $"extractvalue %smalllang.dynamic_int_array {aggregate}, 0");
         var used = NextTemp("arena_used");

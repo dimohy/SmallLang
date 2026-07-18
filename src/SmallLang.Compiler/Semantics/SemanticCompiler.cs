@@ -20,7 +20,7 @@ internal sealed class SemanticCompiler
     private string _currentModuleName = "";
     private string? _currentTypeScopeName;
     private BoundType? _currentFunctionReturnType;
-    private string? _currentMoveInputName;
+    private IReadOnlySet<string> _currentMoveInputNames = new HashSet<string>(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, BoundType>? _currentFunctionOuterBindings;
     private bool _currentFunctionAllowsEarlyReturn;
     private bool _currentFunctionIsAsync;
@@ -402,6 +402,33 @@ internal sealed class SemanticCompiler
             throw Error(function.Line, function.Column, "associated type bindings require a trait impl");
         }
         var inputOwnership = BindFunctionInputOwnership(function, inputType);
+        var additionalParameters = (function.AdditionalParameters ?? [])
+            .Select(parameter =>
+            {
+                var parameterType = ParseFunctionType(
+                    parameter.TypeName,
+                    function.GenericParameterName,
+                    function.SecondaryGenericParameterName,
+                    function.TertiaryGenericParameterName,
+                    parameter.Line,
+                    parameter.Column);
+                if (parameter.Ownership == FunctionInputOwnership.Default
+                    && parameterType == BoundType.IntDictionary)
+                {
+                    parameterType = BoundType.IntDictionaryView;
+                }
+                return new BoundFunctionParameter(
+                    parameter.Name,
+                    parameterType,
+                    BindFunctionInputOwnership(
+                        parameter.Ownership,
+                        parameterType,
+                        parameter.Line,
+                        parameter.Column),
+                    parameter.Line,
+                    parameter.Column);
+            })
+            .ToArray();
         var effects = BindFunctionEffects(function);
         var isAsyncRuntimeIntrinsic = function.IsStandardLibrary
             && function.IsIntrinsic
@@ -412,6 +439,8 @@ internal sealed class SemanticCompiler
         if (function.IsAsync
             && ((!isAsyncRuntimeIntrinsic && !IsAsyncResultTypeSupported(returnType))
                 || (!isAsyncRuntimeIntrinsic && !IsAsyncInputTypeSupported(inputType, inputOwnership))
+                || (!isAsyncRuntimeIntrinsic && additionalParameters.Any(parameter =>
+                    !IsAsyncInputTypeSupported(parameter.Type, parameter.Ownership)))
                 || isLocal
                 || (function.IsStandardLibrary && !isAsyncRuntimeIntrinsic)
                 || (function.IsIntrinsic && !isAsyncRuntimeIntrinsic)))
@@ -458,7 +487,8 @@ internal sealed class SemanticCompiler
             BlockResultType: blockResultType,
             BlockResultTypeTemplate: blockResultTypeTemplate,
             InputTypeTemplate: inputTypeTemplate,
-            ReturnTypeTemplate: returnTypeTemplate);
+            ReturnTypeTemplate: returnTypeTemplate,
+            AdditionalParameters: additionalParameters);
     }
 
     private IReadOnlySet<string> BindFunctionEffects(FunctionDeclaration function)
@@ -484,30 +514,37 @@ internal sealed class SemanticCompiler
 
     private BoundFunctionInputOwnership BindFunctionInputOwnership(
         FunctionDeclaration function,
-        BoundType? inputType)
+        BoundType? inputType) => BindFunctionInputOwnership(
+            function.InputOwnership, inputType, function.Line, function.Column);
+
+    private BoundFunctionInputOwnership BindFunctionInputOwnership(
+        FunctionInputOwnership ownership,
+        BoundType? inputType,
+        int line,
+        int column)
     {
-        if (function.InputOwnership == FunctionInputOwnership.Move)
+        if (ownership == FunctionInputOwnership.Move)
         {
             if (inputType is null)
             {
-                throw Error(function.Line, function.Column, "move input requires an input type");
+                throw Error(line, column, "move input requires an input type");
             }
 
             if (!IsOwnedHeapType(inputType.Value)
                 && !_types.IsStruct(inputType.Value)
                 && !_types.IsEnum(inputType.Value))
             {
-                throw Error(function.Line, function.Column, "move input expects an owned container or user value type");
+                throw Error(line, column, "move input expects an owned container or user value type");
             }
 
             return BoundFunctionInputOwnership.Move;
         }
 
-        if (function.InputOwnership == FunctionInputOwnership.MutableBorrow)
+        if (ownership == FunctionInputOwnership.MutableBorrow)
         {
             if (inputType is null)
             {
-                throw Error(function.Line, function.Column, "mut input requires an input type");
+                throw Error(line, column, "mut input requires an input type");
             }
 
             if (inputType.Value is not (BoundType.DynamicIntArray or BoundType.IntDictionary or BoundType.Arena)
@@ -515,7 +552,7 @@ internal sealed class SemanticCompiler
                 && !_types.IsDictionary(inputType.Value)
                 && !_types.IsStruct(inputType.Value))
             {
-                throw Error(function.Line, function.Column, "mut input expects an owned container or struct value");
+                throw Error(line, column, "mut input expects an owned container or struct value");
             }
 
             return BoundFunctionInputOwnership.MutableBorrow;
@@ -576,6 +613,21 @@ internal sealed class SemanticCompiler
             ValidateBindingName(function.InputName, function.Line, function.Column);
         }
 
+        var parameterNames = new HashSet<string>(StringComparer.Ordinal);
+        if (function.InputType is not null)
+        {
+            parameterNames.Add(function.InputName ?? "it");
+        }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            ValidateBindingName(parameter.Name, parameter.Line, parameter.Column);
+            if (!parameterNames.Add(parameter.Name))
+            {
+                throw Error(parameter.Line, parameter.Column,
+                    $"function parameter '{parameter.Name}' is declared more than once");
+            }
+        }
+
         if (function.BlockInputName is not null && function.BlockInputType is null)
         {
             throw Error(function.Line, function.Column, "block input name requires a block input type");
@@ -623,6 +675,10 @@ internal sealed class SemanticCompiler
         if (function.InputName is not null)
         {
             locals.Add(function.InputName);
+        }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            locals.Add(parameter.Name);
         }
         if (function.BlockInputName is not null)
         {
@@ -1018,6 +1074,10 @@ internal sealed class SemanticCompiler
         {
             bodyBindings[function.InputName ?? "it"] = inputType;
         }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            bodyBindings[parameter.Name] = parameter.Type;
+        }
         if (function.IsValueGeneric
             && function.SpecializedValue is not null
             && function.GenericParameterName is { } valueParameterName)
@@ -1029,9 +1089,7 @@ internal sealed class SemanticCompiler
 
         var scopedFunctions = CreateFunctionScope(parentFunctions, function.LocalFunctions);
         _currentFunctionReturnType = function.ReturnType;
-        _currentMoveInputName = FunctionMovesOwnedHeapInput(function)
-            ? function.InputName ?? "it"
-            : null;
+        _currentMoveInputNames = MoveInputNames(function);
         _currentFunctionOuterBindings = returnOuterBindings;
         _currentFunctionAllowsEarlyReturn = !function.IsLocal;
         _currentFunctionIsAsync = function.IsAsync;
@@ -1042,11 +1100,15 @@ internal sealed class SemanticCompiler
         {
             mutableBindings.Add(function.InputName ?? "it");
         }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+            {
+                mutableBindings.Add(parameter.Name);
+            }
+        }
 
-        var returnedMoveInputName = FunctionMovesOwnedHeapInput(function)
-            && function.InputType == function.ReturnType
-                ? function.InputName ?? "it"
-                : null;
+        var returnedMoveInputName = ReturnedMoveInputName(function);
 
         BindStatements(function.BlockBody, scopedFunctions, bodyBindings, mutableBindings, allowContainerBindings: true);
         foreach (var localFunction in function.LocalFunctions.Values)
@@ -1078,9 +1140,7 @@ internal sealed class SemanticCompiler
         _currentModuleName = function.ModuleName;
         _currentTypeScopeName = ResolveFunctionTypeScope(function.Name);
         _currentFunctionReturnType = function.ReturnType;
-        _currentMoveInputName = FunctionMovesOwnedHeapInput(function)
-            ? function.InputName ?? "it"
-            : null;
+        _currentMoveInputNames = MoveInputNames(function);
         _currentFunctionOuterBindings = returnOuterBindings;
         _currentFunctionAllowsEarlyReturn = !function.IsLocal;
         _currentFunctionIsAsync = function.IsAsync;
@@ -1148,7 +1208,7 @@ internal sealed class SemanticCompiler
         var previousModuleName = _currentModuleName;
         var previousTypeScopeName = _currentTypeScopeName;
         var previousReturnType = _currentFunctionReturnType;
-        var previousMoveInputName = _currentMoveInputName;
+        var previousMoveInputNames = _currentMoveInputNames;
         var previousOuterBindings = _currentFunctionOuterBindings;
         var previousAllowsEarlyReturn = _currentFunctionAllowsEarlyReturn;
         var previousIsAsync = _currentFunctionIsAsync;
@@ -1166,7 +1226,7 @@ internal sealed class SemanticCompiler
             _currentModuleName = previousModuleName;
             _currentTypeScopeName = previousTypeScopeName;
             _currentFunctionReturnType = previousReturnType;
-            _currentMoveInputName = previousMoveInputName;
+            _currentMoveInputNames = previousMoveInputNames;
             _currentFunctionOuterBindings = previousOuterBindings;
             _currentFunctionAllowsEarlyReturn = previousAllowsEarlyReturn;
             _currentFunctionIsAsync = previousIsAsync;
@@ -1208,9 +1268,7 @@ internal sealed class SemanticCompiler
         }
 
         _currentFunctionReturnType = function.ReturnType;
-        _currentMoveInputName = FunctionMovesOwnedHeapInput(function)
-            ? function.InputName ?? "it"
-            : null;
+        _currentMoveInputNames = MoveInputNames(function);
         _currentFunctionOuterBindings = new Dictionary<string, BoundType>(bodyBindings, StringComparer.Ordinal);
         _currentFunctionAllowsEarlyReturn = false;
         _currentFunctionEffects = function.Effects;
@@ -1760,7 +1818,7 @@ internal sealed class SemanticCompiler
         _currentModuleName = string.Join('.', _program.NamespacePath);
         _currentTypeScopeName = null;
         _currentFunctionReturnType = null;
-        _currentMoveInputName = null;
+        _currentMoveInputNames = new HashSet<string>(StringComparer.Ordinal);
         _currentFunctionOuterBindings = null;
         _currentFunctionAllowsEarlyReturn = false;
         _currentFunctionIsAsync = true;
@@ -1960,7 +2018,7 @@ internal sealed class SemanticCompiler
                             allowFlowBindingTarget: false,
                             yieldInputType: yieldInputType,
                             mutableBindings: mutableBindings,
-                            allowedOwnedOuterResultName: _currentMoveInputName);
+                            allowedOwnedOuterResultName: MoveInputNameForExpression(returnStatement.Value));
                     if (returnType != _currentFunctionReturnType.Value)
                     {
                         throw Error(
@@ -1979,7 +2037,7 @@ internal sealed class SemanticCompiler
                                 _currentFunctionOuterBindings
                                     ?? throw new SmallLangException("missing function return ownership scope"),
                                 bindings,
-                                _currentMoveInputName);
+                                MoveInputNameForExpression(returnStatement.Value));
                         }
                     }
                     return;
@@ -3452,7 +3510,7 @@ internal sealed class SemanticCompiler
         if (expression is NameExpression name)
         {
             return !bindings.ContainsKey(name.Name)
-                || string.Equals(name.Name, _currentMoveInputName, StringComparison.Ordinal);
+                || _currentMoveInputNames.Contains(name.Name);
         }
         if (expression is FieldAccessExpression field
             && field.Source is NameExpression owner
@@ -4288,7 +4346,7 @@ internal sealed class SemanticCompiler
             {
                 EnsureFunctionVisible(function, target.Line, target.Column);
                 EnsureAsyncRuntimeCallable(function, target.Line, target.Column, path);
-                if (target.Arguments.Count != 0)
+                if (function.Kind != BoundFunctionKind.User && target.Arguments.Count != 0)
                 {
                     throw Error(
                         target.Line,
@@ -4425,6 +4483,15 @@ internal sealed class SemanticCompiler
                         {
                             throw Error(expression.Line, expression.Column, $"function '{path}' does not accept a flowed input");
                         }
+
+                        ValidateAdditionalFunctionArguments(
+                            function,
+                            target.Arguments,
+                            functions,
+                            bindings,
+                            allowReadIntCall,
+                            mutableBindings,
+                            path);
 
                 if (currentType != function.InputType)
                 {
@@ -5369,12 +5436,39 @@ internal sealed class SemanticCompiler
                         allowReadIntCall);
                 }
 
-                if (receiverName is not null && receiverType is not null)
+                if (receiverName is not null
+                    && receiverType is not null
+                    && (function.AdditionalParameters?.Count ?? 0) == 0)
                 {
                     throw Error(
                         expression.Line,
                         expression.Column,
                         $"zero-argument method '{path}' uses property syntax without parentheses: '{path}'");
+                }
+
+                if (receiverName is not null && receiverType is not null)
+                {
+                    var additionalParameters = function.AdditionalParameters ?? [];
+                    if (expression.Arguments.Count != additionalParameters.Count)
+                    {
+                        throw Error(expression.Line, expression.Column,
+                            $"method '{path}' expects {additionalParameters.Count} argument(s)");
+                    }
+                    if (function.InputType is null
+                        || !CanPassFunctionArgument(receiverType.Value, function.InputType.Value))
+                    {
+                        throw Error(expression.Line, expression.Column,
+                            $"method '{path}' cannot receive {FormatType(receiverType.Value)}");
+                    }
+                    ValidateAdditionalFunctionArguments(
+                        function,
+                        expression.Arguments,
+                        functions,
+                        bindings,
+                        allowReadIntCall,
+                        mutableBindings,
+                        path);
+                    return AsyncCallType(function);
                 }
 
                 return InferUserCallExpression(expression, function, functions, bindings, allowReadIntCall, mutableBindings, path);
@@ -5390,9 +5484,11 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         bool allowReadIntCall)
     {
-        if (expression.Arguments.Count != 1)
+        var expectedArgumentCount = 1 + (template.AdditionalParameters?.Count ?? 0);
+        if (expression.Arguments.Count != expectedArgumentCount)
         {
-            throw Error(expression.Line, expression.Column, $"generic function '{template.Name}' expects one argument");
+            throw Error(expression.Line, expression.Column,
+                $"generic function '{template.Name}' expects {expectedArgumentCount} argument(s)");
         }
 
         var actualType = InferExpression(
@@ -5403,7 +5499,14 @@ internal sealed class SemanticCompiler
             allowReadIntCall,
             allowFlowBindingTarget: false);
         var specialization = ResolveGenericSpecialization(template, actualType, functions, expression);
-        return AsyncCallType(specialization);
+        return InferUserCallExpression(
+            expression,
+            specialization,
+            functions,
+            bindings,
+            allowReadIntCall,
+            mutableBindings: null,
+            template.Name);
     }
 
     private BoundFunction ResolveGenericSpecialization(
@@ -5523,6 +5626,16 @@ internal sealed class SemanticCompiler
                         inferredTertiaryType,
                         template.Line,
                         template.Column),
+                AdditionalParameters = (template.AdditionalParameters ?? [])
+                    .Select(parameter => parameter with
+                    {
+                        Type = SubstituteGenericType(
+                            parameter.Type,
+                            actualType,
+                            inferredSecondaryType,
+                            inferredTertiaryType)
+                    })
+                    .ToArray(),
                 BlockInputType = template.BlockInputTypeTemplate is null
                     ? template.BlockInputType is null
                         ? null
@@ -6068,19 +6181,23 @@ internal sealed class SemanticCompiler
             throw Error(expression.Line, expression.Column, $"{path} is only valid in main for the current runtime slice");
         }
 
+        var additionalParameters = function.AdditionalParameters ?? [];
         if (function.InputType is null)
         {
-            if (expression.Arguments.Count != 0)
+            if (expression.Arguments.Count != additionalParameters.Count)
             {
-                throw Error(expression.Line, expression.Column, $"function '{path}' does not accept arguments");
+                throw Error(expression.Line, expression.Column,
+                    $"function '{path}' expects {additionalParameters.Count} argument(s)");
             }
-
+            ValidateAdditionalFunctionArguments(function, expression.Arguments, functions, bindings,
+                allowReadIntCall, mutableBindings, path);
             return AsyncCallType(function);
         }
 
-        if (expression.Arguments.Count != 1)
+        if (expression.Arguments.Count != 1 + additionalParameters.Count)
         {
-            throw Error(expression.Line, expression.Column, $"function '{path}' expects exactly one argument");
+            throw Error(expression.Line, expression.Column,
+                $"function '{path}' expects {1 + additionalParameters.Count} argument(s)");
         }
 
         var argumentType = IsIntegerType(function.InputType.Value)
@@ -6126,7 +6243,66 @@ internal sealed class SemanticCompiler
             EnsureReadonlyBorrowCallArgument(expression.Arguments[0], path);
         }
 
+        ValidateAdditionalFunctionArguments(
+            function,
+            expression.Arguments.Skip(1).ToArray(),
+            functions,
+            bindings,
+            allowReadIntCall,
+            mutableBindings,
+            path);
+
         return AsyncCallType(function);
+    }
+
+    private void ValidateAdditionalFunctionArguments(
+        BoundFunction function,
+        IReadOnlyList<Expression> arguments,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, BoundType> bindings,
+        bool allowReadIntCall,
+        IReadOnlySet<string>? mutableBindings,
+        string path)
+    {
+        var parameters = function.AdditionalParameters ?? [];
+        if (arguments.Count != parameters.Count)
+        {
+            throw Error(function.Line, function.Column,
+                $"function '{path}' expects {parameters.Count} additional argument(s)");
+        }
+
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            var parameter = parameters[index];
+            var argument = arguments[index];
+            var actualType = IsIntegerType(parameter.Type) && IsIntegerLiteralExpression(argument)
+                ? parameter.Type
+                : InferExpression(argument, functions, bindings, allowPrintCall: false,
+                    allowReadIntCall, allowFlowBindingTarget: false,
+                    allowOwnedElementBorrow: parameter.Ownership == BoundFunctionInputOwnership.Default);
+            if (actualType == parameter.Type && IsIntegerLiteralExpression(argument))
+            {
+                ValidateNumericLiteralConversion(argument, parameter.Type, FormatType(parameter.Type));
+            }
+            if (!CanPassFunctionArgument(actualType, parameter.Type))
+            {
+                throw Error(argument.Line, argument.Column,
+                    $"function '{path}' parameter '{parameter.Name}' expects {FormatType(parameter.Type)} "
+                    + $"but received {FormatType(actualType)}");
+            }
+            if (parameter.Ownership == BoundFunctionInputOwnership.Move)
+            {
+                EnsureOwnedParameterCallArgument(argument, path);
+            }
+            else if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+            {
+                EnsureMutableBorrowCallArgument(argument, path, mutableBindings);
+            }
+            else if (_types.ContainsOwnedStorage(parameter.Type))
+            {
+                EnsureReadonlyBorrowCallArgument(argument, path);
+            }
+        }
     }
 
     private BoundType AsyncCallType(BoundFunction function) =>
@@ -7469,7 +7645,7 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings)
     {
         if (expression is not FieldAccessExpression { Source: NameExpression owner } field
-            || !string.Equals(owner.Name, _currentMoveInputName, StringComparison.Ordinal)
+            || !_currentMoveInputNames.Contains(owner.Name)
             || !bindings.TryGetValue(owner.Name, out var ownerType)
             || !_types.IsStruct(ownerType))
         {
@@ -7706,7 +7882,7 @@ internal sealed class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings)
     {
         if (expression is TryExpression { Value: NameExpression attemptedName }
-            && string.Equals(attemptedName.Name, _currentMoveInputName, StringComparison.Ordinal))
+            && _currentMoveInputNames.Contains(attemptedName.Name))
         {
             return [attemptedName.Name];
         }
@@ -8183,6 +8359,51 @@ internal sealed class SemanticCompiler
     {
         return function.InputOwnership == BoundFunctionInputOwnership.Move
             && function.InputType is not null;
+    }
+
+    private static IReadOnlySet<string> MoveInputNames(BoundFunction function)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (function.InputOwnership == BoundFunctionInputOwnership.Move
+            && function.InputType is not null)
+        {
+            names.Add(function.InputName ?? "it");
+        }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            if (parameter.Ownership == BoundFunctionInputOwnership.Move)
+            {
+                names.Add(parameter.Name);
+            }
+        }
+        return names;
+    }
+
+    private static string? ReturnedMoveInputName(BoundFunction function)
+    {
+        if (function.InputOwnership == BoundFunctionInputOwnership.Move
+            && function.InputType == function.ReturnType)
+        {
+            return function.InputName ?? "it";
+        }
+        return (function.AdditionalParameters ?? [])
+            .Where(parameter => parameter.Ownership == BoundFunctionInputOwnership.Move
+                && parameter.Type == function.ReturnType)
+            .Select(parameter => parameter.Name)
+            .FirstOrDefault();
+    }
+
+    private string? MoveInputNameForExpression(Expression? expression)
+    {
+        var name = expression switch
+        {
+            NameExpression direct => direct.Name,
+            FieldAccessExpression { Source: NameExpression owner } => owner.Name,
+            TryExpression { Value: NameExpression attempted } => attempted.Name,
+            FlowExpression { Source: NameExpression source } => source.Name,
+            _ => null
+        };
+        return name is not null && _currentMoveInputNames.Contains(name) ? name : null;
     }
 
     private bool FunctionMutablyBorrowsInput(BoundFunction function)

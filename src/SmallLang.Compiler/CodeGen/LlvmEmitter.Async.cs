@@ -50,10 +50,22 @@ internal sealed partial class LlvmEmitter
                     "%it", "%context", function.InputType, function.ReturnType, 5,
                     AsyncStorageLlvmType(inputType), RuntimeAlignment(inputType));
             }
+            var additionalParameters = function.AdditionalParameters ?? [];
+            for (var parameterIndex = 0; parameterIndex < additionalParameters.Count; parameterIndex++)
+            {
+                var parameter = additionalParameters[parameterIndex];
+                EmitAsyncFunctionContextLoad(
+                    $"%arg_{parameterIndex}",
+                    "%context",
+                    function,
+                    10 + parameterIndex,
+                    AsyncStorageLlvmType(parameter.Type),
+                    RuntimeAlignment(parameter.Type));
+            }
 
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
             if (hasCfgSuspension)
             {
                 EmitCfgSuspendWorker(function, cfgSuspendPlan!, functionLocals);
@@ -80,7 +92,7 @@ internal sealed partial class LlvmEmitter
             EmitFunctionLine($"define internal %smalllang.task {SymbolForFunction(function)}({ParameterListForFunction(function)}) #0 {{");
             EmitLabel("entry");
             var context = NextTemp("async_context");
-            EmitCall(context, "ptr", "smalllang_alloc", $"i64 {AsyncContextSize(function.InputType, function.ReturnType)}");
+            EmitCall(context, "ptr", "smalllang_alloc", $"i64 {AsyncContextSize(function)}");
             EmitAsyncContextStore(context, function.InputType, function.ReturnType, 0, "ptr", "%stdin", 8);
             EmitAsyncContextStore(context, function.InputType, function.ReturnType, 1, "ptr", "%stdout", 8);
             EmitAsyncContextStore(context, function.InputType, function.ReturnType, 2, "ptr", "%written", 8);
@@ -103,6 +115,17 @@ internal sealed partial class LlvmEmitter
             EmitAsyncContextStore(
                 context, function.InputType, function.ReturnType, 9,
                 "ptr", "null", 8);
+            for (var parameterIndex = 0; parameterIndex < additionalParameters.Count; parameterIndex++)
+            {
+                var parameter = additionalParameters[parameterIndex];
+                EmitAsyncFunctionContextStore(
+                    context,
+                    function,
+                    10 + parameterIndex,
+                    AsyncStorageLlvmType(parameter.Type),
+                    $"%arg_{parameterIndex}",
+                    RuntimeAlignment(parameter.Type));
+            }
 
             var handle = NextTemp("async_handle");
             EmitCall(
@@ -117,6 +140,7 @@ internal sealed partial class LlvmEmitter
             EmitConditionalBranch(started, readyLabel, failedLabel);
             EmitLabel(failedLabel);
             DropFailedAsyncInput(function);
+            DropFailedAsyncAdditionalInputs(function);
             EmitCall(target: null, "void", "smalllang_free", $"ptr {context}");
             EmitTrap();
             EmitLabel(readyLabel);
@@ -195,6 +219,7 @@ internal sealed partial class LlvmEmitter
         EmitLabel(stateLabels[0]);
         _currentBlockLabel = stateLabels[0];
         DropCancelledAsyncInput(function);
+        DropCancelledAsyncAdditionalInputs(function);
         EmitBranch(cleanupLabel);
 
         for (var stateIndex = 1; stateIndex <= pendingStates; stateIndex++)
@@ -207,6 +232,7 @@ internal sealed partial class LlvmEmitter
                 if (point.OwnsInput)
                 {
                     DropCancelledAsyncInput(function);
+                    DropCancelledAsyncAdditionalInputs(function);
                 }
                 if (!point.IsYield)
                 {
@@ -1156,14 +1182,17 @@ internal sealed partial class LlvmEmitter
         StoreMutableContainer(name, value);
     }
 
-    private RuntimeTask EmitAsyncFunctionCall(BoundFunction function, RuntimeValue? argument)
+    private RuntimeTask EmitAsyncFunctionCall(
+        BoundFunction function,
+        RuntimeValue? argument,
+        IReadOnlyList<RuntimeValue>? additionalArguments)
     {
         var aggregate = NextTemp("task_call");
         EmitCall(
             aggregate,
             "%smalllang.task",
             SymbolForFunction(function)[1..],
-            FunctionCallArgumentList(function, argument));
+            FunctionCallArgumentList(function, argument, additionalArguments));
         var handle = NextTemp("task_handle");
         EmitAssign(handle, $"extractvalue %smalllang.task {aggregate}, 0");
         var context = NextTemp("task_context");
@@ -1290,6 +1319,42 @@ internal sealed partial class LlvmEmitter
         EmitStore(type, value, address, alignment);
     }
 
+    private void EmitAsyncFunctionContextLoad(
+        string target,
+        string context,
+        BoundFunction function,
+        int field,
+        string type,
+        int alignment)
+    {
+        var address = AsyncFunctionContextField(context, function, field, "async_function_context_field");
+        EmitLoad(target, type, address, alignment);
+    }
+
+    private void EmitAsyncFunctionContextStore(
+        string context,
+        BoundFunction function,
+        int field,
+        string type,
+        string value,
+        int alignment)
+    {
+        var address = AsyncFunctionContextField(context, function, field, "async_function_context_field");
+        EmitStore(type, value, address, alignment);
+    }
+
+    private string AsyncFunctionContextField(
+        string context,
+        BoundFunction function,
+        int field,
+        string prefix)
+    {
+        var address = NextTemp(prefix);
+        EmitAssign(address,
+            $"getelementptr {AsyncFunctionContextType(function)}, ptr {context}, i32 0, i32 {field}");
+        return address;
+    }
+
     private string AsyncContextField(
         string context, BoundType? inputType, BoundType resultType, int field, string prefix)
     {
@@ -1300,6 +1365,20 @@ internal sealed partial class LlvmEmitter
 
     private string AsyncContextType(BoundType? inputType, BoundType resultType) =>
         $"{{ ptr, ptr, ptr, ptr, ptr, {AsyncStorageLlvmType(inputType)}, {AsyncStorageLlvmType(resultType)}, ptr, ptr, ptr }}";
+
+    private string AsyncFunctionContextType(BoundFunction function)
+    {
+        var fields = new List<string>
+        {
+            "ptr", "ptr", "ptr", "ptr", "ptr",
+            AsyncStorageLlvmType(function.InputType),
+            AsyncStorageLlvmType(function.ReturnType),
+            "ptr", "ptr", "ptr"
+        };
+        fields.AddRange((function.AdditionalParameters ?? [])
+            .Select(parameter => AsyncStorageLlvmType(parameter.Type)));
+        return $"{{ {string.Join(", ", fields)} }}";
+    }
 
     private string AsyncStorageLlvmType(BoundType? type) =>
         type is null or BoundType.Unit ? "i8" : LlvmType(type.Value);
@@ -1323,6 +1402,56 @@ internal sealed partial class LlvmEmitter
         }
 
         DropOwnedRuntimeValue(DematerializeAggregateValue(inputType, "%it"));
+    }
+
+    private void DropFailedAsyncAdditionalInputs(BoundFunction function)
+    {
+        var parameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            var parameter = parameters[index];
+            if (parameter.Ownership == BoundFunctionInputOwnership.Move
+                && _program.Types.ContainsOwnedStorage(parameter.Type))
+            {
+                DropOwnedRuntimeValue(DematerializeAggregateValue(parameter.Type, $"%arg_{index}"));
+            }
+        }
+    }
+
+    private void DropCancelledAsyncAdditionalInputs(BoundFunction function)
+    {
+        var parameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            var parameter = parameters[index];
+            if (parameter.Ownership != BoundFunctionInputOwnership.Move
+                || !_program.Types.ContainsOwnedStorage(parameter.Type))
+            {
+                continue;
+            }
+
+            var value = $"%cancel_arg_{index}";
+            EmitAsyncFunctionContextLoad(
+                value,
+                "%context",
+                function,
+                10 + index,
+                AsyncStorageLlvmType(parameter.Type),
+                RuntimeAlignment(parameter.Type));
+            DropOwnedRuntimeValue(DematerializeAggregateValue(parameter.Type, value));
+        }
+    }
+
+    private int AsyncContextSize(BoundFunction function)
+    {
+        var size = AsyncContextSize(function.InputType, function.ReturnType);
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            var alignment = RuntimeAlignment(parameter.Type);
+            size = AlignAsyncSize(size, alignment);
+            size += Math.Max(_program.Types.InlineSizeOf(parameter.Type), 1);
+        }
+        return size;
     }
 
     private int AsyncContextSize(BoundType? inputType, BoundType resultType)

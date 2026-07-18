@@ -1,7 +1,7 @@
 # SmallLang Self-Hosting Roadmap
 
 Status: active
-Updated: 2026-07-17
+Updated: 2026-07-19
 
 The end state is an SL compiler written in SL that reads a multi-file SL
 program, performs lexical, syntactic, type, ownership, and module analysis,
@@ -109,15 +109,15 @@ not lines of code.
 
 | Area | Gates | Complete | Partial | Missing | Score |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Core syntax and control flow | 10 | 8 | 2 | 0 | 9.0 |
+| Core syntax and control flow | 10 | 9 | 1 | 0 | 9.5 |
 | Types, traits, and generics | 12 | 11 | 0 | 1 | 11.0 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
 | Modules, visibility, and builds | 8 | 5 | 2 | 1 | 6.0 |
 | Compiler-construction primitives | 12 | 10 | 2 | 0 | 11.0 |
 | Standard library and tooling | 8 | 2 | 4 | 2 | 4.0 |
-| **Total** | **60** | **43** | **12** | **5** | **49.0 / 60** |
+| **Total** | **60** | **44** | **11** | **5** | **49.5 / 60** |
 
-Current count-based progress: **81.7% (49 of 60 equivalent gates)**.
+Current count-based progress: **82.5% (49.5 of 60 equivalent gates)**.
 
 The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
@@ -230,12 +230,13 @@ milestone without changing the broader 60-gate language-capability score.
 
 ## Gate Inventory
 
-### Core syntax and control flow — 9.0 / 10
+### Core syntax and control flow — 9.5 / 10
 
-- Complete (8): functions, local functions, expressions, bindings, arithmetic
-  and Boolean logic, `if`/`when`, ranges/loops, block-function calls.
-- Partial (2): general multi-parameter functions; structured early exit with
-  `return`/`break`/`continue` across ownership scopes.
+- Complete (9): functions including fluent and direct multi-parameter calls,
+  local functions, expressions, bindings, arithmetic and Boolean logic,
+  `if`/`when`, ranges/loops, block-function calls.
+- Partial (1): structured early exit with `return`/`break`/`continue` across
+  ownership scopes.
 
 ### Types, traits, and generics — 11.0 / 12
 
@@ -1091,8 +1092,15 @@ compiler and rejects a mismatched explicit length. Dynamic arrays are rejected
 by a dedicated diagnostic. Windows/Linux execution and a Linux ASan/LSan run
 cover the owned-array case.
 
-The formal roadmap is now **49/60 (81.7%)** because fixed-array generic
-function contracts close the canonical generic-container gate.
+The formal roadmap is now **49.5/60 (82.5%)**. Fixed-array generic function
+contracts close the canonical generic-container gate, and general
+multi-parameter functions close the corresponding core syntax gate.
+
+Examples 406-409 prove fluent/direct calls, methods, generics, independent
+readonly/`mut`/`move` modes, structured async, self-host LLVM execution, and
+self-host arity/type diagnostics. The complete Windows and Linux suites pass
+543/543. Windows Stage2 passes 6/6 at 8,392,752 LLVM bytes and Linux Stage2
+passes 5/5 at 8,392,614 bytes with differential hashes preserved.
 
 Research basis:
 

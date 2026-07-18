@@ -21,7 +21,7 @@ $processSource = Join-Path $repoRoot "stdlib\sys\process.sl"
 $singleSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-single-smoke.sl"
 $multiLibrarySource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-library-smoke.sl"
 $multiMainSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-main-smoke.sl"
-$expectedStage2Bytes = 8342898L
+$expectedStage2Bytes = 8392614L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 

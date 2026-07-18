@@ -130,7 +130,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -165,7 +165,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -205,7 +205,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -246,7 +246,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -281,7 +281,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -316,7 +316,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
@@ -357,7 +357,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -400,7 +400,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
@@ -438,7 +438,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
 
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
@@ -481,7 +481,7 @@ internal sealed partial class LlvmEmitter
             _currentBlockLabel = "entry";
             BindFunctionCaptures(function);
             var functionLocals = CaptureLocals();
-            BindFunctionParameter(function);
+            BindAllFunctionParameters(function);
             EmitStatements(function.BlockBody);
             if (FinishTerminatedFunction()) return;
             var value = EmitExpression(function.Body);
@@ -534,6 +534,33 @@ internal sealed partial class LlvmEmitter
     }
 
     private string ExplicitParameterListForFunction(BoundFunction function)
+    {
+        var parts = new List<string>();
+        var primary = PrimaryParameterListForFunction(function);
+        if (primary.Length > 0)
+        {
+            parts.Add(primary);
+        }
+        var additionalParameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < additionalParameters.Count; index++)
+        {
+            var parameter = additionalParameters[index];
+            var name = $"%arg_{index.ToString(CultureInfo.InvariantCulture)}";
+            if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+            {
+                parts.Add(_program.Types.IsStruct(parameter.Type)
+                    ? $"ptr {name}"
+                    : $"%smalllang.mutable_container {name}");
+            }
+            else
+            {
+                parts.Add($"{LlvmType(parameter.Type)} {name}");
+            }
+        }
+        return string.Join(", ", parts);
+    }
+
+    private string PrimaryParameterListForFunction(BoundFunction function)
     {
         if (function.InputOwnership == BoundFunctionInputOwnership.MutableBorrow)
         {
@@ -814,6 +841,28 @@ internal sealed partial class LlvmEmitter
         }
     }
 
+    private void BindAllFunctionParameters(BoundFunction function)
+    {
+        BindFunctionParameter(function);
+        var parameters = function.AdditionalParameters ?? [];
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            var parameter = parameters[index];
+            var argumentName = $"%arg_{index.ToString(CultureInfo.InvariantCulture)}";
+            if (parameter.Ownership == BoundFunctionInputOwnership.MutableBorrow)
+            {
+                BindMutableBorrowFunctionParameter(parameter.Name, parameter.Type, argumentName);
+                continue;
+            }
+            _locals.Add(parameter.Name, DematerializeAggregateValue(parameter.Type, argumentName));
+            if (parameter.Ownership == BoundFunctionInputOwnership.Default
+                && _program.Types.ContainsOwnedStorage(parameter.Type))
+            {
+                _borrowedOwnedLocals.Add(parameter.Name);
+            }
+        }
+    }
+
     private RuntimeStaticInlineArray CreateBorrowedStaticInlineArray(
         BoundType arrayType,
         string pointer,
@@ -832,47 +881,53 @@ internal sealed partial class LlvmEmitter
 
     private void BindMutableBorrowFunctionParameter(BoundFunction function)
     {
-        if (function.InputType is { } structType && _program.Types.IsStruct(structType))
+        BindMutableBorrowFunctionParameter(
+            function.InputName ?? "it",
+            function.InputType!.Value,
+            "%it");
+    }
+
+    private void BindMutableBorrowFunctionParameter(string name, BoundType type, string argumentName)
+    {
+        if (_program.Types.IsStruct(type))
         {
-            var structName = function.InputName ?? "it";
-            _locals.Add(structName, new RuntimeStruct(structType, ""));
-            _mutableLocals.Add(structName);
-            _borrowedMutableLocals.Add(structName);
-            _mutableStructSlots.Add(structName, "%it");
+            _locals.Add(name, new RuntimeStruct(type, ""));
+            _mutableLocals.Add(name);
+            _borrowedMutableLocals.Add(name);
+            _mutableStructSlots.Add(name, argumentName);
             return;
         }
 
-        if (function.InputType is not (BoundType.DynamicIntArray or BoundType.IntDictionary or BoundType.Arena)
-            && (function.InputType is not { } dynamicType || !_program.Types.IsDynamicArray(dynamicType))
-            && (function.InputType is not { } mutableType || !_program.Types.IsDictionary(mutableType)))
+        if (type is not (BoundType.DynamicIntArray or BoundType.IntDictionary or BoundType.Arena)
+            && !_program.Types.IsDynamicArray(type)
+            && !_program.Types.IsDictionary(type))
         {
             throw new SmallLangException("unsupported mutable borrow input type");
         }
 
         var pointerAddress = NextTemp("param_mut_ptr_addr");
-        EmitAssign(pointerAddress, "extractvalue %smalllang.mutable_container %it, 0");
+        EmitAssign(pointerAddress, $"extractvalue %smalllang.mutable_container {argumentName}, 0");
         var lengthAddress = NextTemp("param_mut_len_addr");
-        EmitAssign(lengthAddress, "extractvalue %smalllang.mutable_container %it, 1");
+        EmitAssign(lengthAddress, $"extractvalue %smalllang.mutable_container {argumentName}, 1");
         var capacityAddress = NextTemp("param_mut_capacity_addr");
-        EmitAssign(capacityAddress, "extractvalue %smalllang.mutable_container %it, 2");
+        EmitAssign(capacityAddress, $"extractvalue %smalllang.mutable_container {argumentName}, 2");
 
-        var name = function.InputName ?? "it";
         RuntimeValue mutableValue;
-        if (function.InputType is { } genericArray && _program.Types.IsDynamicArray(genericArray))
+        if (_program.Types.IsDynamicArray(type))
         {
-            var definition = _program.Types.GetDynamicArray(genericArray);
+            var definition = _program.Types.GetDynamicArray(type);
             mutableValue = new RuntimeDynamicInlineArray(
-                genericArray, definition.ElementType, "", "", "");
+                type, definition.ElementType, "", "", "");
         }
-        else if (function.InputType is { } genericDictionary && _program.Types.IsDictionary(genericDictionary))
+        else if (_program.Types.IsDictionary(type))
         {
-            var definition = _program.Types.GetDictionary(genericDictionary);
+            var definition = _program.Types.GetDictionary(type);
             mutableValue = new RuntimeInlineDictionary(
-                genericDictionary, definition.KeyType, definition.ValueType, "", "", "");
+                type, definition.KeyType, definition.ValueType, "", "", "");
         }
         else
         {
-            mutableValue = function.InputType switch
+            mutableValue = type switch
             {
                 BoundType.DynamicIntArray => new RuntimeDynamicIntArray("", "", ""),
                 BoundType.IntDictionary => new RuntimeIntDictionary("", "", ""),

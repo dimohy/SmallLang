@@ -1,0 +1,1 @@
+function 'weighted' parameter 'scale' expects Int but received Text

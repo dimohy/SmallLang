@@ -1213,6 +1213,61 @@ emitCore context: move EmitContext -> Unit uses Console {
     sourceNode node: typedIr.TypedIrNode -> ast.AstNode {
         context.nodes[context.ranges[node.sourceModule].astStart + node.astNode]
     }
+    findAdditionalParameterOrdinal parameterIndex: Int, symbol: Int, candidateOrdinal: Int -> Int {
+        symbol => ordinalSymbol
+        candidateOrdinal => ordinalCandidate
+        parameterIndex < 0 -> if { -1 } else {
+            context.ir[parameterIndex] => parameter
+            parameter.symbol == ordinalSymbol -> if { ordinalCandidate } else {
+                parameter.nextOperand -> findAdditionalParameterOrdinal(ordinalSymbol, ordinalCandidate + 1)
+            }
+        }
+    }
+    additionalParameterOrdinal functionIndex: Int, symbol: Int -> Int {
+        context.ir[functionIndex].nextOperand -> findAdditionalParameterOrdinal(symbol, 1)
+    }
+    writeCallArgument argumentIndex: Int, ownerIndex: Int -> Unit uses Console {
+        ownerIndex => callOwnerIndex
+        context.ir[argumentIndex] => argument
+        argument -> writeIrType
+        " " -> print
+        argument.kind == 2 -> if {
+            (callOwnerIndex >= 0 and context.ir[callOwnerIndex].kind == 0) -> if {
+                "%v$(argumentIndex)" -> print
+            } else {
+                argument -> sourceToken => textArgumentToken
+                Int(TextLiteralRequest { sourceModule: argument.sourceModule, token: textArgumentToken } -> textLiteralLength) => textArgumentLength
+                "{ ptr @sl_str_$(argumentIndex), i64 $textArgumentLength }" -> print
+            }
+        } else {
+            (argument.kind == 3 or argument.kind == 4) -> if {
+                argument -> sourceToken => literalArgumentToken
+                argument.kind == 3 -> if {
+                    context.sources[argument.sourceModule] -> slice(literalArgumentToken.span.start, literalArgumentToken.span.length) -> print
+                } else {
+                    ((context.sources[argument.sourceModule] -> byte(literalArgumentToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
+                }
+            } else {
+                false => primaryParameterArgument!
+                (callOwnerIndex >= 0 and context.ir[callOwnerIndex].kind == 0 and context.ir[callOwnerIndex].operand1 >= 0 and argument.kind == 5 and argument.symbol == context.ir[context.ir[callOwnerIndex].operand1].symbol) -> if { true => primaryParameterArgument! }
+                primaryParameterArgument! -> if { "%arg" -> print } else { "%v$(argumentIndex)" -> print }
+            }
+        }
+    }
+    emitCallArgumentChain argumentIndex: Int, callIndex: Int, ownerIndex: Int, separator: Bool -> Unit uses Console {
+        callIndex => chainCallIndex
+        ownerIndex => chainOwnerIndex
+        separator => chainSeparator
+        (argumentIndex >= 0 and context.ir[argumentIndex].parent == chainCallIndex) -> if {
+            chainSeparator -> if { ", " -> print }
+            argumentIndex -> writeCallArgument(chainOwnerIndex)
+            context.ir[argumentIndex].nextOperand -> emitCallArgumentChain(chainCallIndex, chainOwnerIndex, true)
+        }
+    }
+    emitCallArguments callIndex: Int, ownerIndex: Int -> Unit uses Console {
+        context.ir[callIndex] => call
+        call.operand0 -> emitCallArgumentChain(callIndex, ownerIndex, false)
+    }
     sourceStart node: typedIr.TypedIrNode -> UIntSize {
         context.nodes[context.ranges[node.sourceModule].astStart + node.astNode].start
     }
@@ -3611,6 +3666,13 @@ emitCore context: move EmitContext -> Unit uses Console {
                                         }
                                         (localSecondBelongs! and not localScheduled![localCandidate.operand1 - regionLocalStart]) -> if { false => localReady! }
                                     }
+                                    (localCandidate.kind == 9 and localCandidate.operand0 >= 0) -> if {
+                                        localCandidate.operand0 => localCallArgument!
+                                        (localCallArgument! >= regionLocalStart and localCallArgument! < regionLocalEnd and context.ir[localCallArgument!].parent == localCandidateIndex!) -> while {
+                                            not localScheduled![localCallArgument! - regionLocalStart] -> if { false => localReady! }
+                                            context.ir[localCallArgument!].nextOperand => localCallArgument!
+                                        }
+                                    }
                                     (localCandidate.kind == 9 and localCandidate.opcode == -203 and localCandidate.operand1 >= 0 and context.ir[localCandidate.operand1].nextOperand >= 0) -> if {
                                         context.ir[localCandidate.operand1].nextOperand => localSliceLength!
                                         context.ir[localSliceLength!].parent => localSliceLengthAncestor!
@@ -3866,6 +3928,13 @@ emitCore context: move EmitContext -> Unit uses Console {
                 "  %v$(regionNodeIndex!) = insertvalue %sl.text %v$(regionNodeIndex!)_ptr, i64 $regionTextLength, 1" -> println
             }
             (regionNode.kind == 5 and not (regionNode.typeOrigin == 1 and regionNode.typeSymbol == 16) and ownerIndex! >= 0 and not (context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionNode.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol)) -> if {
+                regionNode.symbol => regionParameterSymbol
+                ownerIndex! -> additionalParameterOrdinal(regionParameterSymbol) => regionParameterOrdinal
+                regionParameterOrdinal >= 0 -> if {
+                    "  %v$(regionNodeIndex!) = freeze " -> print
+                    regionNode -> writeIrType
+                    " %arg$(regionParameterOrdinal)" -> println
+                } else {
                 -1 => regionBindingIndex!
                 (regionNode.operand0 >= 0 and (context.ir[regionNode.operand0].kind == 17 or context.ir[regionNode.operand0].kind == 29)) -> if { regionNode.operand0 => regionBindingIndex! }
                 regionBindingIndex! >= 0 -> if {
@@ -3895,6 +3964,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                         "" -> println
                     }
                     }
+                }
                 }
             }
             (regionNode.kind == 17 and regionNode.flags == 1) -> if {
@@ -4939,19 +5009,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                     regionNode -> writeIrType
                     " @sl_m$(regionNode.targetModule)_s$(regionNode.symbol)(" -> print
                     CallEnvironmentRequest { callerIndex: ownerIndex!, callIndex: regionNodeIndex!, targetModule: regionNode.targetModule, targetSymbol: regionNode.symbol, hasArgument: regionNode.operand0 >= 0 } -> emitCallEnvironment => regionCallEnvironment
-                    regionNode.operand0 >= 0 -> if {
-                        context.ir[regionNode.operand0] => regionCallArgument
-                        regionCallArgument -> writeIrType
-                        " " -> print
-                        (regionCallArgument.kind == 3 or regionCallArgument.kind == 4) -> if {
-                            regionCallArgument -> sourceToken => regionCallToken
-                            regionCallArgument.kind == 3 -> if { context.sources[regionCallArgument.sourceModule] -> slice(regionCallToken.span.start, regionCallToken.span.length) -> print } else {
-                                ((context.sources[regionCallArgument.sourceModule] -> byte(regionCallToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
-                            }
-                        } else {
-                            (ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionCallArgument.kind == 5 and regionCallArgument.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
-                        }
-                    }
+                    regionNodeIndex! -> emitCallArguments(ownerIndex!)
                     ")" -> println
                 }
             }
@@ -5201,13 +5259,24 @@ emitCore context: move EmitContext -> Unit uses Console {
                 context.ir[currentFunctionCaptures![functionCaptureParameterIndex!]] => functionCaptureParameter
                 functionCaptureParameter -> ownsType -> if { "ptr" -> print } else { functionCaptureParameter -> writeIrType }
                 " %capture_$(functionCaptureParameterIndex!)" -> print
-                (functionCaptureParameterIndex! + 1 < (currentFunctionCaptures! -> len) or function.operand1 >= 0) -> if { ", " -> print }
+                (functionCaptureParameterIndex! + 1 < (currentFunctionCaptures! -> len) or function.operand1 >= 0 or function.nextOperand >= 0) -> if { ", " -> print }
                 functionCaptureParameterIndex! + 1 => functionCaptureParameterIndex!
             }
             function.operand1 >= 0 -> if {
                 context.ir[function.operand1] => parameter
                 parameter -> writeIrType
                 " %arg" -> print
+                function.nextOperand >= 0 -> if { ", " -> print }
+            }
+            function.nextOperand => additionalSignatureParameterIndex!
+            1 => additionalSignatureParameterOrdinal!
+            additionalSignatureParameterIndex! >= 0 -> while {
+                context.ir[additionalSignatureParameterIndex!] => additionalSignatureParameter
+                additionalSignatureParameter -> writeIrType
+                " %arg$(additionalSignatureParameterOrdinal!)" -> print
+                additionalSignatureParameter.nextOperand >= 0 -> if { ", " -> print }
+                additionalSignatureParameter.nextOperand => additionalSignatureParameterIndex!
+                additionalSignatureParameterOrdinal! + 1 => additionalSignatureParameterOrdinal!
             }
             ") {" -> println
             "entry:" -> println
@@ -5376,6 +5445,13 @@ emitCore context: move EmitContext -> Unit uses Console {
                         }
                         (scheduleReady! and scheduleNode.operand0 >= expressionStart and scheduleNode.operand0 < functionEnd! and (scheduleNode.kind != 5 or context.ir[scheduleNode.operand0].flags % 2 == 0) and not expressionScheduled![scheduleNode.operand0 - expressionStart]) -> if { false => scheduleReady! }
                         (scheduleReady! and scheduleNode.kind != 6 and scheduleNode.kind != 18 and scheduleNode.kind != 20 and scheduleNode.operand1 >= expressionStart and scheduleNode.operand1 < functionEnd! and not expressionScheduled![scheduleNode.operand1 - expressionStart]) -> if { false => scheduleReady! }
+                        (scheduleReady! and scheduleNode.kind == 9 and scheduleNode.operand0 >= expressionStart) -> if {
+                            scheduleNode.operand0 => scheduleCallArgument!
+                            (scheduleCallArgument! >= expressionStart and scheduleCallArgument! < functionEnd! and context.ir[scheduleCallArgument!].parent == scheduleCandidate!) -> while {
+                                not expressionScheduled![scheduleCallArgument! - expressionStart] -> if { false => scheduleReady! }
+                                context.ir[scheduleCallArgument!].nextOperand => scheduleCallArgument!
+                            }
+                        }
                         (scheduleReady! and (scheduleNode.kind == 9 or scheduleNode.kind == 6) and scheduleNode.opcode == -203 and scheduleNode.operand1 >= 0 and context.ir[scheduleNode.operand1].nextOperand >= expressionStart and context.ir[scheduleNode.operand1].nextOperand < functionEnd! and not expressionScheduled![context.ir[scheduleNode.operand1].nextOperand - expressionStart]) -> if { false => scheduleReady! }
                         (scheduleReady! and scheduleNode.kind == 9 and (scheduleNode.opcode == -204 or scheduleNode.opcode == -213) and scheduleNode.operand1 >= 0) -> if {
                             scheduleNode.operand1 -> aggregateValueIndex => schedulePushValue
@@ -5512,6 +5588,13 @@ emitCore context: move EmitContext -> Unit uses Console {
                 expressionOrder![expressionOrderIndex!] => expressionIndex!
                 context.ir[expressionIndex!] => expression
                 (expression.kind == 5 and not (expression.typeOrigin == 1 and expression.typeSymbol == 16) and not (function.operand1 >= 0 and expression.symbol == context.ir[function.operand1].symbol)) -> if {
+                    expression.symbol => expressionParameterSymbol
+                    functionIndex! -> additionalParameterOrdinal(expressionParameterSymbol) => expressionParameterOrdinal
+                    expressionParameterOrdinal >= 0 -> if {
+                        "  %v$(expressionIndex!) = freeze " -> print
+                        expression -> writeIrType
+                        " %arg$(expressionParameterOrdinal)" -> println
+                    } else {
                     -1 => bindingValueIr!
                     (expression.operand0 >= 0 and (context.ir[expression.operand0].kind == 17 or context.ir[expression.operand0].kind == 29)) -> if { expression.operand0 => bindingValueIr! }
                     bindingValueIr! >= 0 -> if {
@@ -5541,6 +5624,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                             "" -> println
                         }
                         }
+                    }
                     }
                 }
                 ((expression.kind == 9 or expression.kind == 6) and expression.opcode == -201 and expression.operand0 >= 0) -> if {
@@ -6817,21 +6901,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                     expression -> writeIrType
                     " @sl_m$(expression.targetModule)_s$(expression.symbol)(" -> print
                     CallEnvironmentRequest { callerIndex: functionIndex!, callIndex: expressionIndex!, targetModule: expression.targetModule, targetSymbol: expression.symbol, hasArgument: expression.operand0 >= 0 } -> emitCallEnvironment => functionCallEnvironment
-                    expression.operand0 >= 0 -> if {
-                        context.ir[expression.operand0] => argument
-                        argument -> writeIrType
-                        " " -> print
-                        (argument.kind == 3 or argument.kind == 4) -> if {
-                            argument -> sourceToken => argumentToken
-                            argument.kind == 3 -> if {
-                                context.sources[argument.sourceModule] -> slice(argumentToken.span.start, argumentToken.span.length) -> print
-                            } else {
-                                ((context.sources[argument.sourceModule] -> byte(argumentToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
-                            }
-                        } else {
-                            (argument.kind == 5 and function.operand1 >= 0 and argument.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
-                        }
-                    }
+                    expressionIndex! -> emitCallArguments(functionIndex!)
                     ")" -> println
                     }
                     }
@@ -7676,6 +7746,13 @@ emitCore context: move EmitContext -> Unit uses Console {
                             (entryInsideControlRegion! or entryScheduleNode.kind == 19) -> if { false => entryScheduleReady! }
                             (entryScheduleReady! and entryScheduleNode.operand0 > functionIndex! and entryScheduleNode.operand0 < entryEnd! and (entryScheduleNode.kind != 5 or context.ir[entryScheduleNode.operand0].flags % 2 == 0) and not entryScheduled![entryScheduleNode.operand0 - functionIndex! - 1]) -> if { false => entryScheduleReady! }
                             (entryScheduleReady! and entryScheduleNode.kind != 6 and entryScheduleNode.kind != 18 and entryScheduleNode.kind != 20 and entryScheduleNode.operand1 > functionIndex! and entryScheduleNode.operand1 < entryEnd! and not entryScheduled![entryScheduleNode.operand1 - functionIndex! - 1]) -> if { false => entryScheduleReady! }
+                            (entryScheduleReady! and entryScheduleNode.kind == 9 and entryScheduleNode.operand0 > functionIndex!) -> if {
+                                entryScheduleNode.operand0 => entryScheduleCallArgument!
+                                (entryScheduleCallArgument! > functionIndex! and entryScheduleCallArgument! < entryEnd! and context.ir[entryScheduleCallArgument!].parent == entryScheduleCandidate!) -> while {
+                                    not entryScheduled![entryScheduleCallArgument! - functionIndex! - 1] -> if { false => entryScheduleReady! }
+                                    context.ir[entryScheduleCallArgument!].nextOperand => entryScheduleCallArgument!
+                                }
+                            }
                             (entryScheduleReady! and (entryScheduleNode.kind == 9 or entryScheduleNode.kind == 6) and entryScheduleNode.opcode == -203 and entryScheduleNode.operand1 >= 0 and context.ir[entryScheduleNode.operand1].nextOperand > functionIndex! and context.ir[entryScheduleNode.operand1].nextOperand < entryEnd! and not entryScheduled![context.ir[entryScheduleNode.operand1].nextOperand - functionIndex! - 1]) -> if { false => entryScheduleReady! }
                             (entryScheduleReady! and entryScheduleNode.kind == 9 and (entryScheduleNode.opcode == -204 or entryScheduleNode.opcode == -213) and entryScheduleNode.operand1 >= 0) -> if {
                                 entryScheduleNode.operand1 -> aggregateValueIndex => entrySchedulePushValue
@@ -8530,25 +8607,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                         (entryExpression.typeOrigin == 1 and entryExpression.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(entryExpressionIndex!) = call " -> print }
                         entryExpression -> writeIrType
                         " @sl_m$(entryExpression.targetModule)_s$(entryExpression.symbol)(" -> print
-                        entryExpression.operand0 >= 0 -> if {
-                            context.ir[entryExpression.operand0] => entryArgument
-                            entryArgument -> writeIrType
-                            " " -> print
-                            entryArgument.kind == 2 -> if {
-                                entryArgument -> sourceToken => entryArgumentToken
-                                Int(TextLiteralRequest { sourceModule: entryArgument.sourceModule, token: entryArgumentToken } -> textLiteralLength) => entryArgumentLength
-                                "{ ptr @sl_str_$(entryExpression.operand0), i64 $entryArgumentLength }" -> print
-                            } else {
-                            (entryArgument.kind == 3 or entryArgument.kind == 4) -> if {
-                                entryArgument -> sourceToken => entryArgumentToken
-                                entryArgument.kind == 3 -> if {
-                                    context.sources[entryArgument.sourceModule] -> slice(entryArgumentToken.span.start, entryArgumentToken.span.length) -> print
-                                } else {
-                                    ((context.sources[entryArgument.sourceModule] -> byte(entryArgumentToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
-                                }
-                            } else { "%v$(entryExpression.operand0)" -> print }
-                            }
-                        }
+                        entryExpressionIndex! -> emitCallArguments(functionIndex!)
                         ")" -> println
                         }
                         }

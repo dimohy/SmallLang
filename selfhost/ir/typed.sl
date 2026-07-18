@@ -365,7 +365,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                 0 => parameterSearch!
                 parameterSearch! < sourceRange.symbolCount -> while {
                     prepared.package.symbols[sourceRange.symbolStart + parameterSearch!] => parameterCandidate
-                    (parameterSymbol! < 0 and parameterCandidate.kind == 35 and parameterCandidate.parent == symbolIndex!) -> if { parameterSearch! => parameterSymbol! }
+                    (parameterSymbol! < 0 and parameterCandidate.kind == 35 and parameterCandidate.parent == symbolIndex! and parameterCandidate.astNode == function.astNode) -> if { parameterSearch! => parameterSymbol! }
                     parameterSearch! + 1 => parameterSearch!
                 }
                 parameterSymbol! >= 0 -> if {
@@ -539,6 +539,102 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         nextOperand: -1
                         flags: parameter.flags
                     })
+                }
+                -1 => firstAdditionalParameterIr!
+                -1 => previousAdditionalParameterIr!
+                0 => additionalParameterSearch!
+                additionalParameterSearch! < sourceRange.symbolCount -> while {
+                    prepared.package.symbols[sourceRange.symbolStart + additionalParameterSearch!] => additionalParameter
+                    (additionalParameter.kind == 35 and additionalParameter.parent == symbolIndex! and additionalParameter.astNode != function.astNode) -> if {
+                        -1 => additionalParameterTypeId!
+                        0 => additionalParameterReferenceSearch!
+                        additionalParameterReferenceSearch! < (recursiveTypes.references -> len) -> while {
+                            recursiveTypes.references[additionalParameterReferenceSearch!] => additionalParameterReference
+                            (additionalParameterReference.status == 0 and additionalParameterReference.sourceModule == sourceIndex! and additionalParameterReference.typeAst == additionalParameter.typeNode) -> if {
+                                additionalParameterReference.typeId => additionalParameterTypeId!
+                            }
+                            additionalParameterReferenceSearch! + 1 => additionalParameterReferenceSearch!
+                        }
+                        -1 => additionalParameterOrigin!
+                        -1 => additionalParameterModule!
+                        -1 => additionalParameterTypeSymbol!
+                        -1 => additionalParameterTypeKind!
+                        0 => additionalParameterTypeFlags!
+                        additionalParameterTypeId! >= 0 -> if {
+                            recursiveSemanticTypes![additionalParameterTypeId!] => additionalParameterType
+                            additionalParameterType.origin => additionalParameterOrigin!
+                            additionalParameterType.module => additionalParameterModule!
+                            additionalParameterType.symbol => additionalParameterTypeSymbol!
+                            additionalParameterType.kind => additionalParameterTypeKind!
+                            recursiveTypeFlags![additionalParameterTypeId!] => additionalParameterTypeFlags!
+                            additionalParameterType.kind != 1 -> if {
+                                10 + additionalParameterType.kind => additionalParameterOrigin!
+                                additionalParameterType.first >= 0 -> if {
+                                    recursiveSemanticTypes![additionalParameterType.first] => additionalParameterElement
+                                    additionalParameterElement.module => additionalParameterModule!
+                                    additionalParameterElement.symbol => additionalParameterTypeSymbol!
+                                }
+                            }
+                        }
+                        additionalParameterOrigin! < 0 -> if {
+                            0 => additionalParameterNominalSearch!
+                            additionalParameterNominalSearch! < (prepared.nominal -> len) -> while {
+                                prepared.nominal[additionalParameterNominalSearch!] => additionalParameterNominal
+                                (additionalParameterNominal.sourceModule == sourceIndex! and additionalParameterNominal.typeAst == additionalParameter.typeNode) -> if {
+                                    additionalParameterNominal.origin => additionalParameterOrigin!
+                                    additionalParameterNominal.targetModule => additionalParameterModule!
+                                    additionalParameterNominal.targetSymbol => additionalParameterTypeSymbol!
+                                }
+                                additionalParameterNominalSearch! + 1 => additionalParameterNominalSearch!
+                            }
+                        }
+                        additionalParameterOrigin! < 0 -> if {
+                            0 => additionalParameterCompositeSearch!
+                            additionalParameterCompositeSearch! < (prepared.composite -> len) -> while {
+                                prepared.composite[additionalParameterCompositeSearch!] => additionalParameterComposite
+                                (additionalParameterComposite.sourceModule == sourceIndex! and additionalParameterComposite.typeAst == additionalParameter.typeNode) -> if {
+                                    10 + additionalParameterComposite.kind => additionalParameterOrigin!
+                                    additionalParameterComposite.elementModule => additionalParameterModule!
+                                    additionalParameterComposite.elementSymbol => additionalParameterTypeSymbol!
+                                }
+                                additionalParameterCompositeSearch! + 1 => additionalParameterCompositeSearch!
+                            }
+                        }
+                        results! -> len => additionalParameterIr
+                        firstAdditionalParameterIr! < 0 -> if { additionalParameterIr => firstAdditionalParameterIr! }
+                        previousAdditionalParameterIr! >= 0 -> if {
+                            results![previousAdditionalParameterIr!] => previousAdditionalParameter!
+                            additionalParameterIr => previousAdditionalParameter!.nextOperand
+                            previousAdditionalParameter! => results![previousAdditionalParameterIr!]
+                        }
+                        results! -> push(TypedIrNode {
+                            kind: 10
+                            parent: functionIr!
+                            sourceModule: sourceIndex!
+                            astNode: additionalParameter.astNode
+                            symbol: additionalParameterSearch!
+                            targetModule: sourceIndex!
+                            typeOrigin: additionalParameterOrigin!
+                            typeModule: additionalParameterModule!
+                            typeSymbol: additionalParameterTypeSymbol!
+                            typeId: additionalParameterTypeId!
+                            typeKind: additionalParameterTypeKind!
+                            typeFlags: additionalParameterTypeFlags!
+                            payloadToken: additionalParameter.nameToken
+                            opcode: -1
+                            operand0: -1
+                            operand1: -1
+                            nextOperand: -1
+                            flags: additionalParameter.flags
+                        })
+                        additionalParameterIr => previousAdditionalParameterIr!
+                    }
+                    additionalParameterSearch! + 1 => additionalParameterSearch!
+                }
+                firstAdditionalParameterIr! >= 0 -> if {
+                    results![functionIr!] => parameterizedFunction!
+                    firstAdditionalParameterIr! => parameterizedFunction!.nextOperand
+                    parameterizedFunction! => results![functionIr!]
                 }
 
                 [Int; ~] => astToIr!
