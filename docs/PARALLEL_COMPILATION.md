@@ -108,13 +108,13 @@ Evidence: `selfhost/semantic/analysis.sl`; examples 182, 293, and 294.
 - [x] Non-sendable captures and mutable borrows are rejected.
 - [x] Owned callback results transfer exactly once.
 
-### C. Native compute task group (4/7)
+### C. Native compute task group (5/7)
 
 - [x] Windows pool uses bounded reusable native workers.
 - [ ] Linux pool uses bounded reusable native workers.
 - [x] The available processor count and explicit build override are supported.
 - [x] Workers claim indices atomically without a global result lock.
-- [ ] Parent-assisted waiting and structured join are implemented.
+- [x] Parent-assisted waiting and structured join are implemented.
 - [ ] Cancellation and partial-result destruction are exactly once.
 - [x] File-operation waiting remains outside the compute pool.
 
@@ -156,7 +156,7 @@ Evidence: example 324 executes `block item: Int -> Int`; example 325 proves the
 self-host grammar/parser accepts the same declaration and call form. The two
 `block-callback-result-*` diagnostics cover missing and mismatched results.
 
-Parallel-compilation progress is **24/28 checks (85.7%)**. This is a feature-local
+Parallel-compilation progress is **25/28 checks (89.3%)**. This is a feature-local
 metric and does not promote the canonical self-host roadmap, which remains
 **48.5/60 equivalent gates (80.8%)** until a full checklist audit proves a gate.
 
@@ -178,12 +178,22 @@ worker instrumentation, and the self-host `SourceAnalysis` boundary.
 Example 377 proves 100 generations of borrowed `SourceText` input and owned
 struct/array output through native workers. Example 378 proves an explicit
 positive worker limit, while the driver reports the effective count as a valid
-LLVM comment. The complete 28-source self-host compiler reached an exact
-stage-2/stage-3 fixed point of 7,195,817 bytes with SHA-256
-`B57FB15B373CB0348EB16EAA7B1727D56D3B382F5FA5E01C1FF0280F3BCA7410`;
+LLVM comment. Example 381 limits the pool to one native worker and observes a
+peak of two active callbacks, proving that the submitting parent claims work
+instead of idling. The parent exhausts the same atomic index queue, waits for
+all native workers, and only then flushes ordered sinks and destroys the group.
+This follows the helping-wait pattern documented by Java `ForkJoinPool` and
+oneTBB task groups.
+
+- [Java `ForkJoinPool.awaitQuiescence`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ForkJoinPool.html#awaitQuiescence(long,java.util.concurrent.TimeUnit))
+- [oneTBB `task_group`](https://uxlfoundation.github.io/oneTBB/main/specification/source/task_scheduler/task_group/task_group_cls.html)
+
+The complete 28-source self-host compiler reached an exact
+stage-2/stage-3 fixed point of 7,198,336 bytes with SHA-256
+`CBCED4918D9AF37C71AF792D99016A27C2F4CC9D4407CD123CD866BF32DB555F`;
 the stage-3 output also assembles with `llvm-as`. The preceding source-worker
 measurement used 377.77 CPU-seconds over 34.81 seconds wall time (10.85
-effective cores). The capture-safety fixed-point run used 400.38 CPU-seconds
-over 38.50 seconds wall time (10.40 effective cores) and peaked at 77.5 MiB,
-below the 100 MiB frontend budget.
+effective cores). The parent-help fixed-point run used 376.91 CPU-seconds over
+34.56 seconds wall time (10.91 effective cores). The earlier capture-safety run
+peaked at 77.5 MiB, below the 100 MiB frontend budget.
 Linux full-suite parity remains the outstanding platform check.

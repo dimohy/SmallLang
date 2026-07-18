@@ -7496,6 +7496,27 @@ emitWindowsComputeRuntime: -> Unit uses Console {
       %reset = call i32 @ResetEvent(ptr %event)
       %semaphore = load ptr, ptr @smalllang_compute_semaphore, align 8
       %released = call i32 @ReleaseSemaphore(ptr %semaphore, i32 %workers, ptr null)
+      br label %help_claim
+    help_claim:
+      %help_index = atomicrmw add ptr @smalllang_compute_next, i64 1 acq_rel
+      %help_has_work = icmp ult i64 %help_index, %count
+      br i1 %help_has_work, label %help_work, label %help_wait
+    help_work:
+      %help_callback_slot = getelementptr %smalllang.compute_group, ptr %group, i32 0, i32 0
+      %help_callback = load ptr, ptr %help_callback_slot, align 8
+      %help_sinks_slot = getelementptr %smalllang.compute_group, ptr %group, i32 0, i32 5
+      %help_sinks = load ptr, ptr %help_sinks_slot, align 8
+      %help_sink = getelementptr %smalllang.output_sink, ptr %help_sinks, i64 %help_index
+      %help_tls_index = load i32, ptr @smalllang_output_sink_tls, align 4
+      %help_tls_set = call i32 @TlsSetValue(i32 %help_tls_index, ptr %help_sink)
+      %help_running_before = atomicrmw add ptr @smalllang_compute_running, i32 1 acq_rel
+      %help_running_now = add i32 %help_running_before, 1
+      %help_peak_before = atomicrmw max ptr @smalllang_compute_peak, i32 %help_running_now acq_rel
+      call void %help_callback(ptr %group, i64 %help_index)
+      %help_tls_clear = call i32 @TlsSetValue(i32 %help_tls_index, ptr null)
+      %help_running_after = atomicrmw sub ptr @smalllang_compute_running, i32 1 acq_rel
+      br label %help_claim
+    help_wait:
       %waited = call i32 @WaitForSingleObject(ptr %event, i32 -1)
       br label %await_departure
     await_departure:

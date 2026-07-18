@@ -20,7 +20,7 @@ $multiLibrarySource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures
 $multiMainSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-main-smoke.sl"
 $groupedNotSource = Join-Path $repoRoot "tests\SmallLang.ExampleTests\Fixtures\selfhost-stage2-grouped-not-smoke.sl"
 $semanticContextSource = Join-Path $repoRoot "selfhost\semantic\context.sl"
-$expectedStage2Bytes = 7195817L
+$expectedStage2Bytes = 7198336L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 

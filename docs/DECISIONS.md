@@ -5704,3 +5704,43 @@ SHA-256 `B57FB15B373CB0348EB16EAA7B1727D56D3B382F5FA5E01C1FF0280F3BCA7410`;
 
 Typed-role coverage is now 5/5 and the parallel subproject is 24/28 (85.7%).
 The canonical self-host roadmap remains 48.5/60 equivalent gates (80.8%).
+
+## D178 - Let the Submitting Parent Help Before Structured Join
+
+Status: implemented and fixed-point verified
+Date: 2026-07-18
+
+Submitting a compute group no longer releases the native workers and then
+immediately blocks. The parent claims unassigned indices from the same atomic
+queue and executes callbacks until no claim remains. It then waits for native
+worker completion and barrier departure before ordered sink flush, group
+destruction, and return. Native worker count remains an explicit pool-size
+metric, while peak active callbacks includes the helping parent.
+
+The C# reference backend and self-host LLVM runtime implement the same contract.
+The self-host parent binds each claimed index's memory output sink in TLS before
+calling the callback and clears it afterward, so parent and worker output still
+merge deterministically by source index. The parent is not included in the
+native-worker completion counter; this preserves the existing worker barrier
+and makes the join boundary unambiguous. Reentrant nested compute groups remain
+outside this decision because the runtime still publishes one current group.
+
+This design follows the established helping-wait principle: Java
+`ForkJoinPool.awaitQuiescence` may assist task execution while waiting, and a
+oneTBB thread waiting for a task group may participate in scheduled work.
+
+- [Java `ForkJoinPool.awaitQuiescence`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ForkJoinPool.html#awaitQuiescence(long,java.util.concurrent.TimeUnit))
+- [oneTBB `task_group`](https://uxlfoundation.github.io/oneTBB/main/specification/source/task_scheduler/task_group/task_group_cls.html)
+
+Example 381 limits the pool to one native worker and observes two active
+callbacks, directly proving parent participation. The Release build has zero
+warnings/errors, the complete Windows suite passes 506/506, and the six-step
+stage-2 differential verifier passes. Stage 2 and stage 3 are byte-identical at
+7,198,336 bytes with SHA-256
+`CBCED4918D9AF37C71AF792D99016A27C2F4CC9D4407CD123CD866BF32DB555F`;
+`llvm-as` accepts stage 3. The measured stage-3 run took 34.56 seconds wall and
+376.91 CPU-seconds (10.91 effective cores).
+
+Native compute-task-group coverage is now 5/7 and the parallel subproject is
+25/28 (89.3%). The canonical self-host roadmap remains 48.5/60 equivalent gates
+(80.8%).

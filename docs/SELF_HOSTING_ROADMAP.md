@@ -119,13 +119,14 @@ not lines of code.
 
 Current count-based progress: **80.8% (48.5 of 60 equivalent gates)**.
 
-The frontend parallel-compilation subproject is **24/28 checks (85.7%)**. Its
+The frontend parallel-compilation subproject is **25/28 checks (89.3%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
 identity regression, Windows native compute pool, and source-local parallel
 frontend execution are complete. Owned source-analysis results and ordered
 LLVM-body sinks now cross worker boundaries safely, and parallel callbacks
-reject mutable or structurally non-sendable captures. Linux parity and task
-group completion semantics remain pending. This subproject does
+reject mutable or structurally non-sendable captures. The submitting parent now
+helps drain its task group before the structured join. Linux parity and exact
+cancellation/partial-result destruction remain pending. This subproject does
 not promote a roadmap gate yet.
 There are **11.5 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
@@ -965,9 +966,13 @@ source-analysis boundary.
 
 The capture-safety fixed-point run completed stage 3 in 38.50 seconds with
 400.38 CPU-seconds (10.40 effective cores) and a 77.5 MiB peak working set.
-The full Windows regression passes 505/505. The canonical roadmap remains
-48.5/60 (80.8%) because this closes a feature-local parallel checklist item,
-not an additional top-level gate.
+The parent-assisted join revision reaches an exact 7,198,336-byte fixed point
+with SHA-256
+`CBCED4918D9AF37C71AF792D99016A27C2F4CC9D4407CD123CD866BF32DB555F`.
+Its stage-3 run took 34.56 seconds wall and 376.91 CPU-seconds (10.91 effective
+cores), and the full Windows regression passes 506/506. The canonical roadmap
+remains 48.5/60 (80.8%) because this closes a feature-local parallel checklist
+item, not an additional top-level gate.
 
 ## Immediate Implementation Order
 
