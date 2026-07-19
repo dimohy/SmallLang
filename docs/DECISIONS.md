@@ -7045,3 +7045,55 @@ Research basis:
 D207C is now **2/5 (40%)**, and the periodic Stage3 cadence advances to 8/10.
 The formal roadmap remains **47 complete, 9 partial, 4 missing: 51.5/60
 (85.8%)** until ordinary builds load and merge reusable codegen units.
+
+## D207C3A - Persistent Codegen-Unit Contract and Canonical Merge
+
+Status: Windows and Linux Stage2 verified; D207C 2.5/5 complete
+Date: 2026-07-20
+
+Sollang now has a self-hosted persistent format for deterministic LLVM output
+fragments. An artifact contains exactly one shared prefix, zero or more module
+units, and exactly one shared suffix. Module records are ordered by stable path
+hash using an explicit unsigned `UInt64` comparison. The complete canonical
+namespace bytes are stored beside that hash and the decoder recomputes it; a
+lookup-hash collision or duplicate module is rejected rather than reused.
+
+Compatibility is explicit rather than inferred from filenames or timestamps.
+The envelope records compiler-schema, target, and build-configuration hashes;
+each module records interface and implementation hashes. LLVM bytes are packed
+little-endian at eight bytes per `UInt64`, with an exact byte length so fragments
+can be concatenated across non-word-aligned boundaries without expanding each
+byte to a 64-bit element. Validation checks declared lengths, canonical unit
+order, prefix/suffix cardinality, namespace bytes, recomputed module hashes,
+zero tail padding, per-fragment checksums, and a whole-envelope checksum before
+decode or merge.
+
+Example 436 constructs the same four units in different input and storage
+orders and requires byte-identical artifacts. It also verifies exact merged
+bytes, decode, target mismatch rejection, module-hash collision rejection, and
+payload corruption rejection. The Stage1 and Stage2 compiler drivers expose an
+`llvm-codegen-units` verification mode; Windows and Linux both require the
+shared result `codegen units = 0,2,6`.
+
+The partition follows rustc's model that a codegen unit is an independently
+reusable LLVM module boundary, while keeping Sollang's initial granularity at
+one stable unit per source module. The canonical merge follows `llvm-link`'s
+ordered-input model. Packed fragments and strict context identities prepare for
+a ThinLTO-style content-addressed cache without claiming ThinLTO itself. The
+next half, D207C3B, must route the actual emitter into prefix/module/suffix
+sinks, select validated old-generation fragments, and prove clean-vs-cached
+LLVM byte equality in ordinary builds.
+
+Primary references:
+
+- [rustc codegen unit partitioning](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_monomorphize/partitioning/index.html)
+- [rustc codegen-units trade-offs](https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units)
+- [LLVM llvm-link](https://llvm.org/docs/CommandGuide/llvm-link.html)
+- [LLVM ThinLTO](https://clang.llvm.org/docs/ThinLTO.html)
+- [Clang modules](https://clang.llvm.org/docs/Modules.html)
+- [Swift 5.2 incremental compilation architecture](https://www.swift.org/blog/swift-5.2-released/)
+
+D207C is now **2.5/5 (50%)**, and the periodic Stage3 cadence advances to
+**9/10**. The formal roadmap remains **47 complete, 9 partial, 4 missing:
+51.5/60 (85.8%)** because the ordinary emitter and build pipeline do not yet
+consume cached codegen units.

@@ -185,6 +185,18 @@ Assert-ProcessSucceeded $multiStage2 $multiStage2Error "Linux stage-2 multi-file
 $multiStage1Hash = Get-NormalizedHash $multiStage1Llvm
 $multiStage2Hash = Get-NormalizedHash $multiStage2Llvm
 if ($multiStage1Hash -ne $multiStage2Hash) { throw "Linux multi-file LLVM differs: stage1=$multiStage1Hash stage2=$multiStage2Hash" }
+$codegenStage1Output = Join-Path $artifactsDir "linux-stage2-check-codegen-units-stage1.txt"
+$codegenStage2Output = Join-Path $artifactsDir "linux-stage2-check-codegen-units-stage2.txt"
+$codegenStage1Error = Join-Path $artifactsDir "linux-stage2-check-codegen-units-stage1.err"
+$codegenStage2Error = Join-Path $artifactsDir "linux-stage2-check-codegen-units-stage2.err"
+$codegenStage1 = Invoke-ProcessToFile $stage1Path @("llvm-codegen-units") $codegenStage1Output $codegenStage1Error
+$codegenStage2 = Invoke-ProcessToFile "wsl.exe" @("-d", $Distribution, "--", (Convert-ToWslPath $stage2Path), "llvm-codegen-units") $codegenStage2Output $codegenStage2Error
+Assert-ProcessSucceeded $codegenStage1 $codegenStage1Error "Linux stage-1 canonical codegen units"
+Assert-ProcessSucceeded $codegenStage2 $codegenStage2Error "Linux stage-2 canonical codegen units"
+$codegenStage1Text = ([System.IO.File]::ReadAllText($codegenStage1Output)).Trim()
+$codegenStage2Text = ([System.IO.File]::ReadAllText($codegenStage2Output)).Trim()
+if ($codegenStage1Text -ne "codegen units = 0,2,6") { throw "Linux stage-1 canonical codegen units differed: $codegenStage1Text" }
+if ($codegenStage2Text -ne $codegenStage1Text) { throw "Linux stage-2 canonical codegen units differed: $codegenStage2Text" }
 Write-Host "[linux-stage2 4/5] PASS $multiStage2Hash"
 
 Write-Host "[linux-stage2 5/5] Assemble, link, and execute both Linux stage-2 products."

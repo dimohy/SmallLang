@@ -1,0 +1,2 @@
+examples/436-selfhost-canonical-codegen-units.slg
+selfhost/llvm/codegen_units.slg

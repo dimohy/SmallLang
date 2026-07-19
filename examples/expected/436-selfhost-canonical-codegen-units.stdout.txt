@@ -1,0 +1,7 @@
+codegen artifact valid
+codegen order canonical
+fragments merged exactly
+codegen decode stable
+context mismatch rejected
+module hash collision rejected
+codegen corruption rejected

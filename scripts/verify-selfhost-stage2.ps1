@@ -301,7 +301,23 @@ if ($stage1ArtifactText -ne "module artifacts = 0,3,1") {
 if ($stage2ArtifactText -ne $stage1ArtifactText) {
     throw "stage-2 canonical module artifacts differed: $stage2ArtifactText"
 }
-Write-Host "[stage2 5/6] PASS execution, native build, fingerprints, module cache, and canonical artifact parity."
+$stage1CodegenOutput = Join-Path $artifactsDir "stage2-check-codegen-units-stage1.txt"
+$stage2CodegenOutput = Join-Path $artifactsDir "stage2-check-codegen-units-stage2.txt"
+$stage1CodegenError = Join-Path $artifactsDir "stage2-check-codegen-units-stage1.err"
+$stage2CodegenError = Join-Path $artifactsDir "stage2-check-codegen-units-stage2.err"
+$stage1CodegenProcess = Invoke-ProcessToFile $stage1Path @("llvm-codegen-units") $stage1CodegenOutput $stage1CodegenError
+$stage2CodegenProcess = Invoke-ProcessToFile $stage2Path @("llvm-codegen-units") $stage2CodegenOutput $stage2CodegenError
+Assert-ProcessSucceeded $stage1CodegenProcess $stage1CodegenError "stage-1 canonical codegen units"
+Assert-ProcessSucceeded $stage2CodegenProcess $stage2CodegenError "stage-2 canonical codegen units"
+$stage1CodegenText = ([System.IO.File]::ReadAllText($stage1CodegenOutput)).Trim()
+$stage2CodegenText = ([System.IO.File]::ReadAllText($stage2CodegenOutput)).Trim()
+if ($stage1CodegenText -ne "codegen units = 0,2,6") {
+    throw "stage-1 canonical codegen units differed: $stage1CodegenText"
+}
+if ($stage2CodegenText -ne $stage1CodegenText) {
+    throw "stage-2 canonical codegen units differed: $stage2CodegenText"
+}
+Write-Host "[stage2 5/6] PASS execution, native build, fingerprints, module cache, typed-IR artifacts, and codegen-unit parity."
 
 Write-Host "[stage2 6/6] Compare C# reference and native Sollang compiler runtime behavior."
 & dotnet run --project $runnerProject -c Release --no-build -- `

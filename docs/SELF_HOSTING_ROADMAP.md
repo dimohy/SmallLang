@@ -1359,6 +1359,10 @@ Implementation order:
   - [x] Add the canonical structural type table and decode/rehydration path.
 - [ ] Split deterministic LLVM output into cacheable module/codegen units and a
   canonical ordered merge.
+  - [x] Define, validate, decode, and canonically merge the persistent
+    codegen-unit artifact independently of source input order.
+  - [ ] Route the real LLVM emitter into shared-prefix, per-module, and
+    shared-suffix sinks and consume reused fragments in an ordinary build.
 - [ ] Integrate old-generation load and new-generation atomic publication into
   normal `sollang build`.
 - [ ] Prove cold, warm, body-only, public-interface, corruption, target-change,
@@ -1393,6 +1397,27 @@ The structural-type half is complete: schema 2 carries canonical type records,
 stable structural hashes, explicit optional references, and a decoder that
 rebuilds fresh type and IR arenas. D207C is therefore **2/5 (40%)**, this is
 checkpoint 8/10, and the formal roadmap remains **51.5/60 (85.8%)**.
+
+D207C3A completes the artifact-contract half of the codegen-unit slice. Schema
+1 stores exactly one shared prefix and suffix plus module fragments ordered by
+the stable module-path hash with an explicit unsigned comparison. Every module
+record retains its full canonical namespace bytes and recomputes the path hash,
+so equal lookup hashes cannot silently identify different modules. Compiler,
+target, and configuration identities are part of the envelope. LLVM fragment
+bytes are packed eight per `UInt64`, preserving output bytes without the 8x
+storage expansion of one byte per word; declared byte/word lengths, zero
+padding, per-fragment checksums, the envelope checksum, unit cardinality, and
+canonical order are all validated before decode or merge.
+
+Example 436 proves source-order-independent serialization, exact unaligned
+fragment concatenation, decode, context mismatch rejection, path-hash collision
+rejection, and corruption rejection. Windows Stage2 and Linux Stage2 execute
+the same `llvm-codegen-units` path through Stage1 and Stage2 and agree on
+`codegen units = 0,2,6`. This is deliberately not yet ordinary-build reuse: the
+current emitter still writes a monolithic stream. D207C is now **2.5/5 (50%)**,
+the periodic Stage3 cadence advances to **9/10**, and the formal roadmap remains
+**47 complete, 9 partial, 4 missing: 51.5/60 (85.8%)** until real emitter
+fragments are loaded and merged by `sollang build`.
 
 ## Immediate Implementation Order
 

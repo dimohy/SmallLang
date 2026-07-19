@@ -1,5 +1,6 @@
 import sollang.compiler.llvm.text as llvm
 import sollang.compiler.llvm.source_root as llvmRoot
+import sollang.compiler.llvm.codegen_units as codegenUnits
 import sollang.compiler.ir.module_artifacts as moduleArtifacts
 import sollang.compiler.ir.typed as typedIr
 import sollang.compiler.semantic.context as semanticContext
@@ -168,6 +169,33 @@ runModuleArtifacts: -> Unit uses Console, File, Process {
     "module artifacts = $(validation.status),$(validation.moduleCount),$hasNodes" -> println
 }
 
+runCodegenUnits: -> Unit uses Console {
+    codegenUnits.CodegenUnits {
+        kinds: [1, 2, 1, 0, ~]
+        moduleHashes: [UInt64(6012471128798655323), UInt64(0), UInt64(13501036247553511367), UInt64(0), ~]
+        interfaceHashes: [UInt64(220), UInt64(0), UInt64(210), UInt64(0), ~]
+        implementationHashes: [UInt64(320), UInt64(402), UInt64(310), UInt64(401), ~]
+        identityStarts: [0, 4, 4, 9, ~]
+        identityLengths: [4, 0, 5, 0, ~]
+        identityWords: [UInt64(122), UInt64(101), UInt64(116), UInt64(97), UInt64(97), UInt64(108), UInt64(112), UInt64(104), UInt64(97), ~]
+        fragmentStarts: [0, 1, 2, 3, ~]
+        fragmentWordLengths: [1, 1, 1, 1, ~]
+        fragmentByteLengths: [2, 1, 2, 1, ~]
+        fragmentWords: [UInt64(14682), UInt64(84), UInt64(12609), UInt64(72), ~]
+    } => units!
+    UInt64(101) => compilerHash
+    UInt64(202) => targetHash
+    UInt64(303) => configurationHash
+    units! -> codegenUnits.encode(compilerHash, targetHash, configurationHash) => artifact!
+    artifact! -> codegenUnits.validate(compilerHash, targetHash, configurationHash) => validation
+    artifact! -> codegenUnits.merge(compilerHash, targetHash, configurationHash) => merged!
+    (validation.status == 0 and merged!.status == 0) -> if {
+        "codegen units = $(validation.status),$(validation.moduleCount),$(merged!.byteLength)" -> println
+    } else {
+        "codegen units = $(validation.status),0,0" -> println
+    }
+}
+
 buildWindows pathStart: UIntSize -> Unit uses Console, File, Process {
     process.arguments => arguments
     pathStart -> collectBuildPaths => sourcePaths!
@@ -206,6 +234,9 @@ main {
         "; sollang error: --jobs expects a positive integer" -> println
     } else {
     workers > 0 -> if { "; sollang workers = $workers" -> println }
+    targetLength == UIntSize(18) -> if {
+        runCodegenUnits
+    } else {
     targetLength == UIntSize(16) -> if {
         runModuleArtifacts
     } else {
@@ -235,6 +266,7 @@ main {
         } else {
             pathStart -> emitWindowsFiles
         }
+    }
     }
     }
     }

@@ -1,0 +1,430 @@
+namespace sollang.compiler.llvm.codegen_units
+
+# LLVM fragments are retained as packed little-endian bytes: one UInt64 stores
+# up to eight output bytes. Module identity words retain the complete canonical
+# namespace bytes so a lookup-hash collision is rejected instead of reused.
+public struct PackedFragment {
+    words: [UInt64; ~]
+    byteLength: Int
+}
+
+public struct CodegenUnits {
+    kinds: [Int; ~]
+    moduleHashes: [UInt64; ~]
+    interfaceHashes: [UInt64; ~]
+    implementationHashes: [UInt64; ~]
+    identityStarts: [Int; ~]
+    identityLengths: [Int; ~]
+    identityWords: [UInt64; ~]
+    fragmentStarts: [Int; ~]
+    fragmentWordLengths: [Int; ~]
+    fragmentByteLengths: [Int; ~]
+    fragmentWords: [UInt64; ~]
+}
+
+# Validation status: 0 valid, 1 truncated, 2 magic, 3 schema, 4 context,
+# 5 declared length, 6 envelope checksum, 7 structure, 8 canonical order,
+# 9 unit cardinality/kind, 10 module identity collision, 11 fragment checksum.
+public struct CodegenValidation {
+    status: Int
+    unitCount: Int
+    moduleCount: Int
+    fragmentByteCount: Int
+}
+
+public struct DecodedCodegenUnits {
+    units: CodegenUnits
+    status: Int
+}
+
+public struct MergedCodegen {
+    words: [UInt64; ~]
+    byteLength: Int
+    unitCount: Int
+    status: Int
+}
+
+mix hash: UInt64, value: UInt64 -> UInt64 {
+    (hash + UInt64(11400714819323198485)) * (hash + UInt64(13787848793156543929)) + (value + UInt64(10723151780598845931)) * (value + UInt64(7146057691288625177)) + UInt64(1099511628211)
+}
+
+lessUnsigned left: UInt64, right: UInt64 -> Bool {
+    UInt64(9223372036854775808) => midpoint
+    left / midpoint => leftHigh
+    right / midpoint => rightHigh
+    leftHigh < rightHigh -> if {
+        true
+    } else {
+        leftHigh > rightHigh -> if {
+            false
+        } else {
+            left % midpoint < right % midpoint
+        }
+    }
+}
+
+canRead index: Int, count: Int, length: Int -> Bool {
+    index >= 0 and count >= 0 and index <= length and count <= length - index
+}
+
+power256 exponent: Int -> UInt64 {
+    UInt64(1) => factor!
+    0 => index!
+    index! < exponent -> while {
+        factor! * UInt64(256) => factor!
+        index! + 1 => index!
+    }
+    factor!
+}
+
+requiredWords byteLength: Int -> Int {
+    byteLength / 8 => wordLength!
+    byteLength % 8 == 0 -> if {} else { wordLength! + 1 => wordLength! }
+    wordLength!
+}
+
+checksum words: [UInt64; ~], start: Int, count: Int, seed: UInt64 -> UInt64 {
+    seed => hash!
+    0 => index!
+    index! < count -> while {
+        hash! -> mix(words[start + index!]) => hash!
+        index! + 1 => index!
+    }
+    hash!
+}
+
+fragmentChecksum words: [UInt64; ~], start: Int, wordLength: Int, byteLength: Int -> UInt64 {
+    UInt64(16320118547808316911) => hash!
+    UInt64(byteLength) => byteLengthWord
+    hash! -> mix(byteLengthWord) => mixedHash
+    mixedHash => hash!
+    0 => index!
+    index! < wordLength -> while {
+        hash! -> mix(words[start + index!]) => nextHash
+        nextHash => hash!
+        index! + 1 => index!
+    }
+    hash!
+}
+
+identityHash words: [UInt64; ~], start: Int, length: Int -> UInt64 {
+    UInt64(1469598103934665603) => hash!
+    0 => index!
+    index! < length -> while {
+        hash! * UInt64(1099511628211) + words[start + index!] => hash!
+        index! + 1 => index!
+    }
+    hash!
+}
+
+public pack text: Text -> PackedFragment {
+    [UInt64; ~] => words!
+    Int(text -> len) => byteLength
+    0 => byteIndex!
+    byteIndex! < byteLength -> while {
+        byteIndex! % 8 => byteOffset
+        byteOffset == 0 -> if { words! -> push(UInt64(0)) }
+        words! -> len => wordCount
+        byteOffset -> power256 => factor
+        words![wordCount - 1] => currentWord
+        text -> byte(UIntSize(byteIndex!)) => currentByte
+        currentWord + UInt64(currentByte) * factor => packedWord
+        packedWord => words![wordCount - 1]
+        byteIndex! + 1 => byteIndex!
+    }
+    PackedFragment { words: words!, byteLength: byteLength } => result!
+    result!
+}
+
+inputShapeValid units: CodegenUnits -> Bool {
+    units.kinds -> len => count
+    ((units.moduleHashes -> len) == count and (units.interfaceHashes -> len) == count and (units.implementationHashes -> len) == count and (units.identityStarts -> len) == count and (units.identityLengths -> len) == count and (units.fragmentStarts -> len) == count and (units.fragmentWordLengths -> len) == count and (units.fragmentByteLengths -> len) == count) => valid!
+    0 => index!
+    (valid! and index! < count) -> while {
+        units.identityStarts[index!] -> canRead(units.identityLengths[index!], units.identityWords -> len) -> if {} else { false => valid! }
+        units.fragmentStarts[index!] -> canRead(units.fragmentWordLengths[index!], units.fragmentWords -> len) -> if {} else { false => valid! }
+        (valid! and units.fragmentByteLengths[index!] >= 0 and units.fragmentWordLengths[index!] == (units.fragmentByteLengths[index!] -> requiredWords)) -> if {} else { false => valid! }
+        index! + 1 => index!
+    }
+    valid!
+}
+
+unitLess units: CodegenUnits, left: Int, right: Int -> Bool {
+    units.kinds[left] < units.kinds[right] -> if {
+        true
+    } else {
+        units.kinds[left] > units.kinds[right] -> if {
+            false
+        } else {
+            units.moduleHashes[left] -> lessUnsigned(units.moduleHashes[right])
+        }
+    }
+}
+
+# Schema 1 envelope:
+# magic, schema, compiler, target, configuration, unit count, word count,
+# checksum, followed by canonical records. Each record is kind, module hash,
+# interface hash, implementation hash, identity length, fragment byte length,
+# fragment word length, fragment checksum, identity words, fragment words.
+public encode units: CodegenUnits, compilerHash: UInt64, targetHash: UInt64, configurationHash: UInt64 -> [UInt64; ~] {
+    [UInt64; ~] => words!
+    units -> inputShapeValid -> if {
+        words! -> push(UInt64(6002245291164258119))
+        words! -> push(UInt64(1))
+        words! -> push(compilerHash)
+        words! -> push(targetHash)
+        words! -> push(configurationHash)
+        words! -> push(UInt64(units.kinds -> len))
+        words! -> push(UInt64(0))
+        words! -> push(UInt64(0))
+
+        [Bool; ~] => emitted!
+        0 => emittedIndex!
+        emittedIndex! < (units.kinds -> len) -> while {
+            emitted! -> push(false)
+            emittedIndex! + 1 => emittedIndex!
+        }
+        0 => emittedCount!
+        emittedCount! < (units.kinds -> len) -> while {
+            -1 => selected!
+            0 => candidate!
+            candidate! < (units.kinds -> len) -> while {
+                false => candidateLess!
+                selected! < 0 -> if {
+                    true => candidateLess!
+                } else {
+                    units -> unitLess(candidate!, selected!) => candidateLess!
+                }
+                (not emitted![candidate!] and candidateLess!) -> if { candidate! => selected! }
+                candidate! + 1 => candidate!
+            }
+            true => emitted![selected!]
+            units.kinds[selected!] => kind
+            units.identityStarts[selected!] => identityStart
+            units.identityLengths[selected!] => identityLength
+            units.fragmentStarts[selected!] => fragmentStart
+            units.fragmentWordLengths[selected!] => fragmentWordLength
+            units.fragmentByteLengths[selected!] => fragmentByteLength
+            words! -> push(UInt64(kind))
+            words! -> push(units.moduleHashes[selected!])
+            words! -> push(units.interfaceHashes[selected!])
+            words! -> push(units.implementationHashes[selected!])
+            words! -> push(UInt64(identityLength))
+            words! -> push(UInt64(fragmentByteLength))
+            words! -> push(UInt64(fragmentWordLength))
+            units.fragmentWords -> fragmentChecksum(fragmentStart, fragmentWordLength, fragmentByteLength) => payloadChecksum
+            words! -> push(payloadChecksum)
+            0 => identityIndex!
+            identityIndex! < identityLength -> while {
+                words! -> push(units.identityWords[identityStart + identityIndex!])
+                identityIndex! + 1 => identityIndex!
+            }
+            0 => fragmentIndex!
+            fragmentIndex! < fragmentWordLength -> while {
+                words! -> push(units.fragmentWords[fragmentStart + fragmentIndex!])
+                fragmentIndex! + 1 => fragmentIndex!
+            }
+            emittedCount! + 1 => emittedCount!
+        }
+        words! -> len => declaredWordCount
+        UInt64(declaredWordCount) => declaredWordCountWord
+        declaredWordCountWord => words![6]
+        declaredWordCount - 8 => checksumWordCount!
+        UInt64(7809847782465536322) => checksumSeed!
+        words! -> checksum(8, checksumWordCount!, checksumSeed!) => artifactChecksum
+        artifactChecksum => words![7]
+    }
+    words!
+}
+
+public validate words: [UInt64; ~], compilerHash: UInt64, targetHash: UInt64, configurationHash: UInt64 -> CodegenValidation {
+    words -> len => wordLength
+    0 => status!
+    0 => unitCount!
+    0 => moduleCount!
+    0 => fragmentByteCount!
+    wordLength >= 8 -> if {
+        words[0] == UInt64(6002245291164258119) -> if {} else { 2 => status! }
+        (status! == 0 and words[1] != UInt64(1)) -> if { 3 => status! }
+        (status! == 0 and (words[2] != compilerHash or words[3] != targetHash or words[4] != configurationHash)) -> if { 4 => status! }
+        (status! == 0 and words[6] != UInt64(wordLength)) -> if { 5 => status! }
+        wordLength - 8 => checksumWordCount!
+        UInt64(7809847782465536322) => checksumSeed!
+        words -> checksum(8, checksumWordCount!, checksumSeed!) => actualChecksum
+        (status! == 0 and words[7] != actualChecksum) -> if { 6 => status! }
+        status! == 0 -> if {
+            words[5] <= UInt64(1000000) -> if { Int(words[5]) => unitCount! } else { 7 => status! }
+        }
+        8 => index!
+        -1 => previousKind!
+        UInt64(0) => previousModuleHash!
+        0 => prefixCount!
+        0 => suffixCount!
+        0 => unitIndex!
+        (status! == 0 and unitIndex! < unitCount!) -> while {
+            index! -> canRead(8, wordLength) -> if {
+                Int(words[index!]) => kind
+                words[index! + 1] => moduleHash
+                words[index! + 4] <= UInt64(wordLength) -> if {} else { 7 => status! }
+                words[index! + 5] <= UInt64(9223372036854775807) -> if {} else { 7 => status! }
+                words[index! + 6] <= UInt64(wordLength) -> if {} else { 7 => status! }
+                0 => identityLength!
+                0 => fragmentByteLength!
+                0 => fragmentWordLength!
+                status! == 0 -> if {
+                    Int(words[index! + 4]) => identityLength!
+                    Int(words[index! + 5]) => fragmentByteLength!
+                    Int(words[index! + 6]) => fragmentWordLength!
+                }
+                (status! == 0 and fragmentWordLength! != (fragmentByteLength! -> requiredWords)) -> if { 7 => status! }
+                index! + 8 => identityStart
+                identityStart -> canRead(identityLength!, wordLength) => identityReadable
+                (status! == 0 and not identityReadable) -> if { 7 => status! }
+                0 => fragmentStart!
+                status! == 0 -> if { identityStart + identityLength! => fragmentStart! }
+                fragmentStart! -> canRead(fragmentWordLength!, wordLength) => fragmentReadable
+                (status! == 0 and not fragmentReadable) -> if { 7 => status! }
+                status! == 0 -> if {
+                    (kind < 0 or kind > 2) -> if { 9 => status! }
+                    (kind < previousKind!) -> if { 8 => status! }
+                    kind == 0 -> if {
+                        prefixCount! + 1 => prefixCount!
+                        (moduleHash != UInt64(0) or identityLength! != 0) -> if { 9 => status! }
+                    }
+                    kind == 1 -> if {
+                        moduleCount! + 1 => moduleCount!
+                        identityLength! == 0 -> if { 9 => status! }
+                        (previousKind! == 1 and moduleHash == previousModuleHash!) -> if { 10 => status! }
+                        (status! == 0 and previousKind! == 1) -> if {
+                            previousModuleHash! -> lessUnsigned(moduleHash) -> if {} else { 8 => status! }
+                        }
+                        moduleHash => previousModuleHash!
+                    }
+                    kind == 2 -> if {
+                        suffixCount! + 1 => suffixCount!
+                        (moduleHash != UInt64(0) or identityLength! != 0) -> if { 9 => status! }
+                    }
+                    0 => identityIndex!
+                    (status! == 0 and identityIndex! < identityLength!) -> while {
+                        words[identityStart + identityIndex!] <= UInt64(255) -> if {} else { 7 => status! }
+                        identityIndex! + 1 => identityIndex!
+                    }
+                    (status! == 0 and kind == 1) -> if {
+                        words -> identityHash(identityStart, identityLength!) => actualModuleHash
+                        actualModuleHash != moduleHash -> if { 10 => status! }
+                    }
+                    fragmentByteCount! + fragmentByteLength! => fragmentByteCount!
+                    words -> fragmentChecksum(fragmentStart!, fragmentWordLength!, fragmentByteLength!) => actualFragmentChecksum
+                    (status! == 0 and actualFragmentChecksum != words[index! + 7]) -> if { 11 => status! }
+                    (status! == 0 and fragmentWordLength! > 0 and fragmentByteLength! % 8 != 0) -> if {
+                        fragmentByteLength! % 8 => usedBytes
+                        usedBytes -> power256 => paddingFactor
+                        words[fragmentStart! + fragmentWordLength! - 1] / paddingFactor != UInt64(0) -> if { 7 => status! }
+                    }
+                    kind => previousKind!
+                    fragmentStart! + fragmentWordLength! => index!
+                }
+            } else { 1 => status! }
+            unitIndex! + 1 => unitIndex!
+        }
+        (status! == 0 and index! != wordLength) -> if { 7 => status! }
+        (status! == 0 and (prefixCount! != 1 or suffixCount! != 1)) -> if { 9 => status! }
+    } else { 1 => status! }
+    CodegenValidation { status: status!, unitCount: unitCount!, moduleCount: moduleCount!, fragmentByteCount: fragmentByteCount! }
+}
+
+public decode words: [UInt64; ~], compilerHash: UInt64, targetHash: UInt64, configurationHash: UInt64 -> DecodedCodegenUnits {
+    words -> validate(compilerHash, targetHash, configurationHash) => validation
+    [Int; ~] => kinds!
+    [UInt64; ~] => moduleHashes!
+    [UInt64; ~] => interfaceHashes!
+    [UInt64; ~] => implementationHashes!
+    [Int; ~] => identityStarts!
+    [Int; ~] => identityLengths!
+    [UInt64; ~] => identityWords!
+    [Int; ~] => fragmentStarts!
+    [Int; ~] => fragmentWordLengths!
+    [Int; ~] => fragmentByteLengths!
+    [UInt64; ~] => fragmentWords!
+    validation.status => status!
+    8 => index!
+    0 => unitIndex!
+    (status! == 0 and unitIndex! < validation.unitCount) -> while {
+        Int(words[index!]) => kind
+        Int(words[index! + 4]) => identityLength
+        Int(words[index! + 5]) => fragmentByteLength
+        Int(words[index! + 6]) => fragmentWordLength
+        index! + 8 => identityStart
+        identityStart + identityLength => fragmentStart
+        kinds! -> push(kind)
+        moduleHashes! -> push(words[index! + 1])
+        interfaceHashes! -> push(words[index! + 2])
+        implementationHashes! -> push(words[index! + 3])
+        identityStarts! -> push(identityWords! -> len)
+        identityLengths! -> push(identityLength)
+        0 => identityIndex!
+        identityIndex! < identityLength -> while {
+            identityWords! -> push(words[identityStart + identityIndex!])
+            identityIndex! + 1 => identityIndex!
+        }
+        fragmentStarts! -> push(fragmentWords! -> len)
+        fragmentWordLengths! -> push(fragmentWordLength)
+        fragmentByteLengths! -> push(fragmentByteLength)
+        0 => fragmentIndex!
+        fragmentIndex! < fragmentWordLength -> while {
+            fragmentWords! -> push(words[fragmentStart + fragmentIndex!])
+            fragmentIndex! + 1 => fragmentIndex!
+        }
+        fragmentStart + fragmentWordLength => index!
+        unitIndex! + 1 => unitIndex!
+    }
+    CodegenUnits {
+        kinds: kinds!
+        moduleHashes: moduleHashes!
+        interfaceHashes: interfaceHashes!
+        implementationHashes: implementationHashes!
+        identityStarts: identityStarts!
+        identityLengths: identityLengths!
+        identityWords: identityWords!
+        fragmentStarts: fragmentStarts!
+        fragmentWordLengths: fragmentWordLengths!
+        fragmentByteLengths: fragmentByteLengths!
+        fragmentWords: fragmentWords!
+    } => units!
+    DecodedCodegenUnits { units: units!, status: status! } => result!
+    result!
+}
+
+public merge words: [UInt64; ~], compilerHash: UInt64, targetHash: UInt64, configurationHash: UInt64 -> MergedCodegen {
+    words -> validate(compilerHash, targetHash, configurationHash) => validation
+    [UInt64; ~] => merged!
+    0 => mergedByteLength!
+    8 => index!
+    0 => unitIndex!
+    (validation.status == 0 and unitIndex! < validation.unitCount) -> while {
+        Int(words[index! + 4]) => identityLength
+        Int(words[index! + 5]) => fragmentByteLength
+        Int(words[index! + 6]) => fragmentWordLength
+        index! + 8 + identityLength => fragmentStart
+        0 => byteIndex!
+        byteIndex! < fragmentByteLength -> while {
+            byteIndex! / 8 => sourceWordOffset
+            byteIndex! % 8 => sourceByteOffset
+            sourceByteOffset -> power256 => sourceFactor
+            (words[fragmentStart + sourceWordOffset] / sourceFactor) % UInt64(256) => value
+            mergedByteLength! % 8 => destinationByteOffset
+            destinationByteOffset == 0 -> if { merged! -> push(UInt64(0)) }
+            destinationByteOffset -> power256 => destinationFactor
+            merged! -> len => mergedWordCount
+            merged![mergedWordCount - 1] => currentWord
+            currentWord + value * destinationFactor => packedWord
+            packedWord => merged![mergedWordCount - 1]
+            mergedByteLength! + 1 => mergedByteLength!
+            byteIndex! + 1 => byteIndex!
+        }
+        fragmentStart + fragmentWordLength => index!
+        unitIndex! + 1 => unitIndex!
+    }
+    MergedCodegen { words: merged!, byteLength: mergedByteLength!, unitCount: validation.unitCount, status: validation.status } => result!
+    result!
+}

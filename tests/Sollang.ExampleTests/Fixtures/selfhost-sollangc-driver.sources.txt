@@ -3,6 +3,7 @@ selfhost/source_root.slg
 selfhost/llvm/text.slg
 selfhost/llvm/source_root.slg
 selfhost/llvm/runtime.slg
+selfhost/llvm/codegen_units.slg
 selfhost/ir/interpolation.slg
 selfhost/llvm/target.slg
 selfhost/ir/typed.slg

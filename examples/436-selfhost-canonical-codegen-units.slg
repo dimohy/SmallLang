@@ -1,0 +1,103 @@
+import sollang.compiler.llvm.codegen_units as codegen
+
+sameWords left: [UInt64; ~], right: [UInt64; ~] -> Bool {
+    (left -> len) == (right -> len) => same!
+    0 => index!
+    (same! and index! < (left -> len)) -> while {
+        left[index!] == right[index!] -> if {} else { false => same! }
+        index! + 1 => index!
+    }
+    same!
+}
+
+main {
+    UInt64(101) => compilerHash
+    UInt64(202) => targetHash
+    UInt64(303) => configurationHash
+
+    # Deliberately unordered: zeta module, suffix, alpha module, prefix.
+    codegen.CodegenUnits {
+        kinds: [1, 2, 1, 0, ~]
+        moduleHashes: [UInt64(6012471128798655323), UInt64(0), UInt64(13501036247553511367), UInt64(0), ~]
+        interfaceHashes: [UInt64(220), UInt64(0), UInt64(210), UInt64(0), ~]
+        implementationHashes: [UInt64(320), UInt64(402), UInt64(310), UInt64(401), ~]
+        identityStarts: [0, 4, 4, 9, ~]
+        identityLengths: [4, 0, 5, 0, ~]
+        identityWords: [UInt64(122), UInt64(101), UInt64(116), UInt64(97), UInt64(97), UInt64(108), UInt64(112), UInt64(104), UInt64(97), ~]
+        fragmentStarts: [0, 1, 2, 3, ~]
+        fragmentWordLengths: [1, 1, 1, 1, ~]
+        fragmentByteLengths: [2, 1, 2, 1, ~]
+        fragmentWords: [UInt64(14682), UInt64(84), UInt64(12609), UInt64(72), ~]
+    } => firstUnits!
+    firstUnits! -> codegen.encode(compilerHash, targetHash, configurationHash) => first!
+    first! -> codegen.validate(compilerHash, targetHash, configurationHash) => validation
+    (validation.status == 0 and validation.unitCount == 4 and validation.moduleCount == 2 and validation.fragmentByteCount == 6) -> if {
+        "codegen artifact valid"
+    } else { "unexpected validation" } -> println
+
+    # Same units in canonical order with independently laid-out payload arrays.
+    codegen.CodegenUnits {
+        kinds: [0, 1, 1, 2, ~]
+        moduleHashes: [UInt64(0), UInt64(13501036247553511367), UInt64(6012471128798655323), UInt64(0), ~]
+        interfaceHashes: [UInt64(0), UInt64(210), UInt64(220), UInt64(0), ~]
+        implementationHashes: [UInt64(401), UInt64(310), UInt64(320), UInt64(402), ~]
+        identityStarts: [0, 0, 5, 9, ~]
+        identityLengths: [0, 5, 4, 0, ~]
+        identityWords: [UInt64(97), UInt64(108), UInt64(112), UInt64(104), UInt64(97), UInt64(122), UInt64(101), UInt64(116), UInt64(97), ~]
+        fragmentStarts: [0, 1, 2, 3, ~]
+        fragmentWordLengths: [1, 1, 1, 1, ~]
+        fragmentByteLengths: [1, 2, 2, 1, ~]
+        fragmentWords: [UInt64(72), UInt64(12609), UInt64(14682), UInt64(84), ~]
+    } => secondUnits!
+    secondUnits! -> codegen.encode(compilerHash, targetHash, configurationHash) => second!
+    first! -> sameWords(second!) -> if {
+        "codegen order canonical"
+    } else { "codegen order leaked" } -> println
+
+    first! -> codegen.merge(compilerHash, targetHash, configurationHash) => merged!
+    "HZ9A1T" -> codegen.pack => expected!
+    (merged!.words -> len) == (expected!.words -> len) => mergedSame!
+    0 => mergedIndex!
+    (mergedSame! and mergedIndex! < (merged!.words -> len)) -> while {
+        (merged!.words)[mergedIndex!] == (expected!.words)[mergedIndex!] -> if {} else { false => mergedSame! }
+        mergedIndex! + 1 => mergedIndex!
+    }
+    (merged!.status == 0 and merged!.byteLength == expected!.byteLength and mergedSame!) -> if {
+        "fragments merged exactly"
+    } else { "fragment merge failed" } -> println
+
+    first! -> codegen.decode(compilerHash, targetHash, configurationHash) => decoded!
+    (decoded!.status == 0 and (decoded!.units.kinds -> len) == 4 and (decoded!.units.fragmentWords -> len) == 4) -> if {
+        "codegen decode stable"
+    } else { "codegen decode failed" } -> println
+
+    first! -> codegen.validate(compilerHash, UInt64(999), configurationHash) => wrongTarget
+    wrongTarget.status == 4 -> if {
+        "context mismatch rejected"
+    } else { "context mismatch accepted" } -> println
+
+    codegen.CodegenUnits {
+        kinds: [0, 1, 1, 2, ~]
+        moduleHashes: [UInt64(0), UInt64(13501036247553511367), UInt64(13501036247553511367), UInt64(0), ~]
+        interfaceHashes: [UInt64(0), UInt64(210), UInt64(220), UInt64(0), ~]
+        implementationHashes: [UInt64(401), UInt64(310), UInt64(320), UInt64(402), ~]
+        identityStarts: [0, 0, 5, 9, ~]
+        identityLengths: [0, 5, 4, 0, ~]
+        identityWords: [UInt64(97), UInt64(108), UInt64(112), UInt64(104), UInt64(97), UInt64(122), UInt64(101), UInt64(116), UInt64(97), ~]
+        fragmentStarts: [0, 1, 2, 3, ~]
+        fragmentWordLengths: [1, 1, 1, 1, ~]
+        fragmentByteLengths: [1, 1, 1, 1, ~]
+        fragmentWords: [UInt64(72), UInt64(65), UInt64(90), UInt64(84), ~]
+    } => collisionUnits!
+    collisionUnits! -> codegen.encode(compilerHash, targetHash, configurationHash) => collisionArtifact!
+    collisionArtifact! -> codegen.validate(compilerHash, targetHash, configurationHash) => collision
+    collision.status == 10 -> if {
+        "module hash collision rejected"
+    } else { "module hash collision accepted" } -> println
+
+    first![12] + UInt64(1) => first![12]
+    first! -> codegen.validate(compilerHash, targetHash, configurationHash) => corrupted
+    corrupted.status == 6 -> if {
+        "codegen corruption rejected"
+    } else { "codegen corruption accepted" } -> println
+}
