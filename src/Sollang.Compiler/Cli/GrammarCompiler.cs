@@ -31,8 +31,10 @@ internal static class GrammarCompiler
         var lexer = ReadLexer(lexerPath);
         var grammar = ReadGrammar(grammarPath);
         var compiled = Compile(lexer, grammar);
+        var lexerSource = File.ReadAllText(lexerPath).ReplaceLineEndings("\n");
+        var grammarSource = File.ReadAllText(grammarPath).ReplaceLineEndings("\n");
         var sourceHash = Convert.ToHexString(SHA256.HashData(
-            Encoding.UTF8.GetBytes(File.ReadAllText(lexerPath) + "\n---grammar---\n" + File.ReadAllText(grammarPath))))
+            Encoding.UTF8.GetBytes(lexerSource + "\n---grammar---\n" + grammarSource)))
             .ToLowerInvariant();
         var source = EmitSlModule(compiled, lexerPath, grammarPath, sourceHash);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)

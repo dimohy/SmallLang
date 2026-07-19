@@ -120,6 +120,24 @@ score -> when {
 } => grade
 ```
 
+## Install A Release
+
+Sollang 0.1 provides self-contained compiler packages for Windows x64 and Linux
+x64. Extract the archive for your operating system, keep the bundled `stdlib`
+next to the compiler, and set `SOLLANG_LLVM_HOME` to an LLVM installation.
+Linux uses `/usr` automatically when no explicit LLVM home is supplied.
+
+```powershell
+.\sollang.exe build hello.slg -o hello.exe --target windows-x64
+```
+
+```bash
+./sollang build hello.slg -o hello --target linux-x64
+```
+
+Release archives and `SHA256SUMS.txt` are published on GitHub Releases.
+Run `sollang --version` to verify the installed compiler version.
+
 ## Run A Sample
 
 ```powershell

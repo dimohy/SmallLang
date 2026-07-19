@@ -16,6 +16,13 @@ internal static class CompilerApp
     {
         try
         {
+            if (args is ["--version"] or ["-v"])
+            {
+                var version = typeof(CompilerApp).Assembly.GetName().Version
+                    ?? throw new SollangException("compiler version metadata is missing");
+                Console.WriteLine($"Sollang {version.Major}.{version.Minor}");
+                return 0;
+            }
             if (args.Length >= 2 && args[0] == "grammar" && args[1] == "build")
             {
                 GrammarCompiler.Build(args[2..]);

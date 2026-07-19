@@ -22,24 +22,38 @@ internal sealed class WslLinuxLinker(LlvmToolchain toolchain)
             objectPath
         ]);
 
-        Run("wsl.exe",
-        [
-            "--exec",
-            "cc",
-            ToWslPath(objectPath),
-            "-Wl,--gc-sections",
-            "-s",
-            "-o",
-            ToWslPath(outputPath)
-        ]);
+        if (OperatingSystem.IsWindows())
+        {
+            Run("wsl.exe",
+            [
+                "--exec",
+                "cc",
+                ToWslPath(objectPath),
+                "-Wl,--gc-sections",
+                "-s",
+                "-o",
+                ToWslPath(outputPath)
+            ]);
 
-        Run("wsl.exe",
-        [
-            "--exec",
-            "chmod",
-            "+x",
-            ToWslPath(outputPath)
-        ]);
+            Run("wsl.exe",
+            [
+                "--exec",
+                "chmod",
+                "+x",
+                ToWslPath(outputPath)
+            ]);
+        }
+        else
+        {
+            Run("cc",
+            [
+                objectPath,
+                "-Wl,--gc-sections",
+                "-s",
+                "-o",
+                outputPath
+            ]);
+        }
     }
 
     private static string ToWslPath(string path)

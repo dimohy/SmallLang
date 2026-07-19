@@ -14,26 +14,29 @@ internal sealed record LlvmToolchain(
 {
     public static LlvmToolchain From(string? llvmHome)
     {
-        var home = llvmHome
-            ?? Environment.GetEnvironmentVariable("SOLLANG_LLVM_HOME")
-            ?? throw new SollangException("LLVM toolchain not found. Run scripts\\sollang.ps1 so LLVM is downloaded locally.");
+        var home = llvmHome ?? Environment.GetEnvironmentVariable("SOLLANG_LLVM_HOME");
+        if (home is null && OperatingSystem.IsLinux())
+        {
+            home = "/usr";
+        }
+        if (home is null)
+        {
+            throw new SollangException(
+                "LLVM toolchain not found. Set SOLLANG_LLVM_HOME or pass --llvm <dir>. "
+                + "Repository builds can run scripts\\sollang.ps1 to download LLVM locally.");
+        }
 
         var bin = Path.Combine(home, "bin");
-        var clang = Path.Combine(bin, "clang.exe");
-        var lldLink = Path.Combine(bin, "lld-link.exe");
-        var llvmLib = Path.Combine(bin, "llvm-lib.exe");
-        var llvmSplit = Path.Combine(bin, "llvm-split.exe");
-        var opt = Path.Combine(bin, "opt.exe");
-        var llc = Path.Combine(bin, "llc.exe");
-        var wasmLd = Path.Combine(bin, "wasm-ld.exe");
+        var suffix = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
+        var clang = Path.Combine(bin, "clang" + suffix);
+        var lldLink = Path.Combine(bin, "lld-link" + suffix);
+        var llvmLib = Path.Combine(bin, "llvm-lib" + suffix);
+        var llvmSplit = Path.Combine(bin, "llvm-split" + suffix);
+        var opt = Path.Combine(bin, "opt" + suffix);
+        var llc = Path.Combine(bin, "llc" + suffix);
+        var wasmLd = Path.Combine(bin, "wasm-ld" + suffix);
 
-        RequireFile(clang, "clang.exe");
-        RequireFile(lldLink, "lld-link.exe");
-        RequireFile(llvmLib, "llvm-lib.exe");
-        RequireFile(llvmSplit, "llvm-split.exe");
-        RequireFile(opt, "opt.exe");
-        RequireFile(llc, "llc.exe");
-        RequireFile(wasmLd, "wasm-ld.exe");
+        RequireFile(clang, "clang" + suffix);
 
         return new LlvmToolchain(home, clang, lldLink, llvmLib, llvmSplit, opt, llc, wasmLd);
     }
