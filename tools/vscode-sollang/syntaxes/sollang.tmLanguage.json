@@ -13,6 +13,7 @@
     { "include": "#namespace-imports" },
     { "include": "#block-function-declarations" },
     { "include": "#each-statements" },
+    { "include": "#async-flow-targets" },
     { "include": "#block-flow-calls" },
     { "include": "#when-arms" },
     { "include": "#yield-calls" },
@@ -21,6 +22,7 @@
     { "include": "#keywords" },
     { "include": "#generic-clauses" },
     { "include": "#types" },
+    { "include": "#nominal-types" },
     { "include": "#constants" },
     { "include": "#numbers" },
     { "include": "#function-calls" },
@@ -241,6 +243,18 @@
         }
       ]
     },
+    "async-flow-targets": {
+      "patterns": [
+        {
+          "name": "meta.async-flow-target.sollang",
+          "match": "(->)\\s*(await|cancel)\\b",
+          "captures": {
+            "1": { "name": "keyword.operator.flow.sollang" },
+            "2": { "name": "keyword.control.async.sollang" }
+          }
+        }
+      ]
+    },
     "when-arms": {
       "patterns": [
         {
@@ -316,6 +330,10 @@
           "match": "\\b(public|move|mut|async)\\b"
         },
         {
+          "name": "keyword.control.async.sollang",
+          "match": "\\b(await|cancel)\\b"
+        },
+        {
           "name": "storage.type.declaration.sollang",
           "match": "\\b(struct|enum|effect|trait|impl|type|for|where|uses)\\b"
         },
@@ -361,6 +379,14 @@
         }
       ]
     },
+    "nominal-types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.nominal.sollang",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
     "generic-clauses": {
       "patterns": [
         {
@@ -375,6 +401,7 @@
           },
           "patterns": [
             { "include": "#types" },
+            { "include": "#nominal-types" },
             { "include": "#numbers" },
             { "include": "#punctuation" },
             { "include": "#identifiers" }
@@ -390,7 +417,7 @@
         },
         {
           "name": "variable.language.special.sollang",
-          "match": "\\bit\\b"
+          "match": "\\b(it|self)\\b"
         }
       ]
     },
@@ -410,7 +437,7 @@
       "patterns": [
         {
           "name": "meta.function-call.flow.sollang",
-          "match": "(->)\\s*((?!(?:if|when|fold|each|repeat|while|break|continue|return|Unit|Text|Bool|Int|Int8|Int16|Int32|Int64|Long|UInt8|UInt16|UInt32|UInt64|Size|UIntSize|CodePoint|Float|Float32|Float64|Double|Arena|Arguments|SourceText|MappedBytes|MutableMappedBytes|Io|Option|Result|Task|and|or|not|else|main|block|yield|namespace|import|as|public|move|mut|async|uses|struct|enum|effect|trait|impl|type|for|where|box|map|read|write|at|size|intrinsic|in)\\b)[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b",
+          "match": "(->)\\s*((?!(?:if|when|fold|each|repeat|while|break|continue|return|await|cancel|Unit|Text|Bool|Int|Int8|Int16|Int32|Int64|Long|UInt8|UInt16|UInt32|UInt64|Size|UIntSize|CodePoint|Float|Float32|Float64|Double|Arena|Arguments|SourceText|MappedBytes|MutableMappedBytes|Io|Option|Result|Task|and|or|not|else|main|block|yield|namespace|import|as|public|move|mut|async|uses|struct|enum|effect|trait|impl|type|for|where|box|map|read|write|at|size|intrinsic|in)\\b)[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b",
           "captures": {
             "1": { "name": "keyword.operator.flow.sollang" },
             "2": { "name": "entity.name.function.call.sollang" }

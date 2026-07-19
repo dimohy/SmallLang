@@ -7,7 +7,8 @@ VS Code language support for Sollang `.slg` files.
 - Registers `.slg` as `sollang`.
 - Highlights comments, interpolated strings, indentation-normalized raw multiline
   strings, declarations (`struct`, nested `struct`, `enum`, `effect`, `trait`,
-  `impl`), generics, async/effect clauses, receiver-only and parenthesized flow
+  `impl`), generics, async/effect clauses, `await`/`cancel` flow targets,
+  receiver-only and parenthesized flow
   calls, bindings, owned values, compile-time ranges, arrays, dictionaries,
   memory mapping, fixed-width integer and floating-point types, Result
   propagation, loop controls, namespaces, imports, and operators.
@@ -25,7 +26,7 @@ From this folder:
 
 ```powershell
 npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
-code --install-extension .\sollang-language-support-0.4.0.vsix --force
+code --install-extension .\sollang-language-support-0.5.0.vsix --force
 ```
 
 For extension development, open this folder in VS Code and run the extension host
