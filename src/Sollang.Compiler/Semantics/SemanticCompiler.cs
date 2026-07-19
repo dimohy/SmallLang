@@ -50,22 +50,53 @@ internal sealed partial class SemanticCompiler
             && reusePlan.DeclarationFingerprint.AsSpan().SequenceEqual(declarationFingerprint)
                 ? reusePlan
                 : null;
+        var declaredFunctionIdentities = SemanticStableIdentity.IndexFunctions(
+            _types,
+            functions.Values,
+            []);
+        var syntaxCallSiteIdentities = SemanticStableIdentity.IndexSyntaxCallSites(
+            functions.Values,
+            _program.Statements,
+            declaredFunctionIdentities);
+        var syntaxCallsByIdentity = syntaxCallSiteIdentities.ToDictionary(
+            static pair => pair.Value,
+            static pair => pair.Key,
+            StringComparer.Ordinal);
+        var declaredFunctionsByIdentity = declaredFunctionIdentities.ToDictionary(
+            static pair => pair.Value,
+            static pair => pair.Key,
+            StringComparer.Ordinal);
         var (reusedSemanticFunctions, totalSemanticFunctions) =
-            ValidateFunctionBodies(functions, activeReuse);
-        var reusedMainSemantics = activeReuse?.MainBindings is not null;
+            ValidateFunctionBodies(
+                functions,
+                activeReuse,
+                syntaxCallsByIdentity,
+                declaredFunctionsByIdentity);
+        IReadOnlyDictionary<string, BoundType>? restoredMainBindings = null;
+        var reusedMainSemantics = activeReuse is not null
+            && TryRestoreMainSemantics(
+                activeReuse,
+                syntaxCallsByIdentity,
+                declaredFunctionsByIdentity,
+                out restoredMainBindings);
         var mainBindings = reusedMainSemantics
-            ? RestoreBindings(activeReuse!.MainBindings!)
+            ? restoredMainBindings!
             : BindMain(functions);
         var storagePlacement = StoragePlacementAnalyzer.Analyze(_program, functions);
         var stableFunctionIdentities = SemanticStableIdentity.IndexFunctions(
             _types,
             functions.Values,
             _resolvedGenericCalls.Values);
-        var stableCallSiteIdentities = SemanticStableIdentity.IndexCallSites(
-            functions.Values,
-            _program.Statements,
-            _resolvedGenericCalls,
-            stableFunctionIdentities);
+        var stableCallSiteIdentities = new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
+        foreach (var callSite in _resolvedGenericCalls.Keys)
+        {
+            if (!syntaxCallSiteIdentities.TryGetValue(callSite, out var identity))
+            {
+                throw new InvalidOperationException(
+                    $"resolved call site '{callSite.GetType().Name}' was not indexed by the stable syntax traversal");
+            }
+            stableCallSiteIdentities.Add(callSite, identity);
+        }
         return new BoundProgram(
             _types,
             _traits,
@@ -258,7 +289,9 @@ internal sealed partial class SemanticCompiler
 
     private (int Reused, int Total) ValidateFunctionBodies(
         IReadOnlyDictionary<string, BoundFunction> functions,
-        SemanticReusePlan? reusePlan)
+        SemanticReusePlan? reusePlan,
+        IReadOnlyDictionary<string, object> syntaxCallsByIdentity,
+        IReadOnlyDictionary<string, BoundFunction> declaredFunctionsByIdentity)
     {
         var checkedFunctions = new HashSet<string>(StringComparer.Ordinal);
         var reused = 0;
@@ -276,7 +309,11 @@ internal sealed partial class SemanticCompiler
 
             total++;
             if (reusePlan is not null
-                && TryRestoreFunctionTree(function, reusePlan))
+                && TryRestoreFunctionTree(
+                    function,
+                    reusePlan,
+                    syntaxCallsByIdentity,
+                    declaredFunctionsByIdentity))
             {
                 reused++;
                 continue;
@@ -291,17 +328,252 @@ internal sealed partial class SemanticCompiler
         return (reused, total);
     }
 
-    private bool TryRestoreFunctionTree(BoundFunction root, SemanticReusePlan reusePlan)
+    private bool TryRestoreFunctionTree(
+        BoundFunction root,
+        SemanticReusePlan reusePlan,
+        IReadOnlyDictionary<string, object> syntaxCallsByIdentity,
+        IReadOnlyDictionary<string, BoundFunction> declaredFunctionsByIdentity)
     {
         var tree = new List<(BoundFunction Function, SemanticFunctionReuse Reuse)>();
         if (!CollectReusableFunctionTree(root, parentIdentity: null, reusePlan, tree))
             return false;
-        foreach (var (function, reusable) in tree)
+        Dictionary<BoundFunction, (IReadOnlyDictionary<string, BoundType> Bindings,
+            IReadOnlyDictionary<string, BoundType> Captured)> materialized;
+        try
         {
-            _functionBindings[function] = RestoreBindings(reusable.Bindings);
-            _functionCapturedBindings[function] = RestoreBindings(reusable.CapturedBindings);
+            materialized = new Dictionary<BoundFunction, (
+                IReadOnlyDictionary<string, BoundType> Bindings,
+                IReadOnlyDictionary<string, BoundType> Captured)>(ReferenceEqualityComparer.Instance);
+            foreach (var item in tree)
+            {
+                materialized.Add(
+                    item.Function,
+                    (RestoreBindings(item.Reuse.Bindings),
+                        RestoreBindings(item.Reuse.CapturedBindings)));
+            }
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+        if (!TryRestoreOwnerCalls(
+                tree.Select(static item => item.Reuse.Identity).ToArray(),
+                reusePlan,
+                syntaxCallsByIdentity,
+                declaredFunctionsByIdentity))
+            return false;
+        foreach (var (function, bindings) in materialized)
+        {
+            _functionBindings[function] = bindings.Bindings;
+            _functionCapturedBindings[function] = bindings.Captured;
         }
         return true;
+    }
+
+    private bool TryRestoreOwnerCalls(
+        IReadOnlyCollection<string> ownerIdentities,
+        SemanticReusePlan reusePlan,
+        IReadOnlyDictionary<string, object> syntaxCallsByIdentity,
+        IReadOnlyDictionary<string, BoundFunction> declaredFunctionsByIdentity)
+    {
+        if (_boundFunctions is null)
+            throw new InvalidOperationException("semantic call restoration requires bound functions");
+
+        var originalFunctionNames = _boundFunctions.Keys.ToHashSet(StringComparer.Ordinal);
+        var originalCalls = new Dictionary<object, BoundFunction>(
+            _resolvedGenericCalls,
+            ReferenceEqualityComparer.Instance);
+        var restoredBindings = new Dictionary<BoundFunction, SemanticFunctionReuse>(
+            ReferenceEqualityComparer.Instance);
+        try
+        {
+            var pendingOwners = new SortedSet<string>(ownerIdentities, StringComparer.Ordinal);
+            var restoredOwners = new HashSet<string>(StringComparer.Ordinal);
+            while (pendingOwners.Count > 0)
+            {
+                var owner = pendingOwners.Min!;
+                pendingOwners.Remove(owner);
+                if (!restoredOwners.Add(owner))
+                    continue;
+                var calls = reusePlan.ResolvedCalls
+                    .Where(pair => pair.Key.StartsWith(owner + "/call:", StringComparison.Ordinal))
+                    .OrderBy(static pair => pair.Key, StringComparer.Ordinal);
+                foreach (var call in calls)
+                {
+                    if (!syntaxCallsByIdentity.TryGetValue(call.Key, out var syntaxNode)
+                        || !TryResolveReusableCallTarget(
+                            call.Value,
+                            syntaxNode,
+                            reusePlan,
+                            declaredFunctionsByIdentity,
+                            out var target))
+                    {
+                        RollBackRestoredCalls(originalFunctionNames, originalCalls);
+                        return false;
+                    }
+
+                    _resolvedGenericCalls[syntaxNode] = target;
+                    if (reusePlan.Specializations.TryGetValue(call.Value, out var specialization)
+                        && specialization.TemplateIdentity is { } templateOwner)
+                        pendingOwners.Add(templateOwner);
+                    if (target.Kind is BoundFunctionKind.User or BoundFunctionKind.UserBlock
+                        && !declaredFunctionsByIdentity.ContainsKey(call.Value))
+                    {
+                        if (!reusePlan.Functions.TryGetValue(call.Value, out var reusable)
+                            || !StringComparer.Ordinal.Equals(reusable.ModuleName, target.ModuleName))
+                        {
+                            RollBackRestoredCalls(originalFunctionNames, originalCalls);
+                            return false;
+                        }
+                        restoredBindings[target] = reusable;
+                    }
+                }
+            }
+
+            var materializedBindings = new Dictionary<BoundFunction, (
+                IReadOnlyDictionary<string, BoundType> Bindings,
+                IReadOnlyDictionary<string, BoundType> Captured)>(ReferenceEqualityComparer.Instance);
+            foreach (var pair in restoredBindings)
+            {
+                materializedBindings.Add(
+                    pair.Key,
+                    (RestoreBindings(pair.Value.Bindings),
+                        RestoreBindings(pair.Value.CapturedBindings)));
+            }
+            foreach (var (function, bindings) in materializedBindings)
+            {
+                _functionBindings[function] = bindings.Bindings;
+                _functionCapturedBindings[function] = bindings.Captured;
+            }
+            return true;
+        }
+        catch (Exception error) when (error is InvalidDataException
+                                      or InvalidOperationException
+                                      or SollangException
+                                      or KeyNotFoundException)
+        {
+            RollBackRestoredCalls(originalFunctionNames, originalCalls);
+            return false;
+        }
+    }
+
+    private bool TryResolveReusableCallTarget(
+        string identity,
+        object syntaxNode,
+        SemanticReusePlan reusePlan,
+        IReadOnlyDictionary<string, BoundFunction> declaredFunctionsByIdentity,
+        out BoundFunction target)
+    {
+        if (declaredFunctionsByIdentity.TryGetValue(identity, out target!))
+            return true;
+        if (_boundFunctions is null
+            || !reusePlan.Specializations.TryGetValue(identity, out var recipe))
+        {
+            target = null!;
+            return false;
+        }
+
+        if (recipe.TemplateIdentity is { } templateIdentity)
+        {
+            if (!declaredFunctionsByIdentity.TryGetValue(templateIdentity, out var template))
+            {
+                target = null!;
+                return false;
+            }
+            if (recipe.SpecializedValue is { } value)
+            {
+                if (recipe.InputType is null)
+                {
+                    target = null!;
+                    return false;
+                }
+                target = ResolveValueGenericSpecialization(
+                    template,
+                    (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.InputType),
+                    value,
+                    syntaxNode,
+                    validateSpecialization: false);
+            }
+            else
+            {
+                if (recipe.SpecializedType is null)
+                {
+                    target = null!;
+                    return false;
+                }
+                target = ResolveGenericSpecialization(
+                    template,
+                    (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedType),
+                    _boundFunctions,
+                    syntaxNode,
+                    recipe.InputType is null
+                        ? null
+                        : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.InputType),
+                    recipe.SpecializedSecondaryType is null
+                        ? null
+                        : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedSecondaryType),
+                    recipe.SpecializedTertiaryType is null
+                        ? null
+                        : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedTertiaryType),
+                    validateSpecialization: false);
+            }
+        }
+        else
+        {
+            target = new BoundFunction(
+                recipe.Name,
+                recipe.InputName,
+                recipe.InputType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.InputType),
+                recipe.InputOwnership,
+                (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.ReturnType),
+                recipe.BlockInputName,
+                recipe.BlockInputType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.BlockInputType),
+                new Dictionary<string, BoundFunction>(StringComparer.Ordinal),
+                Body: null,
+                BlockBody: [],
+                Line: 0,
+                Column: 0,
+                recipe.Kind,
+                recipe.IsStandardLibrary,
+                recipe.IsLocal,
+                SpecializedType: recipe.SpecializedType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedType),
+                SpecializedSecondaryType: recipe.SpecializedSecondaryType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedSecondaryType),
+                SpecializedTertiaryType: recipe.SpecializedTertiaryType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.SpecializedTertiaryType),
+                SpecializedValue: recipe.SpecializedValue,
+                ModuleName: recipe.ModuleName,
+                IsPublic: recipe.IsPublic,
+                IsAsync: recipe.IsAsync,
+                BlockResultType: recipe.BlockResultType is null
+                    ? null
+                    : (BoundType)SemanticStableIdentity.ResolveType(_types, recipe.BlockResultType));
+        }
+
+        return StringComparer.Ordinal.Equals(
+            SemanticStableIdentity.Function(_types, target, parentIdentity: null),
+            identity);
+    }
+
+    private void RollBackRestoredCalls(
+        IReadOnlySet<string> originalFunctionNames,
+        IReadOnlyDictionary<object, BoundFunction> originalCalls)
+    {
+        if (_boundFunctions is null)
+            return;
+        foreach (var name in _boundFunctions.Keys.Where(name => !originalFunctionNames.Contains(name)).ToArray())
+            _boundFunctions.Remove(name);
+        _resolvedGenericCalls.Clear();
+        foreach (var call in originalCalls)
+            _resolvedGenericCalls.Add(call.Key, call.Value);
     }
 
     private bool CollectReusableFunctionTree(
@@ -331,6 +603,33 @@ internal sealed partial class SemanticCompiler
             static pair => pair.Key,
             pair => (BoundType)SemanticStableIdentity.ResolveType(_types, pair.Value),
             StringComparer.Ordinal);
+    }
+
+    private bool TryRestoreMainSemantics(
+        SemanticReusePlan reusePlan,
+        IReadOnlyDictionary<string, object> syntaxCallsByIdentity,
+        IReadOnlyDictionary<string, BoundFunction> declaredFunctionsByIdentity,
+        out IReadOnlyDictionary<string, BoundType>? bindings)
+    {
+        bindings = null;
+        if (reusePlan.MainBindings is null)
+            return false;
+        try
+        {
+            bindings = RestoreBindings(reusePlan.MainBindings);
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+        if (TryRestoreOwnerCalls(
+                ["main"],
+                reusePlan,
+                syntaxCallsByIdentity,
+                declaredFunctionsByIdentity))
+            return true;
+        bindings = null;
+        return false;
     }
 
     private void ValidateMemberNameCollisions(IReadOnlyDictionary<string, BoundFunction> functions)
@@ -5712,7 +6011,8 @@ internal sealed partial class SemanticCompiler
         object callSite,
         BoundType? specializedInputType = null,
         BoundType? explicitSecondaryType = null,
-        BoundType? explicitTertiaryType = null)
+        BoundType? explicitTertiaryType = null,
+        bool validateSpecialization = true)
     {
         if (template.Kind is BoundFunctionKind.RuntimeWriteScalar
                 or BoundFunctionKind.RuntimeReadScalar
@@ -5863,7 +6163,8 @@ internal sealed partial class SemanticCompiler
                 SpecializedTertiaryType = inferredTertiaryType
             };
             _boundFunctions.Add(specializedName, specialization);
-            if (specialization.Kind is BoundFunctionKind.User or BoundFunctionKind.UserBlock
+            if (validateSpecialization
+                && specialization.Kind is (BoundFunctionKind.User or BoundFunctionKind.UserBlock)
                 && _validatingGenericSpecializations.Add(specialization))
             {
                 ValidateGenericSpecialization(specialization, _boundFunctions);
@@ -5936,7 +6237,8 @@ internal sealed partial class SemanticCompiler
         BoundFunction template,
         BoundType actualType,
         int? valueArgument,
-        object callSite)
+        object callSite,
+        bool validateSpecialization = true)
     {
         if (valueArgument is null)
         {
@@ -6017,7 +6319,7 @@ internal sealed partial class SemanticCompiler
                 SpecializedValue = valueArgument.Value
             };
             _boundFunctions.Add(specializedName, specialization);
-            if (_validatingGenericSpecializations.Add(specialization))
+            if (validateSpecialization && _validatingGenericSpecializations.Add(specialization))
             {
                 ValidateGenericSpecialization(specialization, _boundFunctions);
             }

@@ -71,14 +71,12 @@ internal static class SemanticStableIdentity
         return SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
     }
 
-    public static IReadOnlyDictionary<object, string> IndexCallSites(
+    public static IReadOnlyDictionary<object, string> IndexSyntaxCallSites(
         IEnumerable<BoundFunction> roots,
         IReadOnlyList<Statement> mainStatements,
-        IReadOnlyDictionary<object, BoundFunction> resolvedCalls,
         IReadOnlyDictionary<BoundFunction, string> functionIdentities)
     {
         var result = new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
-        var resolved = new HashSet<object>(resolvedCalls.Keys, ReferenceEqualityComparer.Instance);
         var visitedFunctions = new HashSet<BoundFunction>(ReferenceEqualityComparer.Instance);
         foreach (var root in roots
                      .OrderBy(static function => function.ModuleName, StringComparer.Ordinal)
@@ -86,19 +84,13 @@ internal static class SemanticStableIdentity
         {
             IndexFunctionCallSites(
                 root,
-                resolved,
                 functionIdentities,
                 visitedFunctions,
                 result);
         }
 
         var mainOrdinal = 0;
-        VisitStatements(mainStatements, "main", resolved, result, ref mainOrdinal);
-        if (result.Count != resolved.Count)
-        {
-            throw new InvalidOperationException(
-                $"stable call-site traversal found {result.Count} of {resolved.Count} resolved calls");
-        }
+        VisitStatements(mainStatements, "main", result, ref mainOrdinal);
         return result;
     }
 
@@ -261,7 +253,6 @@ internal static class SemanticStableIdentity
 
     private static void IndexFunctionCallSites(
         BoundFunction function,
-        IReadOnlySet<object> resolved,
         IReadOnlyDictionary<BoundFunction, string> functionIdentities,
         ISet<BoundFunction> visitedFunctions,
         IDictionary<object, string> result)
@@ -274,15 +265,14 @@ internal static class SemanticStableIdentity
         var ordinal = 0;
         if (function.Body is not null)
         {
-            VisitExpression(function.Body, owner, resolved, result, ref ordinal);
+            VisitExpression(function.Body, owner, result, ref ordinal);
         }
-        VisitStatements(function.BlockBody, owner, resolved, result, ref ordinal);
+        VisitStatements(function.BlockBody, owner, result, ref ordinal);
         foreach (var local in function.LocalFunctions.Values
                      .OrderBy(static value => value.Name, StringComparer.Ordinal))
         {
             IndexFunctionCallSites(
                 local,
-                resolved,
                 functionIdentities,
                 visitedFunctions,
                 result);
@@ -292,37 +282,36 @@ internal static class SemanticStableIdentity
     private static void VisitStatements(
         IReadOnlyList<Statement> statements,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
         foreach (var statement in statements)
         {
-            Register(statement, owner, resolved, result, ref ordinal);
+            RegisterSyntaxCall(statement, owner, result, ref ordinal);
             switch (statement)
             {
                 case BindingStatement binding:
-                    VisitExpression(binding.Value, owner, resolved, result, ref ordinal);
+                    VisitExpression(binding.Value, owner, result, ref ordinal);
                     break;
                 case IndexAssignmentStatement assignment:
-                    VisitExpression(assignment.Index, owner, resolved, result, ref ordinal);
-                    VisitExpression(assignment.Value, owner, resolved, result, ref ordinal);
+                    VisitExpression(assignment.Index, owner, result, ref ordinal);
+                    VisitExpression(assignment.Value, owner, result, ref ordinal);
                     break;
                 case FieldAssignmentStatement assignment:
-                    VisitExpression(assignment.Value, owner, resolved, result, ref ordinal);
+                    VisitExpression(assignment.Value, owner, result, ref ordinal);
                     break;
                 case BlockFunctionCallStatement block:
-                    VisitExpression(block.Source, owner, resolved, result, ref ordinal);
-                    VisitStatements(block.Body, owner, resolved, result, ref ordinal);
+                    VisitExpression(block.Source, owner, result, ref ordinal);
+                    VisitStatements(block.Body, owner, result, ref ordinal);
                     break;
                 case ExpressionStatement expression:
-                    VisitExpression(expression.Expression, owner, resolved, result, ref ordinal);
+                    VisitExpression(expression.Expression, owner, result, ref ordinal);
                     break;
                 case GuardLoopControlStatement guard:
-                    VisitExpression(guard.Condition, owner, resolved, result, ref ordinal);
+                    VisitExpression(guard.Condition, owner, result, ref ordinal);
                     break;
                 case ReturnStatement { Value: { } value }:
-                    VisitExpression(value, owner, resolved, result, ref ordinal);
+                    VisitExpression(value, owner, result, ref ordinal);
                     break;
             }
         }
@@ -331,132 +320,131 @@ internal static class SemanticStableIdentity
     private static void VisitExpression(
         Expression expression,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
-        Register(expression, owner, resolved, result, ref ordinal);
+        RegisterSyntaxCall(expression, owner, result, ref ordinal);
         switch (expression)
         {
             case StringExpression text:
                 foreach (var segment in text.Segments.OfType<InterpolationSegment>())
-                    VisitExpression(segment.Expression, owner, resolved, result, ref ordinal);
+                    VisitExpression(segment.Expression, owner, result, ref ordinal);
                 break;
             case AddExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case SubtractExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case MultiplyExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case DivideExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case ModuloExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case CompareExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case AndExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case OrExpression binary:
-                VisitBinary(binary.Left, binary.Right, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Left, binary.Right, owner, result, ref ordinal);
                 break;
             case RangeExpression binary:
-                VisitBinary(binary.Start, binary.End, owner, resolved, result, ref ordinal);
+                VisitBinary(binary.Start, binary.End, owner, result, ref ordinal);
                 break;
             case NegateExpression unary:
-                VisitExpression(unary.Value, owner, resolved, result, ref ordinal);
+                VisitExpression(unary.Value, owner, result, ref ordinal);
                 break;
             case NotExpression unary:
-                VisitExpression(unary.Value, owner, resolved, result, ref ordinal);
+                VisitExpression(unary.Value, owner, result, ref ordinal);
                 break;
             case TryExpression unary:
-                VisitExpression(unary.Value, owner, resolved, result, ref ordinal);
+                VisitExpression(unary.Value, owner, result, ref ordinal);
                 break;
             case BoxExpression unary:
-                VisitExpression(unary.Value, owner, resolved, result, ref ordinal);
+                VisitExpression(unary.Value, owner, result, ref ordinal);
                 break;
             case CompileTimeEachExpression each:
-                VisitExpression(each.Source, owner, resolved, result, ref ordinal);
-                VisitExpression(each.Selector, owner, resolved, result, ref ordinal);
+                VisitExpression(each.Source, owner, result, ref ordinal);
+                VisitExpression(each.Selector, owner, result, ref ordinal);
                 if (each.DictionaryValueSelector is not null)
-                    VisitExpression(each.DictionaryValueSelector, owner, resolved, result, ref ordinal);
+                    VisitExpression(each.DictionaryValueSelector, owner, result, ref ordinal);
                 break;
             case FoldExpression fold:
-                VisitExpression(fold.Source, owner, resolved, result, ref ordinal);
-                VisitExpression(fold.Initial, owner, resolved, result, ref ordinal);
-                VisitBlock(fold.Body, owner, resolved, result, ref ordinal);
+                VisitExpression(fold.Source, owner, result, ref ordinal);
+                VisitExpression(fold.Initial, owner, result, ref ordinal);
+                VisitBlock(fold.Body, owner, result, ref ordinal);
                 break;
             case IfExpression conditional:
-                VisitExpression(conditional.Condition, owner, resolved, result, ref ordinal);
-                VisitBlock(conditional.Then, owner, resolved, result, ref ordinal);
+                VisitExpression(conditional.Condition, owner, result, ref ordinal);
+                VisitBlock(conditional.Then, owner, result, ref ordinal);
                 if (conditional.Else is not null)
-                    VisitBlock(conditional.Else, owner, resolved, result, ref ordinal);
+                    VisitBlock(conditional.Else, owner, result, ref ordinal);
                 break;
             case WhenExpression selection:
                 if (selection.Subject is not null)
-                    VisitExpression(selection.Subject, owner, resolved, result, ref ordinal);
-                VisitArms(selection.Arms, owner, resolved, result, ref ordinal);
-                VisitBlock(selection.Else, owner, resolved, result, ref ordinal);
+                    VisitExpression(selection.Subject, owner, result, ref ordinal);
+                VisitArms(selection.Arms, owner, result, ref ordinal);
+                VisitBlock(selection.Else, owner, result, ref ordinal);
                 break;
             case FlowExpression flow:
-                VisitExpression(flow.Source, owner, resolved, result, ref ordinal);
+                VisitExpression(flow.Source, owner, result, ref ordinal);
                 foreach (var target in flow.Targets)
                 {
-                    Register(target, owner, resolved, result, ref ordinal);
+                    RegisterSyntaxCall(target, owner, result, ref ordinal);
                     foreach (var argument in target.Arguments)
-                        VisitExpression(argument, owner, resolved, result, ref ordinal);
+                        VisitExpression(argument, owner, result, ref ordinal);
                 }
                 break;
             case CallExpression call:
                 foreach (var argument in call.Arguments)
-                    VisitExpression(argument, owner, resolved, result, ref ordinal);
+                    VisitExpression(argument, owner, result, ref ordinal);
                 break;
             case ArrayLiteralExpression array:
                 foreach (var element in array.Elements)
-                    VisitExpression(element, owner, resolved, result, ref ordinal);
+                    VisitExpression(element, owner, result, ref ordinal);
                 break;
             case ArrayRepeatExpression repeat:
-                VisitExpression(repeat.Value, owner, resolved, result, ref ordinal);
+                VisitExpression(repeat.Value, owner, result, ref ordinal);
                 break;
             case DictionaryLiteralExpression dictionary:
                 foreach (var entry in dictionary.Entries)
                 {
-                    VisitExpression(entry.Key, owner, resolved, result, ref ordinal);
-                    VisitExpression(entry.Value, owner, resolved, result, ref ordinal);
+                    VisitExpression(entry.Key, owner, result, ref ordinal);
+                    VisitExpression(entry.Value, owner, result, ref ordinal);
                 }
                 break;
             case IndexExpression index:
-                VisitBinary(index.Source, index.Index, owner, resolved, result, ref ordinal);
+                VisitBinary(index.Source, index.Index, owner, result, ref ordinal);
                 break;
             case StructLiteralExpression structure:
                 foreach (var field in structure.Fields)
-                    VisitExpression(field.Value, owner, resolved, result, ref ordinal);
+                    VisitExpression(field.Value, owner, result, ref ordinal);
                 break;
             case FieldAccessExpression field:
-                VisitExpression(field.Source, owner, resolved, result, ref ordinal);
+                VisitExpression(field.Source, owner, result, ref ordinal);
                 break;
             case MapExpression map:
-                VisitExpression(map.Path, owner, resolved, result, ref ordinal);
-                if (map.Offset is not null) VisitExpression(map.Offset, owner, resolved, result, ref ordinal);
-                if (map.Length is not null) VisitExpression(map.Length, owner, resolved, result, ref ordinal);
-                if (map.FileSize is not null) VisitExpression(map.FileSize, owner, resolved, result, ref ordinal);
+                VisitExpression(map.Path, owner, result, ref ordinal);
+                if (map.Offset is not null) VisitExpression(map.Offset, owner, result, ref ordinal);
+                if (map.Length is not null) VisitExpression(map.Length, owner, result, ref ordinal);
+                if (map.FileSize is not null) VisitExpression(map.FileSize, owner, result, ref ordinal);
                 break;
             case EnumMatchExpression match:
-                VisitExpression(match.Subject, owner, resolved, result, ref ordinal);
-                VisitArms(match.Arms, owner, resolved, result, ref ordinal);
-                if (match.Else is not null) VisitBlock(match.Else, owner, resolved, result, ref ordinal);
+                VisitExpression(match.Subject, owner, result, ref ordinal);
+                VisitArms(match.Arms, owner, result, ref ordinal);
+                if (match.Else is not null) VisitBlock(match.Else, owner, result, ref ordinal);
                 break;
             case SubjectCompareExpression compare:
-                VisitExpression(compare.Right, owner, resolved, result, ref ordinal);
+                VisitExpression(compare.Right, owner, result, ref ordinal);
                 break;
             case SubjectRangeExpression range:
-                VisitBinary(range.Start, range.End, owner, resolved, result, ref ordinal);
+                VisitBinary(range.Start, range.End, owner, result, ref ordinal);
                 break;
         }
     }
@@ -465,54 +453,53 @@ internal static class SemanticStableIdentity
         Expression left,
         Expression right,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
-        VisitExpression(left, owner, resolved, result, ref ordinal);
-        VisitExpression(right, owner, resolved, result, ref ordinal);
+        VisitExpression(left, owner, result, ref ordinal);
+        VisitExpression(right, owner, result, ref ordinal);
     }
 
     private static void VisitBlock(
         BlockBody block,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
-        VisitStatements(block.Statements, owner, resolved, result, ref ordinal);
+        VisitStatements(block.Statements, owner, result, ref ordinal);
         if (block.Value is not null)
-            VisitExpression(block.Value, owner, resolved, result, ref ordinal);
+            VisitExpression(block.Value, owner, result, ref ordinal);
     }
 
     private static void VisitArms(
         IReadOnlyList<WhenArm> arms,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
         foreach (var arm in arms)
         {
-            VisitExpression(arm.Condition, owner, resolved, result, ref ordinal);
-            VisitBlock(arm.Body, owner, resolved, result, ref ordinal);
+            VisitExpression(arm.Condition, owner, result, ref ordinal);
+            VisitBlock(arm.Body, owner, result, ref ordinal);
         }
     }
 
-    private static void Register(
+    private static void RegisterSyntaxCall(
         object node,
         string owner,
-        IReadOnlySet<object> resolved,
         IDictionary<object, string> result,
         ref int ordinal)
     {
-        if (!resolved.Contains(node))
+        if (node is not (CallExpression
+            or TypeApplicationExpression
+            or FlowTarget
+            or BlockFunctionCallStatement))
         {
             return;
         }
         if (!result.TryAdd(node, owner + "/call:" + ordinal.ToString(CultureInfo.InvariantCulture)))
         {
-            throw new InvalidOperationException("resolved call site occurs more than once in syntax traversal");
+            throw new InvalidOperationException("syntax call site occurs more than once in syntax traversal");
         }
         ordinal++;
     }

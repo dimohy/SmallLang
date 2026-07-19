@@ -2209,7 +2209,7 @@ Current backend:
   or changed final artifact relinks from the already validated LLVM units and
   atomically publishes a repaired product generation without rerunning the
   frontend.
-- semantic identity generation: a schema-3 `.semantic` generation stores
+- semantic identity generation: a schema-4 `.semantic` generation stores
   canonical structural identities for bound functions and resolved generic call
   sites, the visible declaration-universe fingerprint, exact per-module source
   digests, and reusable function binding/captured-binding type maps.
@@ -2220,10 +2220,16 @@ Current backend:
   validation only when the function's module digest and the complete visible
   declaration fingerprint are unchanged. Persisted structural types are
   re-interned into the fresh type table. A parent and all recursively nested
-  local functions are restored as one atomic tree. Main bindings may also be
-  restored when the executable module is exact and main has no resolved
-  specialization state. Functions or main scopes containing resolved generic
-  call-site state are not yet reusable and must be analyzed normally.
+  local functions are restored as one atomic tree. Stable syntax-call identities
+  are assigned before resolution across ordinary calls, type applications,
+  fluent targets, and block-function calls. Resolved edges carry either a
+  generic template plus structural type/value arguments or the concrete
+  signature of a synthesized runtime specialization. Rehydration reconstructs
+  the current-session target, verifies its full stable identity, follows nested
+  specialization edges, and restores user-specialization bindings. Main uses
+  the same process when its executable module is exact. Function and main call
+  restoration is transactional; any missing or invalid node, recipe, type, or
+  target falls back to normal validation without publishing partial state.
   Publication is write-through and atomic after a successful link.
 - common emitter: `LlvmEmitter` owns function calls, bindings,
   interpolation, local-function inlining, `each` lowering, integer decimal

@@ -28,13 +28,29 @@ $outputPath = Join-Path $caseRoot "build\app.exe"
 
 @'
 import cache.consumer as consumer
+import sys.file as file
 
 rootValue value: Int -> Int {
     value
 }
 
+rootIdentity<T> value: T -> T {
+    value
+}
+
+rootRepeat<N: Int> value: Int -> Int {
+    [value; N] => values
+    values -> fold 0 total, item {
+        total + item
+    }
+}
+
+cachedRead reader: file.File -> Result<Option<UInt16>, Text> uses File {
+    reader -> readAt<UInt16>(0)
+}
+
 main {
-    21 -> consumer.compute -> rootValue => result
+    21 -> consumer.compute -> rootIdentity -> rootRepeat<1> -> rootValue => result
     "$result" -> println
 }
 '@ | Set-Content -LiteralPath $mainSource -Encoding utf8NoBOM
@@ -45,11 +61,19 @@ namespace cache.consumer
 import cache.provider as provider
 
 public compute value: Int -> Int {
-    identity item: Int -> Int {
+    localIdentity item: Int -> Int {
         item
     }
 
-    value -> provider.scale -> identity
+    value -> provider.scale -> genericIdentity -> localIdentity
+}
+
+genericIdentity<T> value: T -> T {
+    value -> nestedIdentity
+}
+
+nestedIdentity<T> value: T -> T {
+    value
 }
 '@ | Set-Content -LiteralPath $consumerSource -Encoding utf8NoBOM
 
@@ -319,8 +343,12 @@ function Verify-Target {
         throw "$Target body-only build did not reuse unchanged semantic function bodies"
     }
     if (-not $body.ReusedMainSemantics) {
-        throw "$Target body-only build did not reuse unchanged main semantics"
+        throw "$Target body-only build did not reuse main semantics with a generic call"
     }
+    if ($body.CallTotal -lt 5 -or $body.MappedCalls -ne $body.CallTotal) {
+        throw "$Target body-only build did not restore all stable generic call sites"
+    }
+    Write-Host "[$Target 3/10] Semantic reuse $($body.ReusedSemanticFunctions)/$($body.SemanticFunctionTotal) functions, main reused, generic calls $($body.MappedCalls)/$($body.CallTotal)."
     Assert-Product $Target ([string](21 * $BodyFactor))
     $bodyWarm = Invoke-Build $Target
     Assert-Reused $bodyWarm 5 "$Target body-only warm build"
@@ -356,6 +384,9 @@ function Verify-Target {
     }
     if ($privateRemoval.MappedFunctions -le 0 -or $privateRemoval.FunctionTotal -le 0) {
         throw "$Target private-removal build did not map stable semantic functions"
+    }
+    if ($privateRemoval.CallTotal -lt 5 -or $privateRemoval.MappedCalls -ne $privateRemoval.CallTotal) {
+        throw "$Target private-removal build did not preserve generic call mappings"
     }
 
     Write-Host "[$Target 6/10] Public-interface edit invalidates transitive consumers."

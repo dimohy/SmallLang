@@ -125,12 +125,12 @@ not lines of code.
 | Core syntax and control flow | 10 | 10 | 0 | 0 | 10.0 |
 | Types, traits, and generics | 12 | 11 | 0 | 1 | 11.0 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
-| Modules, visibility, and builds | 8 | 6 | 2 | 0 | 7.0 |
+| Modules, visibility, and builds | 8 | 7 | 1 | 0 | 7.5 |
 | Compiler-construction primitives | 12 | 11 | 1 | 0 | 11.5 |
 | Standard library and tooling | 8 | 2 | 5 | 1 | 4.5 |
-| **Total** | **60** | **47** | **10** | **3** | **52.0 / 60** |
+| **Total** | **60** | **48** | **9** | **3** | **52.5 / 60** |
 
-Current count-based progress: **86.7% (52.0 of 60 equivalent gates)**.
+Current count-based progress: **87.5% (52.5 of 60 equivalent gates)**.
 
 The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
@@ -141,7 +141,7 @@ reject mutable or structurally non-sendable captures. The submitting parent now
 helps drain its task group before the structured join. Exact cancellation and
 partial-result destruction plus full Windows/Linux suite parity are proven.
 This completed feature-local subproject does not promote a roadmap gate.
-There are **8.0 equivalent gates remaining**. Because the remaining compiler
+There are **7.5 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -1335,7 +1335,7 @@ parity, but does not yet make an ordinary build skip frontend or codegen work;
 the module/interface-cache gate therefore remains partial at **47 complete,
 9 partial, 4 missing: 51.5/60 (85.8%)**.
 
-## Incremental Build Integration (D207C, in progress)
+## Incremental Build Integration (D207C, complete)
 
 The next slice moves the cache from a verification mode into the ordinary build
 pipeline. The design uses two immutable generations, following rustc's old/new
@@ -1366,35 +1366,37 @@ Implementation order:
     codegen-unit artifact independently of source input order.
   - [x] Route the real LLVM emitter into shared-prefix, per-module, and
     shared-suffix sinks and consume reused fragments in an ordinary build.
-- [ ] Integrate old-generation load and new-generation atomic publication into
+- [x] Integrate old-generation load and new-generation atomic publication into
   normal `sollang build`.
   - [x] Load, validate, reuse, and atomically publish the C# bootstrap
     compiler's LLVM codegen units after a successful link.
-  - [ ] Load the stable raw-source and typed-IR generations before semantic
-    analysis so frontend work can also be skipped.
+  - [x] Load the stable raw-source and semantic generations before semantic
+    body validation so frontend work can be skipped wholly or per green body.
     - [x] Skip the complete frontend when every exact source and build-context
       input matches a snapshot bound to the validated codegen generation.
     - [x] Skip linking when the exact final product remains bound to the same
       validated source and codegen generations.
-    - [ ] Rehydrate typed IR for unchanged modules after a partial source miss.
+    - [x] Rehydrate reusable semantic body state for unchanged modules after a
+      partial source miss.
       - [x] Replace session-local type IDs and AST object addresses with stable
         structural function and resolved-call-site identities.
       - [x] Persist, validate, and remap those identities through a canonical
         checksummed semantic generation.
-      - [ ] Store module typed-IR bodies and load them before semantic analysis.
+      - [x] Store the structural semantic payload needed to bypass unchanged
+        function-body validation and load it before that phase.
         - [x] Restore cached binding and captured-binding types before validating
           unchanged functions without local or generic-call state.
         - [x] Restore complete local-function trees atomically and reuse a green
           main scope when neither contains specialization state.
-        - [ ] Restore generic/specialized call-site state so every green module
+        - [x] Restore generic/specialized call-site state so every green module
           body can bypass validation.
-- [ ] Prove cold, warm, body-only, public-interface, corruption, target-change,
+- [x] Prove cold, warm, body-only, public-interface, corruption, target-change,
   and clean-vs-cached byte-equivalence cases on Windows and Linux.
   - [x] Prove the complete matrix for ordinary LLVM codegen-unit reuse with
     `scripts/verify-codegen-cache.ps1`.
   - [x] Prove exact-input frontend skipping and source-snapshot/codegen
     corruption fallback on Windows and Linux.
-  - [ ] Prove the same invalidation matrix for pre-semantic typed-IR reuse.
+  - [x] Prove the same invalidation matrix for pre-semantic semantic-body reuse.
 
 This deliberately starts with module/codegen-unit granularity. Rust's query
 graph shows the eventual finer-grained direction, while Clang demonstrates that
@@ -1625,6 +1627,38 @@ D207C is now **4.75/5 (95%)** and the Stage3 cadence advances to **5/10**.
 Generic/specialized call-site reconstruction remains the last D207C boundary,
 so the formal roadmap stays **47 complete, 10 partial, 3 missing: 52.0/60
 (86.7%)**.
+
+D207C5D closes that boundary with schema 4. Stable call-site identity is now
+assigned before semantic resolution by walking every potential call in source
+order: ordinary calls, explicit type applications, fluent flow targets, and
+block-function calls. The identity therefore does not depend on which nodes a
+particular semantic session happened to resolve.
+
+The semantic generation stores each resolved identity edge plus a canonical
+specialization recipe. A recipe either names the current generic template and
+its structural type/value arguments, or carries the concrete signature of a
+synthesized runtime specialization such as `readAt<UInt16>`. Rehydration
+re-interns every structural type, rebuilds the current-session `BoundFunction`,
+verifies its complete stable identity, restores user-specialization bindings,
+and follows nested generic-template call edges. Function trees and main perform
+this work transactionally; a missing node, recipe, target, or invalid type
+rolls back the attempted call state and runs normal validation.
+
+The ten-state focused matrix now contains a local function, a normal type
+generic, a nested type generic, a compile-time value generic, and a synthesized
+file scalar specialization. After a provider body-only edit, Windows restores
+**44/45 functions plus main and 5/5 call sites**; Linux restores **44/46 plus
+main and 5/5 call sites**. Corruption, private/public declaration changes,
+target isolation, executable output, and clean/cached LLVM equality remain
+covered. Both full suites pass 573/573. Windows Stage2 passes 6/6 at 10,553,582
+bytes and Linux Stage2 passes 5/5 at 10,550,185 bytes.
+
+D207C is now **5/5 (100%)**. This is periodic Stage3 checkpoint **6/10**, so a
+new Stage3 run is not due yet. Completing the module/interface incremental-build
+gate moves the formal roadmap to **48 complete, 9 partial, 3 missing: 52.5/60
+(87.5%)**. The reference backend still emits LLVM from the current AST plus
+rehydrated semantic maps; this result does not claim a separate serialized
+monolithic typed-AST representation.
 
 ## Immediate Implementation Order
 

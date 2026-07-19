@@ -7378,3 +7378,52 @@ References:
 
 - [rustc incremental cache promotion](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html)
 - [Salsa tracked functions as reuse units](https://salsa-rs.github.io/salsa/tutorial/parser.html)
+
+## D207C5D - Stable Syntax Calls and Specialization Rehydration
+
+Status: Windows/Linux full suites and Stage2 verified; D207C 5/5 complete
+Date: 2026-07-20
+
+The final D207C boundary cannot use an ordinal over only already-resolved calls:
+that set does not exist until after the work the cache is intended to skip.
+Schema 4 instead indexes every potential call node before body validation.
+Ordinary `CallExpression`, `TypeApplicationExpression`, fluent `FlowTarget`,
+and `BlockFunctionCallStatement` nodes receive deterministic owner-local source
+ordinals. The persisted resolved subset can therefore locate the corresponding
+objects in a fresh AST without consulting session-local object addresses.
+
+Each non-declared target has a canonical recipe. User and runtime generic
+specializations reference the stable identity of their current declaration and
+record primary, secondary, tertiary, input, and compile-time value arguments as
+structural types. Synthesized file operations record their concrete signature
+and runtime kind. Loading re-interns those types, recreates the specialization
+without revalidating its body, verifies the resulting complete function
+identity, restores cached user-specialization bindings, and follows nested
+template-owned resolved edges. Direct declared async targets resolve through
+the current declaration identity and need no recipe.
+
+Restoration is transactional. A function first materializes its complete local
+tree. Call reconstruction snapshots the existing specialization dictionary and
+resolved-call map; a missing syntax node, stale template, unavailable exact-
+module specialization payload, malformed structural type, or identity mismatch
+removes newly created targets and restores the prior map. Main uses the same
+path. Storage placement still runs over the current AST after semantic reuse.
+
+The focused matrix exercises nested type specialization, compile-time value
+specialization, a local function, main-scope specialization, and synthesized
+`readAt<UInt16>` state. A body-only dependency edit restores 5/5 call sites;
+Windows reuses 44/45 functions plus main and Linux reuses 44/46 plus main. Both
+ten-state target matrices, both 573/573 full suites, Windows Stage2 6/6 at
+10,553,582 bytes, and Linux Stage2 5/5 at 10,550,185 bytes pass. D207C is
+**5/5 (100%)**, periodic Stage3 is **6/10**, and the formal roadmap becomes
+**48 complete, 9 partial, 3 missing: 52.5/60 (87.5%)**.
+
+The reference backend intentionally continues to lower the current AST with
+rehydrated semantic side tables. This checkpoint claims dependency-safe body
+validation reuse, not a separate serialized monolithic typed-AST format.
+
+References:
+
+- [rustc stable cross-session query fingerprints](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html)
+- [Salsa tracked functions and backdating](https://salsa-rs.github.io/salsa/reference/algorithm.html)
+- [Swift incremental request architecture](https://www.swift.org/blog/swift-5.2-released/)

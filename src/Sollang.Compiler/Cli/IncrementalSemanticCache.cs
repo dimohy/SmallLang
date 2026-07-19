@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Sollang.Compiler.Semantics;
@@ -14,9 +15,9 @@ internal sealed record IncrementalSemanticCacheProbe(
 internal sealed class IncrementalSemanticCache
 {
     private const ulong Magic = 6002245291165495635;
-    private const ulong Schema = 3;
+    private const ulong Schema = 4;
     private const int DigestLength = 32;
-    private const int HeaderWords = 10;
+    private const int HeaderWords = 11;
     private const int MaximumRecords = 1_000_000;
     private const int MaximumIdentityBytes = 1024 * 1024;
     private const long MaximumArtifactBytes = 1024L * 1024 * 1024;
@@ -27,6 +28,7 @@ internal sealed class IncrementalSemanticCache
     private readonly KeyValuePair<string, string>[] _calls;
     private readonly KeyValuePair<string, byte[]>[] _modules;
     private readonly SemanticFunctionReuse[] _reusableFunctions;
+    private readonly SemanticSpecializationReuse[] _specializations;
     private readonly string? _mainModuleName;
     private readonly IReadOnlyDictionary<string, string>? _mainBindings;
 
@@ -37,6 +39,7 @@ internal sealed class IncrementalSemanticCache
         KeyValuePair<string, string>[] calls,
         KeyValuePair<string, byte[]>[] modules,
         SemanticFunctionReuse[] reusableFunctions,
+        SemanticSpecializationReuse[] specializations,
         string? mainModuleName,
         IReadOnlyDictionary<string, string>? mainBindings,
         string status,
@@ -52,6 +55,7 @@ internal sealed class IncrementalSemanticCache
         _calls = calls;
         _modules = modules;
         _reusableFunctions = reusableFunctions;
+        _specializations = specializations;
         _mainModuleName = mainModuleName;
         _mainBindings = mainBindings;
         Status = status;
@@ -98,6 +102,9 @@ internal sealed class IncrementalSemanticCache
             var reusable = old.ReusableFunctions
                 .Where(function => exactModules.Contains(function.ModuleName))
                 .ToDictionary(static function => function.Identity, StringComparer.Ordinal);
+            var specializations = old.Specializations
+                .Where(specialization => exactModules.Contains(specialization.ModuleName))
+                .ToDictionary(static specialization => specialization.Identity, StringComparer.Ordinal);
             var mainBindings = old.MainModuleName is not null
                 && exactModules.Contains(old.MainModuleName)
                     ? old.MainBindings
@@ -107,6 +114,8 @@ internal sealed class IncrementalSemanticCache
                 new SemanticReusePlan(
                     old.DeclarationFingerprint,
                     reusable,
+                    old.Calls.ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.Ordinal),
+                    specializations,
                     mainBindings is null ? null : old.MainModuleName,
                     mainBindings),
                 old.Functions,
@@ -144,6 +153,7 @@ internal sealed class IncrementalSemanticCache
         EnsureUniquePairs(calls, "semantic call-site identity collision");
         var modules = BuildModuleHashes(compilation);
         var reusableFunctions = BuildReusableFunctions(program);
+        var specializations = BuildSpecializations(program);
         var (mainModuleName, mainBindings) = BuildReusableMain(compilation, program);
 
         var oldFunctions = probe.Functions.ToHashSet(StringComparer.Ordinal);
@@ -162,6 +172,7 @@ internal sealed class IncrementalSemanticCache
             calls,
             modules,
             reusableFunctions,
+            specializations,
             mainModuleName,
             mainBindings,
             probe.Status,
@@ -198,6 +209,7 @@ internal sealed class IncrementalSemanticCache
                 WriteUInt64(stream, checksum, checked((ulong)_calls.Length));
                 WriteUInt64(stream, checksum, checked((ulong)_modules.Length));
                 WriteUInt64(stream, checksum, checked((ulong)_reusableFunctions.Length));
+                WriteUInt64(stream, checksum, checked((ulong)_specializations.Length));
                 WriteUInt64(stream, checksum, _mainBindings is null ? 0UL : 1UL);
                 WriteDigest(stream, checksum, _declarationFingerprint);
                 if (_mainBindings is not null)
@@ -224,6 +236,8 @@ internal sealed class IncrementalSemanticCache
                     WriteBindings(stream, checksum, function.Bindings);
                     WriteBindings(stream, checksum, function.CapturedBindings);
                 }
+                foreach (var specialization in _specializations)
+                    WriteSpecialization(stream, checksum, specialization);
                 stream.Write(checksum.GetHashAndReset());
                 stream.Flush(flushToDisk: true);
             }
@@ -241,7 +255,6 @@ internal sealed class IncrementalSemanticCache
 
     private static SemanticFunctionReuse[] BuildReusableFunctions(BoundProgram program)
     {
-        var callOwners = program.StableCallSiteIdentities.Values.ToArray();
         var seen = new HashSet<BoundFunction>(ReferenceEqualityComparer.Instance);
         return EnumerateFunctions(program.Functions.Values, seen)
             .Where(static function => function.Kind is BoundFunctionKind.User or BoundFunctionKind.UserBlock)
@@ -251,8 +264,6 @@ internal sealed class IncrementalSemanticCache
                 Function = function,
                 Identity = program.StableFunctionIdentities[function]
             })
-            .Where(item => !callOwners.Any(call => call.StartsWith(
-                item.Identity + "/call:", StringComparison.Ordinal)))
             .Select(item => new SemanticFunctionReuse(
                 item.Identity,
                 item.Function.ModuleName,
@@ -282,15 +293,69 @@ internal sealed class IncrementalSemanticCache
         LoadedCompilation compilation,
         BoundProgram program)
     {
-        if (program.StableCallSiteIdentities.Values.Any(static identity =>
-                identity.StartsWith("main/call:", StringComparison.Ordinal)))
-            return (null, null);
         var executable = compilation.Sources.SingleOrDefault(static source =>
             source.Program.Statements.Count > 0);
         return executable is null
             ? (null, null)
             : (executable.ModuleName, StableBindings(program.Types, program.MainBindings));
     }
+
+    private static SemanticSpecializationReuse[] BuildSpecializations(BoundProgram program)
+    {
+        var seenFunctions = new HashSet<BoundFunction>(ReferenceEqualityComparer.Instance);
+        var distinctFunctions = program.Functions.Values.Where(seenFunctions.Add).ToArray();
+        var templates = distinctFunctions
+            .Where(static function => function.GenericParameterName is not null
+                && function.SpecializedType is null
+                && function.SpecializedValue is null)
+            .ToArray();
+        var seenTargets = new HashSet<BoundFunction>(ReferenceEqualityComparer.Instance);
+        return program.ResolvedGenericCalls.Values
+            .Where(seenTargets.Add)
+            .Where(target => !IsDeclaredUnspecializedTarget(target, distinctFunctions))
+            .Select(target =>
+            {
+                var template = templates
+                    .Where(candidate => StringComparer.Ordinal.Equals(candidate.ModuleName, target.ModuleName)
+                        && candidate.Kind == target.Kind
+                        && target.Name.StartsWith(candidate.Name + "$", StringComparison.Ordinal))
+                    .OrderByDescending(static candidate => candidate.Name.Length)
+                    .FirstOrDefault();
+                return new SemanticSpecializationReuse(
+                    program.StableFunctionIdentities[target],
+                    template is null ? null : program.StableFunctionIdentities[template],
+                    target.Name,
+                    target.ModuleName,
+                    target.Kind,
+                    target.InputName,
+                    StableType(program, target.InputType),
+                    target.InputOwnership,
+                    SemanticStableIdentity.Type(program.Types, target.ReturnType),
+                    target.BlockInputName,
+                    StableType(program, target.BlockInputType),
+                    StableType(program, target.BlockResultType),
+                    StableType(program, target.SpecializedType),
+                    StableType(program, target.SpecializedSecondaryType),
+                    StableType(program, target.SpecializedTertiaryType),
+                    target.SpecializedValue,
+                    target.IsStandardLibrary,
+                    target.IsLocal,
+                    target.IsPublic,
+                    target.IsAsync);
+            })
+            .OrderBy(static specialization => specialization.Identity, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool IsDeclaredUnspecializedTarget(
+        BoundFunction target,
+        IReadOnlyList<BoundFunction> declaredFunctions) =>
+        target.SpecializedType is null
+        && target.SpecializedValue is null
+        && declaredFunctions.Contains(target, ReferenceEqualityComparer.Instance);
+
+    private static string? StableType(BoundProgram program, TypeId? type) =>
+        type is null ? null : SemanticStableIdentity.Type(program.Types, type.Value);
 
     private static IReadOnlyDictionary<string, string> StableBindings(
         TypeDefinitionTable types,
@@ -348,6 +413,7 @@ internal sealed class IncrementalSemanticCache
         var callCount = CheckedCount(ReadUInt64(stream, checksum));
         var moduleCount = CheckedCount(ReadUInt64(stream, checksum));
         var reusableCount = CheckedCount(ReadUInt64(stream, checksum));
+        var specializationCount = CheckedCount(ReadUInt64(stream, checksum));
         var hasMain = ReadUInt64(stream, checksum) switch
         {
             0 => false,
@@ -380,6 +446,15 @@ internal sealed class IncrementalSemanticCache
             reusable[index] = new SemanticFunctionReuse(identity, module, bindings, captured);
             previous = identity;
         }
+        var specializations = new SemanticSpecializationReuse[specializationCount];
+        previous = null;
+        for (var index = 0; index < specializationCount; index++)
+        {
+            var specialization = ReadSpecialization(stream, checksum);
+            RequireIncreasing(previous, specialization.Identity, "specialization identities");
+            specializations[index] = specialization;
+            previous = specialization.Identity;
+        }
         if (stream.Position != length - DigestLength)
             throw new InvalidDataException("semantic generation declared lengths do not reach the checksum");
         Span<byte> declared = stackalloc byte[DigestLength];
@@ -392,6 +467,7 @@ internal sealed class IncrementalSemanticCache
             calls,
             modules,
             reusable,
+            specializations,
             mainModuleName,
             mainBindings);
     }
@@ -440,6 +516,116 @@ internal sealed class IncrementalSemanticCache
             stream, checksum, CheckedCount(ReadUInt64(stream, checksum)), "binding names");
         return pairs.ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.Ordinal);
     }
+
+    private static void WriteSpecialization(
+        Stream stream,
+        IncrementalHash checksum,
+        SemanticSpecializationReuse specialization)
+    {
+        WriteString(stream, checksum, specialization.Identity);
+        WriteOptionalString(stream, checksum, specialization.TemplateIdentity);
+        WriteString(stream, checksum, specialization.Name);
+        WriteString(stream, checksum, specialization.ModuleName);
+        WriteUInt64(stream, checksum, checked((ulong)specialization.Kind));
+        WriteOptionalString(stream, checksum, specialization.InputName);
+        WriteOptionalString(stream, checksum, specialization.InputType);
+        WriteUInt64(stream, checksum, checked((ulong)specialization.InputOwnership));
+        WriteString(stream, checksum, specialization.ReturnType);
+        WriteOptionalString(stream, checksum, specialization.BlockInputName);
+        WriteOptionalString(stream, checksum, specialization.BlockInputType);
+        WriteOptionalString(stream, checksum, specialization.BlockResultType);
+        WriteOptionalString(stream, checksum, specialization.SpecializedType);
+        WriteOptionalString(stream, checksum, specialization.SpecializedSecondaryType);
+        WriteOptionalString(stream, checksum, specialization.SpecializedTertiaryType);
+        WriteOptionalString(
+            stream,
+            checksum,
+            specialization.SpecializedValue?.ToString(CultureInfo.InvariantCulture));
+        ulong flags = 0;
+        if (specialization.IsStandardLibrary) flags |= 1;
+        if (specialization.IsLocal) flags |= 2;
+        if (specialization.IsPublic) flags |= 4;
+        if (specialization.IsAsync) flags |= 8;
+        WriteUInt64(stream, checksum, flags);
+    }
+
+    private static SemanticSpecializationReuse ReadSpecialization(
+        Stream stream,
+        IncrementalHash checksum)
+    {
+        var identity = ReadString(stream, checksum);
+        var templateIdentity = ReadOptionalString(stream, checksum);
+        var name = ReadString(stream, checksum);
+        var moduleName = ReadString(stream, checksum);
+        var kindValue = ReadUInt64(stream, checksum);
+        if (kindValue > int.MaxValue
+            || !Enum.IsDefined(typeof(BoundFunctionKind), (int)kindValue))
+            throw new InvalidDataException("semantic specialization function kind is invalid");
+        var inputName = ReadOptionalString(stream, checksum);
+        var inputType = ReadOptionalString(stream, checksum);
+        var ownershipValue = ReadUInt64(stream, checksum);
+        if (ownershipValue > int.MaxValue
+            || !Enum.IsDefined(typeof(BoundFunctionInputOwnership), (int)ownershipValue))
+            throw new InvalidDataException("semantic specialization input ownership is invalid");
+        var returnType = ReadString(stream, checksum);
+        var blockInputName = ReadOptionalString(stream, checksum);
+        var blockInputType = ReadOptionalString(stream, checksum);
+        var blockResultType = ReadOptionalString(stream, checksum);
+        var specializedType = ReadOptionalString(stream, checksum);
+        var specializedSecondaryType = ReadOptionalString(stream, checksum);
+        var specializedTertiaryType = ReadOptionalString(stream, checksum);
+        var valueText = ReadOptionalString(stream, checksum);
+        int? specializedValue = null;
+        if (valueText is not null)
+        {
+            if (!int.TryParse(valueText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value)
+                || !StringComparer.Ordinal.Equals(valueText, value.ToString(CultureInfo.InvariantCulture)))
+                throw new InvalidDataException("semantic specialization value is invalid");
+            specializedValue = value;
+        }
+        var flags = ReadUInt64(stream, checksum);
+        if (flags > 15)
+            throw new InvalidDataException("semantic specialization flags are invalid");
+        return new SemanticSpecializationReuse(
+            identity,
+            templateIdentity,
+            name,
+            moduleName,
+            (BoundFunctionKind)kindValue,
+            inputName,
+            inputType,
+            (BoundFunctionInputOwnership)ownershipValue,
+            returnType,
+            blockInputName,
+            blockInputType,
+            blockResultType,
+            specializedType,
+            specializedSecondaryType,
+            specializedTertiaryType,
+            specializedValue,
+            (flags & 1) != 0,
+            (flags & 2) != 0,
+            (flags & 4) != 0,
+            (flags & 8) != 0);
+    }
+
+    private static void WriteOptionalString(
+        Stream stream,
+        IncrementalHash checksum,
+        string? value)
+    {
+        WriteUInt64(stream, checksum, value is null ? 0UL : 1UL);
+        if (value is not null)
+            WriteString(stream, checksum, value);
+    }
+
+    private static string? ReadOptionalString(Stream stream, IncrementalHash checksum) =>
+        ReadUInt64(stream, checksum) switch
+        {
+            0 => null,
+            1 => ReadString(stream, checksum),
+            _ => throw new InvalidDataException("semantic optional string presence is invalid")
+        };
 
     private static void WriteBindings(
         Stream stream,
@@ -544,6 +730,7 @@ internal sealed class IncrementalSemanticCache
         IReadOnlyList<KeyValuePair<string, string>> Calls,
         IReadOnlyList<KeyValuePair<string, byte[]>> Modules,
         IReadOnlyList<SemanticFunctionReuse> ReusableFunctions,
+        IReadOnlyList<SemanticSpecializationReuse> Specializations,
         string? MainModuleName,
         IReadOnlyDictionary<string, string>? MainBindings);
 
