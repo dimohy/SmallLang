@@ -1,0 +1,36 @@
+namespace sys.file
+
+import sys.path as path
+
+# Bootstrap ABI projection for mapped compiler inputs and persistent module
+# cache files. The complete convenience API remains in `stdlib/sys/file.slg`.
+public struct File {
+    token: UInt64
+}
+
+public struct FileWriter {
+    token: UInt64
+}
+
+public struct AtomicReplaceRequest {
+    temporary: Text
+    destination: Text
+}
+
+public struct SourceText {
+    token: UInt64
+}
+
+borrowText text: Text -> SourceText = intrinsic
+
+mapText path: Text -> SourceText uses File = intrinsic
+
+public mapPath value: path.Path -> SourceText uses File = intrinsic
+
+public openRead path: Text -> Result<File, Text> uses File = intrinsic
+
+public openWrite path: Text -> Result<FileWriter, Text> uses File = intrinsic
+
+public sync writer: FileWriter -> Bool uses File = intrinsic
+
+public atomicReplace request: AtomicReplaceRequest -> Bool uses File = intrinsic

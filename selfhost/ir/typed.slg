@@ -162,9 +162,13 @@ intrinsicOpcode request: IntrinsicNameRequest -> Int {
     request.token.span.length == UIntSize(5) -> if {
         ((request.source -> byte(request.token.span.start)) == UInt8(115) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(108) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(105) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(99) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(101)) -> if { -203 => opcode! }
     }
+    request.token.span.length == UIntSize(6) -> if {
+        ((request.source -> byte(request.token.span.start)) == UInt8(114) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(101) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(100) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(65) and (request.source -> byte(request.token.span.start + UIntSize(5))) == UInt8(116)) -> if { -220 => opcode! }
+    }
     request.token.span.length == UIntSize(7) -> if {
         ((request.source -> byte(request.token.span.start)) == UInt8(109) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(112) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(84) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(101) and (request.source -> byte(request.token.span.start + UIntSize(5))) == UInt8(120) and (request.source -> byte(request.token.span.start + UIntSize(6))) == UInt8(116)) -> if { -205 => opcode! }
         ((request.source -> byte(request.token.span.start)) == UInt8(109) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(112) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(80) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(5))) == UInt8(116) and (request.source -> byte(request.token.span.start + UIntSize(6))) == UInt8(104)) -> if { -214 => opcode! }
+        ((request.source -> byte(request.token.span.start)) == UInt8(119) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(114) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(105) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(116) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(101) and (request.source -> byte(request.token.span.start + UIntSize(5))) == UInt8(65) and (request.source -> byte(request.token.span.start + UIntSize(6))) == UInt8(116)) -> if { -221 => opcode! }
     }
     request.token.span.length == UIntSize(8) -> if {
         ((request.source -> byte(request.token.span.start)) == UInt8(112) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(114) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(97) and (request.source -> byte(request.token.span.start + UIntSize(4))) == UInt8(108) and (request.source -> byte(request.token.span.start + UIntSize(5))) == UInt8(108) and (request.source -> byte(request.token.span.start + UIntSize(6))) == UInt8(101) and (request.source -> byte(request.token.span.start + UIntSize(7))) == UInt8(108)) -> if { -207 => opcode! }
@@ -1074,7 +1078,8 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                     prepared.package.nodes[sourceRange.astStart + patternSearch!] => patternCandidate
                                     (patternCandidate.kind == 59 and patternCandidate.parent == expressionAstIndex!) -> if {
                                     prepared.package.tokens[sourceRange.tokenStart + patternCandidate.payloadToken] => patternVariant
-                                    (source -> byte(patternVariant.span.start)) == UInt8(69) -> if { 1 => controlOpcode! } else { 0 => controlOpcode! }
+                                    source -> byte(patternVariant.span.start) => patternVariantInitial
+                                    (patternVariantInitial == UInt8(69) or patternVariantInitial == UInt8(83)) -> if { 1 => controlOpcode! } else { 0 => controlOpcode! }
                                     sourceIndex! -> nominalVariantTag(patternVariant) => nominalTag
                                     nominalTag >= 0 -> if { nominalTag => controlOpcode! }
                                     }
@@ -1304,7 +1309,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                 expressionIrStart => operandIrIndex!
                 operandIrIndex! < expressionIrEnd -> while {
                     results![operandIrIndex!] => operatorIr!
-                    (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213)) or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22 or operatorIr!.kind == 23 or operatorIr!.kind == 24 or operatorIr!.kind == 25 or operatorIr!.kind == 26) -> if {
+                    (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22 or operatorIr!.kind == 23 or operatorIr!.kind == 24 or operatorIr!.kind == 25 or operatorIr!.kind == 26) -> if {
                         -1 => firstOperand!
                         -1 => secondOperand!
                         UIntSize(0) => firstStart!
@@ -1329,7 +1334,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             childIrIndex! + 1 => childIrIndex!
                         }
                         firstOperand! => operatorIr!.operand0
-                        (operatorIr!.kind == 6 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213)) or operatorIr!.kind == 15 or operatorIr!.kind == 24) -> if { secondOperand! => operatorIr!.operand1 }
+                        (operatorIr!.kind == 6 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 15 or operatorIr!.kind == 24) -> if { secondOperand! => operatorIr!.operand1 }
                         operatorIr!.kind == 22 -> if {
                             -1 => operatorIr!.operand0
                             firstOperand! => operatorIr!.operand1
@@ -1460,15 +1465,26 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         prepared.package.nodes[sourceRange.astStart + control!.astNode].parent => matchFlowAst
                         -1 => matchSubject!
                         UIntSize(0) => matchSubjectStart!
+                        1000000 => matchSubjectDistance!
                         -1 => matchFirstArm!
                         expressionIrStart => matchSearch!
                         matchSearch! < expressionIrEnd -> while {
                             results![matchSearch!] => matchCandidate
                             prepared.package.nodes[sourceRange.astStart + matchCandidate.astNode] => matchCandidateAst
-                            (matchCandidateAst.parent == matchFlowAst and matchCandidateAst.start < prepared.package.nodes[sourceRange.astStart + control!.astNode].start and (matchCandidate.typeKind == 7 or (matchCandidate.typeKind == 1 and (matchCandidate.typeOrigin == 0 or matchCandidate.typeOrigin == 2)))) -> if {
-                                (matchSubject! < 0 or matchCandidateAst.start > matchSubjectStart!) -> if {
+                            matchCandidateAst.parent => matchCandidateAncestor!
+                            1 => matchCandidateDistance!
+                            false => matchCandidateBelongs!
+                            (matchCandidateAncestor! >= 0 and not matchCandidateBelongs!) -> while {
+                                matchCandidateAncestor! == matchFlowAst -> if { true => matchCandidateBelongs! } else {
+                                    prepared.package.nodes[sourceRange.astStart + matchCandidateAncestor!].parent => matchCandidateAncestor!
+                                    matchCandidateDistance! + 1 => matchCandidateDistance!
+                                }
+                            }
+                            (matchCandidateBelongs! and matchCandidateAst.start < prepared.package.nodes[sourceRange.astStart + control!.astNode].start and (matchCandidate.typeKind == 7 or (matchCandidate.typeId >= 0 and recursiveSemanticTypes![matchCandidate.typeId].kind == 7) or (matchCandidate.typeKind == 1 and (matchCandidate.typeOrigin == 0 or matchCandidate.typeOrigin == 2)))) -> if {
+                                (matchSubject! < 0 or matchCandidateDistance! < matchSubjectDistance! or (matchCandidateDistance! == matchSubjectDistance! and matchCandidateAst.start > matchSubjectStart!)) -> if {
                                     matchSearch! => matchSubject!
                                     matchCandidateAst.start => matchSubjectStart!
+                                    matchCandidateDistance! => matchSubjectDistance!
                                 }
                             }
                             (matchCandidate.kind == 19 and matchCandidate.parent == controlIrIndex! and matchFirstArm! < 0) -> if { matchSearch! => matchFirstArm! }
@@ -2359,7 +2375,8 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                         prepared.package.nodes[sourceRange.astStart + entryPatternSearch!] => entryPatternCandidate
                                         (entryPatternCandidate.kind == 59 and entryPatternCandidate.parent == entryExpressionAst!) -> if {
                                     prepared.package.tokens[sourceRange.tokenStart + entryPatternCandidate.payloadToken] => entryPatternVariant
-                                    (source -> byte(entryPatternVariant.span.start)) == UInt8(69) -> if { 1 => entryControlOpcode! } else { 0 => entryControlOpcode! }
+                                    source -> byte(entryPatternVariant.span.start) => entryPatternVariantInitial
+                                    (entryPatternVariantInitial == UInt8(69) or entryPatternVariantInitial == UInt8(83)) -> if { 1 => entryControlOpcode! } else { 0 => entryControlOpcode! }
                                     sourceIndex! -> nominalVariantTag(entryPatternVariant) => entryNominalTag
                                     entryNominalTag >= 0 -> if { entryNominalTag => entryControlOpcode! }
                                         }
@@ -2584,7 +2601,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                     entryExpressionStart => entryOperandIr!
                     entryOperandIr! < entryExpressionEnd -> while {
                         results![entryOperandIr!] => entryOperator!
-                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213)) or entryOperator!.kind == 13 or entryOperator!.kind == 15 or entryOperator!.kind == 17 or entryOperator!.kind == 22 or entryOperator!.kind == 23 or entryOperator!.kind == 24 or entryOperator!.kind == 25 or entryOperator!.kind == 26) -> if {
+                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 13 or entryOperator!.kind == 15 or entryOperator!.kind == 17 or entryOperator!.kind == 22 or entryOperator!.kind == 23 or entryOperator!.kind == 24 or entryOperator!.kind == 25 or entryOperator!.kind == 26) -> if {
                             -1 => entryFirstOperand!
                             -1 => entrySecondOperand!
                             UIntSize(0) => entryFirstStart!
@@ -2607,7 +2624,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 entryChildIr! + 1 => entryChildIr!
                             }
                             entryFirstOperand! => entryOperator!.operand0
-                            (entryOperator!.kind == 6 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213)) or entryOperator!.kind == 15 or entryOperator!.kind == 24) -> if { entrySecondOperand! => entryOperator!.operand1 }
+                            (entryOperator!.kind == 6 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 15 or entryOperator!.kind == 24) -> if { entrySecondOperand! => entryOperator!.operand1 }
                             entryOperator!.kind == 22 -> if {
                                 -1 => entryOperator!.operand0
                                 entryFirstOperand! => entryOperator!.operand1
@@ -2737,15 +2754,26 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             prepared.package.nodes[sourceRange.astStart + entryControl!.astNode].parent => entryMatchFlowAst
                             -1 => entryMatchSubject!
                             UIntSize(0) => entryMatchSubjectStart!
+                            1000000 => entryMatchSubjectDistance!
                             -1 => entryMatchFirstArm!
                             entryExpressionStart => entryMatchSearch!
                             entryMatchSearch! < entryExpressionEnd -> while {
                                 results![entryMatchSearch!] => entryMatchCandidate
                                 prepared.package.nodes[sourceRange.astStart + entryMatchCandidate.astNode] => entryMatchCandidateAst
-                                (entryMatchCandidateAst.parent == entryMatchFlowAst and entryMatchCandidateAst.start < prepared.package.nodes[sourceRange.astStart + entryControl!.astNode].start and (entryMatchCandidate.typeKind == 7 or (entryMatchCandidate.typeKind == 1 and (entryMatchCandidate.typeOrigin == 0 or entryMatchCandidate.typeOrigin == 2)))) -> if {
-                                    (entryMatchSubject! < 0 or entryMatchCandidateAst.start > entryMatchSubjectStart!) -> if {
+                                entryMatchCandidateAst.parent => entryMatchCandidateAncestor!
+                                1 => entryMatchCandidateDistance!
+                                false => entryMatchCandidateBelongs!
+                                (entryMatchCandidateAncestor! >= 0 and not entryMatchCandidateBelongs!) -> while {
+                                    entryMatchCandidateAncestor! == entryMatchFlowAst -> if { true => entryMatchCandidateBelongs! } else {
+                                        prepared.package.nodes[sourceRange.astStart + entryMatchCandidateAncestor!].parent => entryMatchCandidateAncestor!
+                                        entryMatchCandidateDistance! + 1 => entryMatchCandidateDistance!
+                                    }
+                                }
+                                (entryMatchCandidateBelongs! and entryMatchCandidateAst.start < prepared.package.nodes[sourceRange.astStart + entryControl!.astNode].start and (entryMatchCandidate.typeKind == 7 or (entryMatchCandidate.typeId >= 0 and recursiveSemanticTypes![entryMatchCandidate.typeId].kind == 7) or (entryMatchCandidate.typeKind == 1 and (entryMatchCandidate.typeOrigin == 0 or entryMatchCandidate.typeOrigin == 2)))) -> if {
+                                    (entryMatchSubject! < 0 or entryMatchCandidateDistance! < entryMatchSubjectDistance! or (entryMatchCandidateDistance! == entryMatchSubjectDistance! and entryMatchCandidateAst.start > entryMatchSubjectStart!)) -> if {
                                         entryMatchSearch! => entryMatchSubject!
                                         entryMatchCandidateAst.start => entryMatchSubjectStart!
+                                        entryMatchCandidateDistance! => entryMatchSubjectDistance!
                                     }
                                 }
                                 (entryMatchCandidate.kind == 19 and entryMatchCandidate.parent == entryControlIrIndex! and entryMatchFirstArm! < 0) -> if { entryMatchSearch! => entryMatchFirstArm! }
@@ -3781,6 +3809,155 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                 directoryCall! => results![directoryCallIndex!]
             }
             directoryCallIndex! + 1 => directoryCallIndex!
+        }
+    }
+    # Owned File calls have a stable runtime ABI in the LLVM backend. Resolve
+    # declared sys.file functions by canonical module/symbol identity; member
+    # readAt/writeAt opcodes are assigned from their compiler-provided names by
+    # intrinsicOpcode above.
+    -1 => fileModuleSource!
+    0 => fileModuleSearch!
+    fileModuleSearch! < (prepared.modules -> len) -> while {
+        prepared.modules[fileModuleSearch!] => fileModuleIdentity
+        fileModuleIdentity.pathHash == UInt64(1560534979202565016) -> if { fileModuleIdentity.sourceIndex => fileModuleSource! }
+        fileModuleSearch! + 1 => fileModuleSearch!
+    }
+    -1 => fileOpenReadSymbol!
+    -1 => fileOpenWriteSymbol!
+    -1 => fileSyncSymbol!
+    -1 => fileAtomicReplaceSymbol!
+    -1 => fileOwnedSymbol!
+    -1 => fileWriterSymbol!
+    fileModuleSource! >= 0 -> if {
+        prepared.package.ranges[fileModuleSource!] => fileSourceRange
+        prepared.package.sources[fileModuleSource!] -> len => fileSourceLength
+        prepared.package.sources[fileModuleSource!] -> slice(UIntSize(0), fileSourceLength) => fileSource
+        0 => fileSymbolSearch!
+        fileSymbolSearch! < fileSourceRange.symbolCount -> while {
+            prepared.package.symbols[fileSourceRange.symbolStart + fileSymbolSearch!] => fileSymbol
+            prepared.package.tokens[fileSourceRange.tokenStart + fileSymbol.nameToken] => fileAnyNameToken
+            fileAnyNameToken.span.length == UIntSize(4) -> if {
+                ((fileSource -> byte(fileAnyNameToken.span.start)) == UInt8(70) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(1))) == UInt8(105) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(2))) == UInt8(108) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(3))) == UInt8(101)) -> if { fileSymbolSearch! => fileOwnedSymbol! }
+            }
+            fileAnyNameToken.span.length == UIntSize(10) -> if {
+                ((fileSource -> byte(fileAnyNameToken.span.start)) == UInt8(70) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(1))) == UInt8(105) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(2))) == UInt8(108) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(3))) == UInt8(101) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(4))) == UInt8(87) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(5))) == UInt8(114) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(6))) == UInt8(105) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(7))) == UInt8(116) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(8))) == UInt8(101) and (fileSource -> byte(fileAnyNameToken.span.start + UIntSize(9))) == UInt8(114)) -> if { fileSymbolSearch! => fileWriterSymbol! }
+            }
+            (fileSymbol.kind == 7 and fileSymbol.parent < 0) -> if {
+                prepared.package.tokens[fileSourceRange.tokenStart + fileSymbol.nameToken] => fileNameToken
+                fileNameToken.span.length == UIntSize(4) -> if {
+                    ((fileSource -> byte(fileNameToken.span.start)) == UInt8(115) and (fileSource -> byte(fileNameToken.span.start + UIntSize(1))) == UInt8(121) and (fileSource -> byte(fileNameToken.span.start + UIntSize(2))) == UInt8(110) and (fileSource -> byte(fileNameToken.span.start + UIntSize(3))) == UInt8(99)) -> if { fileSymbolSearch! => fileSyncSymbol! }
+                }
+                fileNameToken.span.length == UIntSize(8) -> if {
+                    ((fileSource -> byte(fileNameToken.span.start)) == UInt8(111) and (fileSource -> byte(fileNameToken.span.start + UIntSize(1))) == UInt8(112) and (fileSource -> byte(fileNameToken.span.start + UIntSize(2))) == UInt8(101) and (fileSource -> byte(fileNameToken.span.start + UIntSize(3))) == UInt8(110) and (fileSource -> byte(fileNameToken.span.start + UIntSize(4))) == UInt8(82) and (fileSource -> byte(fileNameToken.span.start + UIntSize(5))) == UInt8(101) and (fileSource -> byte(fileNameToken.span.start + UIntSize(6))) == UInt8(97) and (fileSource -> byte(fileNameToken.span.start + UIntSize(7))) == UInt8(100)) -> if { fileSymbolSearch! => fileOpenReadSymbol! }
+                }
+                fileNameToken.span.length == UIntSize(9) -> if {
+                    ((fileSource -> byte(fileNameToken.span.start)) == UInt8(111) and (fileSource -> byte(fileNameToken.span.start + UIntSize(1))) == UInt8(112) and (fileSource -> byte(fileNameToken.span.start + UIntSize(2))) == UInt8(101) and (fileSource -> byte(fileNameToken.span.start + UIntSize(3))) == UInt8(110) and (fileSource -> byte(fileNameToken.span.start + UIntSize(4))) == UInt8(87) and (fileSource -> byte(fileNameToken.span.start + UIntSize(5))) == UInt8(114) and (fileSource -> byte(fileNameToken.span.start + UIntSize(6))) == UInt8(105) and (fileSource -> byte(fileNameToken.span.start + UIntSize(7))) == UInt8(116) and (fileSource -> byte(fileNameToken.span.start + UIntSize(8))) == UInt8(101)) -> if { fileSymbolSearch! => fileOpenWriteSymbol! }
+                }
+                fileNameToken.span.length == UIntSize(13) -> if {
+                    ((fileSource -> byte(fileNameToken.span.start)) == UInt8(97) and (fileSource -> byte(fileNameToken.span.start + UIntSize(1))) == UInt8(116) and (fileSource -> byte(fileNameToken.span.start + UIntSize(2))) == UInt8(111) and (fileSource -> byte(fileNameToken.span.start + UIntSize(3))) == UInt8(109) and (fileSource -> byte(fileNameToken.span.start + UIntSize(4))) == UInt8(105) and (fileSource -> byte(fileNameToken.span.start + UIntSize(5))) == UInt8(99) and (fileSource -> byte(fileNameToken.span.start + UIntSize(6))) == UInt8(82) and (fileSource -> byte(fileNameToken.span.start + UIntSize(7))) == UInt8(101) and (fileSource -> byte(fileNameToken.span.start + UIntSize(8))) == UInt8(112) and (fileSource -> byte(fileNameToken.span.start + UIntSize(9))) == UInt8(108) and (fileSource -> byte(fileNameToken.span.start + UIntSize(10))) == UInt8(97) and (fileSource -> byte(fileNameToken.span.start + UIntSize(11))) == UInt8(99) and (fileSource -> byte(fileNameToken.span.start + UIntSize(12))) == UInt8(101)) -> if { fileSymbolSearch! => fileAtomicReplaceSymbol! }
+                }
+            }
+            fileSymbolSearch! + 1 => fileSymbolSearch!
+        }
+        -1 => fileOwnedType!
+        -1 => fileWriterType!
+        0 => fileNominalTypeSearch!
+        fileNominalTypeSearch! < (recursiveSemanticTypes! -> len) -> while {
+            recursiveSemanticTypes![fileNominalTypeSearch!] => fileNominalType
+            (fileNominalType.kind == 1 and (fileNominalType.origin == 0 or fileNominalType.origin == 2) and fileNominalType.module == fileModuleSource!) -> if {
+                fileNominalType.symbol == fileOwnedSymbol! -> if { fileNominalTypeSearch! => fileOwnedType! }
+                fileNominalType.symbol == fileWriterSymbol! -> if { fileNominalTypeSearch! => fileWriterType! }
+            }
+            fileNominalTypeSearch! + 1 => fileNominalTypeSearch!
+        }
+        -1 => fileOpenReadResultType!
+        -1 => fileOpenWriteResultType!
+        0 => fileResultTypeSearch!
+        fileResultTypeSearch! < (recursiveSemanticTypes! -> len) -> while {
+            recursiveSemanticTypes![fileResultTypeSearch!] => fileResultType
+            (fileResultType.kind == 7 and fileResultType.origin == 4 and fileResultType.symbol == 1 and fileResultType.second == 1) -> if {
+                fileResultType.first == fileOwnedType! -> if { fileResultTypeSearch! => fileOpenReadResultType! }
+                fileResultType.first == fileWriterType! -> if { fileResultTypeSearch! => fileOpenWriteResultType! }
+            }
+            fileResultTypeSearch! + 1 => fileResultTypeSearch!
+        }
+        0 => fileCallIndex!
+        fileCallIndex! < (results! -> len) -> while {
+            results![fileCallIndex!] => fileCall!
+            (fileCall!.kind == 6 and fileCall!.targetModule == fileModuleSource!) -> if {
+                fileCall!.symbol == fileOpenReadSymbol! -> if { -216 => fileCall!.opcode }
+                fileCall!.symbol == fileOpenWriteSymbol! -> if { -217 => fileCall!.opcode }
+                fileCall!.symbol == fileSyncSymbol! -> if { -218 => fileCall!.opcode }
+                fileCall!.symbol == fileAtomicReplaceSymbol! -> if { -219 => fileCall!.opcode }
+                fileCall!.symbol == fileOpenReadSymbol! -> if { fileOpenReadResultType! => fileCall!.typeId }
+                fileCall!.symbol == fileOpenWriteSymbol! -> if { fileOpenWriteResultType! => fileCall!.typeId }
+                (fileCall!.typeId < 0 and fileCall!.symbol >= 0) -> if {
+                    prepared.package.symbols[fileSourceRange.symbolStart + fileCall!.symbol] => fileCallFunction
+                    fileCallFunction.typeNode => fileCallResultAst!
+                    fileCallFunction.secondaryTypeNode >= 0 -> if { fileCallFunction.secondaryTypeNode => fileCallResultAst! }
+                    0 => fileCallReferenceSearch!
+                    fileCallReferenceSearch! < (recursiveReferences! -> len) -> while {
+                        recursiveReferences![fileCallReferenceSearch!] => fileCallReference
+                        (fileCallReference.sourceModule == fileModuleSource! and fileCallReference.typeAst == fileCallResultAst! and fileCallReference.status == 0) -> if {
+                            fileCallReference.typeId => fileCall!.typeId
+                            recursiveSemanticTypes![fileCallReference.typeId] => fileCallType
+                            fileCallType.kind => fileCall!.typeKind
+                            fileCallType.origin => fileCall!.typeOrigin
+                            fileCallType.module => fileCall!.typeModule
+                            fileCallType.symbol => fileCall!.typeSymbol
+                            recursiveTypeFlags![fileCallReference.typeId] => fileCall!.typeFlags
+                        }
+                        fileCallReferenceSearch! + 1 => fileCallReferenceSearch!
+                    }
+                }
+                fileCall!.typeId >= 0 -> if {
+                    recursiveSemanticTypes![fileCall!.typeId] => canonicalFileCallType
+                    canonicalFileCallType.kind => fileCall!.typeKind
+                    canonicalFileCallType.origin => fileCall!.typeOrigin
+                    canonicalFileCallType.module => fileCall!.typeModule
+                    canonicalFileCallType.symbol => fileCall!.typeSymbol
+                    recursiveTypeFlags![fileCall!.typeId] => fileCall!.typeFlags
+                }
+                fileCall! => results![fileCallIndex!]
+            }
+            fileCallIndex! + 1 => fileCallIndex!
+        }
+        # A parenthesized file call is nested below the flow node that owns the
+        # following `when`. Repair the enum subject after canonical file-call
+        # identity and result types are known; the early per-source pass cannot
+        # recognize a compiler-provided or late-projected Result reliably.
+        0 => fileMatchIndex!
+        fileMatchIndex! < (results! -> len) -> while {
+            results![fileMatchIndex!] => fileMatch!
+            (fileMatch!.kind == 27 and fileMatch!.operand0 < 0 and fileMatch!.sourceModule >= 0) -> if {
+                prepared.package.ranges[fileMatch!.sourceModule] => fileMatchRange
+                prepared.package.nodes[fileMatchRange.astStart + fileMatch!.astNode] => fileMatchAst
+                fileMatchAst.parent => fileMatchFlowAst
+                -1 => fileMatchSubject!
+                UIntSize(0) => fileMatchSubjectStart!
+                0 => fileMatchCandidateIndex!
+                fileMatchCandidateIndex! < (results! -> len) -> while {
+                    results![fileMatchCandidateIndex!] => fileMatchCandidate
+                    (fileMatchCandidate.sourceModule == fileMatch!.sourceModule and fileMatchCandidate.astNode >= 0 and fileMatchCandidate.astNode < fileMatchRange.astCount and fileMatchCandidate.typeKind == 7) -> if {
+                        prepared.package.nodes[fileMatchRange.astStart + fileMatchCandidate.astNode] => fileMatchCandidateAst
+                        fileMatchCandidateAst.parent => fileMatchCandidateAncestor!
+                        false => fileMatchCandidateBelongs!
+                        (fileMatchCandidateAncestor! >= 0 and not fileMatchCandidateBelongs!) -> while {
+                            fileMatchCandidateAncestor! == fileMatchFlowAst -> if { true => fileMatchCandidateBelongs! } else {
+                                prepared.package.nodes[fileMatchRange.astStart + fileMatchCandidateAncestor!].parent => fileMatchCandidateAncestor!
+                            }
+                        }
+                        (fileMatchCandidateBelongs! and fileMatchCandidateAst.start < fileMatchAst.start and (fileMatchSubject! < 0 or fileMatchCandidateAst.start > fileMatchSubjectStart!)) -> if {
+                            fileMatchCandidateIndex! => fileMatchSubject!
+                            fileMatchCandidateAst.start => fileMatchSubjectStart!
+                        }
+                    }
+                    fileMatchCandidateIndex! + 1 => fileMatchCandidateIndex!
+                }
+                fileMatchSubject! => fileMatch!.operand0
+                fileMatch! => results![fileMatchIndex!]
+            }
+            fileMatchIndex! + 1 => fileMatchIndex!
         }
     }
     # Collection literals returned directly from a function are contextually

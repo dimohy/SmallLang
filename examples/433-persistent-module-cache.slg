@@ -67,15 +67,14 @@ main {
     "artifacts/example-tests/433-module-cache.tmp" => temporary
     destination -> cacheIo.publish(temporary, persisted!) => published
     destination -> cacheIo.load => loaded!
-    loaded!.status => loadStatus
-    loaded!.words -> cache.validate(target) => loadedValidation
-    loaded!.words -> cache.reuse(bodyChangedSources, target) => loadedReuse
+    loaded! -> cache.validate(target) => loadedValidation
+    loaded! -> cache.reuse(bodyChangedSources, target) => loadedReuse
 
     "warm = $(warm.hits)/$(warm.misses)" -> println
     "body-only = $(bodyChanged.hits)/$(bodyChanged.misses)/$(bodyChanged.bodyOnlyConsumerHits)" -> println
     "signature = $(signatureChanged.hits)/$(signatureChanged.misses)" -> println
     "guards = $(truncated.status),$(magic.status),$(schema.status),$(wrongTarget.status),$(length.status),$(corruption.status)" -> println
-    (published and loadStatus == 0 and loadedValidation.status == 0 and loadedReuse.hits == 1) -> if {
+    (published and loadedValidation.status == 0 and loadedReuse.hits == 1) -> if {
         "persistent = valid"
     } else {
         "persistent = invalid"

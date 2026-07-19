@@ -29,6 +29,7 @@ $processSource = Join-Path $repoRoot "stdlib\sys\process.slg"
 $compilerRuntimeSources = @(
     $processSource
     (Join-Path $repoRoot "selfhost\runtime\path.slg")
+    (Join-Path $repoRoot "selfhost\runtime\file.slg")
     (Join-Path $repoRoot "stdlib\sys\directory.slg")
     (Join-Path $repoRoot "stdlib\sys\directory\kind.slg")
 )
@@ -265,9 +266,14 @@ $stage1CacheOutput = Join-Path $artifactsDir "stage2-check-module-cache-stage1.t
 $stage2CacheOutput = Join-Path $artifactsDir "stage2-check-module-cache-stage2.txt"
 $stage1CacheError = Join-Path $artifactsDir "stage2-check-module-cache-stage1.err"
 $stage2CacheError = Join-Path $artifactsDir "stage2-check-module-cache-stage2.err"
-$cacheArguments = @("interface-cache") + $fingerprintSources
-$stage1CacheProcess = Invoke-ProcessToFile $stage1Path $cacheArguments $stage1CacheOutput $stage1CacheError
-$stage2CacheProcess = Invoke-ProcessToFile $stage2Path $cacheArguments $stage2CacheOutput $stage2CacheError
+$stage1CachePath = Join-Path $artifactsDir "stage2-check-module-cache-stage1.bin"
+$stage1CacheTemporary = Join-Path $artifactsDir "stage2-check-module-cache-stage1.tmp"
+$stage2CachePath = Join-Path $artifactsDir "stage2-check-module-cache-stage2.bin"
+$stage2CacheTemporary = Join-Path $artifactsDir "stage2-check-module-cache-stage2.tmp"
+$stage1CacheArguments = @("interface-cache", $stage1CachePath, $stage1CacheTemporary) + $fingerprintSources
+$stage2CacheArguments = @("interface-cache", $stage2CachePath, $stage2CacheTemporary) + $fingerprintSources
+$stage1CacheProcess = Invoke-ProcessToFile $stage1Path $stage1CacheArguments $stage1CacheOutput $stage1CacheError
+$stage2CacheProcess = Invoke-ProcessToFile $stage2Path $stage2CacheArguments $stage2CacheOutput $stage2CacheError
 Assert-ProcessSucceeded $stage1CacheProcess $stage1CacheError "stage-1 module-cache planner"
 Assert-ProcessSucceeded $stage2CacheProcess $stage2CacheError "stage-2 module-cache planner"
 $stage1CacheText = ([System.IO.File]::ReadAllText($stage1CacheOutput)).Trim()

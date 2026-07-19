@@ -35,13 +35,13 @@ mapText path: Text -> SourceText uses File = intrinsic
 # lifetime could outlive the Path storage.
 public mapPath value: path.Path -> SourceText uses File = intrinsic
 
-openRead path: Text -> Result<File, Text> uses File = intrinsic
+public openRead path: Text -> Result<File, Text> uses File = intrinsic
 
-openReadAsync path: Text -> async Result<File, Text> uses File = intrinsic
+public openReadAsync path: Text -> async Result<File, Text> uses File = intrinsic
 
-openWrite path: Text -> Result<FileWriter, Text> uses File = intrinsic
+public openWrite path: Text -> Result<FileWriter, Text> uses File = intrinsic
 
-openWriteAsync path: Text -> async Result<FileWriter, Text> uses File = intrinsic
+public openWriteAsync path: Text -> async Result<FileWriter, Text> uses File = intrinsic
 
 # Synchronous compiler/cache durability primitives. The affine writer closes
 # deterministically at scope exit before atomicReplace publishes its temp file.

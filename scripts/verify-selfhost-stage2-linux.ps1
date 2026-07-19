@@ -21,6 +21,7 @@ $processSource = Join-Path $repoRoot "stdlib\sys\process.slg"
 $compilerRuntimeSources = @(
     $processSource
     (Join-Path $repoRoot "selfhost\runtime\path.slg")
+    (Join-Path $repoRoot "selfhost\runtime\file.slg")
     (Join-Path $repoRoot "stdlib\sys\directory.slg")
     (Join-Path $repoRoot "stdlib\sys\directory\kind.slg")
 )

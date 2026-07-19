@@ -23,6 +23,7 @@ selfhost/semantic/module_resolve.slg
 selfhost/semantic/modules.slg
 selfhost/semantic/module_interfaces.slg
 selfhost/semantic/module_cache.slg
+selfhost/semantic/module_cache_io.slg
 selfhost/semantic/symbols.slg
 selfhost/syntax/ast.slg
 selfhost/syntax/cst.slg

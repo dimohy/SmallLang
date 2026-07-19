@@ -2,11 +2,6 @@ namespace sollang.compiler.semantic.module_cache_io
 
 import sys.file as file
 
-public struct CacheLoad {
-    status: Int
-    words: [UInt64; ~]
-}
-
 writeSucceeded result: Result<Unit, Text> -> Bool => result -> when {
     Ok(_) { true }
     Err(_) { false }
@@ -17,13 +12,26 @@ readWord result: Result<Option<UInt64>, Text> -> Option<UInt64> => result -> whe
     Err(_) { Option<UInt64>.None }
 }
 
+hasWord word: Option<UInt64> -> Bool => word -> when {
+    Some(_) { true }
+    None { false }
+}
+
+zeroWord: -> UInt64 => UInt64(0)
+
+wordValue word: Option<UInt64> -> UInt64 => word -> when {
+    Some(value) { value }
+    None { zeroWord }
+}
+
 writeStaged path: Text, words: [UInt64; ~] -> Bool uses File {
     file.openWrite(path) -> when {
         Ok(writer) {
             true => valid!
             0 => index!
             (valid! and index! < (words -> len)) -> while {
-                writer -> writeAt<UInt64>(words[index!], UInt64(index!) * UInt64(8)) -> writeSucceeded => valid!
+                writer -> writeAt<UInt64>(words[index!], UInt64(index!) * UInt64(8)) => writeResult
+                writeResult -> writeSucceeded => valid!
                 index! + 1 => index!
             }
             valid! -> if { writer -> file.sync => valid! }
@@ -33,7 +41,7 @@ writeStaged path: Text, words: [UInt64; ~] -> Bool uses File {
     }
 }
 
-public publish destination: Text, temporary: Text, words: [UInt64; ~] -> Bool uses File {
+public publish words: [UInt64; ~], destination: Text, temporary: Text -> Bool uses File {
     temporary -> writeStaged(words) => staged
     staged -> if {
         file.AtomicReplaceRequest {
@@ -43,16 +51,19 @@ public publish destination: Text, temporary: Text, words: [UInt64; ~] -> Bool us
     } else { false }
 }
 
-public load path: Text -> CacheLoad uses File {
+public load path: Text -> [UInt64; ~] uses File {
+    [UInt64; ~] => words!
     file.openRead(path) -> when {
         Ok(reader) {
-            [UInt64; ~] => words!
             true => valid!
             0 => index!
             (valid! and index! < 6) -> while {
-                reader -> readAt<UInt64>(UInt64(index!) * UInt64(8)) -> readWord -> when {
-                    Some(value) { words! -> push(value) }
-                    None { false => valid! }
+                reader -> readAt<UInt64>(UInt64(index!) * UInt64(8)) => readResult
+                readResult -> readWord => word
+                word -> hasWord => valid!
+                valid! -> if {
+                    word -> wordValue => value
+                    words! -> push(value)
                 }
                 index! + 1 => index!
             }
@@ -63,18 +74,17 @@ public load path: Text -> CacheLoad uses File {
                 } else { false => valid! }
             }
             (valid! and index! < wordCount!) -> while {
-                reader -> readAt<UInt64>(UInt64(index!) * UInt64(8)) -> readWord -> when {
-                    Some(value) { words! -> push(value) }
-                    None { false => valid! }
+                reader -> readAt<UInt64>(UInt64(index!) * UInt64(8)) => readResult
+                readResult -> readWord => word
+                word -> hasWord => valid!
+                valid! -> if {
+                    word -> wordValue => value
+                    words! -> push(value)
                 }
                 index! + 1 => index!
             }
-            CacheLoad { status: valid! -> if { 0 } else { 1 }, words: words! } => result!
-            result!
         }
-        Err(_) {
-            CacheLoad { status: 1, words: [UInt64; ~] } => result!
-            result!
-        }
+        Err(_) {}
     }
+    words!
 }

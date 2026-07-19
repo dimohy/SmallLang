@@ -136,6 +136,11 @@ struct DirectoryCallRequest {
     ownerIndex: Int
 }
 
+struct FileCallRequest {
+    callIndex: Int
+    ownerIndex: Int
+}
+
 struct EmitContext {
     sources: [Text; ~]
     ranges: [analysis.SourceAnalysisRange; ~]
@@ -1144,6 +1149,56 @@ emitCore context: move EmitContext -> Unit uses Console {
         tokenRange.tokenStart + node.payloadToken => tokenIndex
         context.tokens[tokenIndex]
     }
+    writeValue nodeIndex: Int, ownerIndex: Int -> Unit uses Console {
+        context.ir[nodeIndex] => value
+        (value.kind == 3 or value.kind == 4) -> if {
+            value -> sourceToken => valueToken
+            value.kind == 3 -> if {
+                context.sources[value.sourceModule] -> slice(valueToken.span.start, valueToken.span.length) -> print
+            } else {
+                ((context.sources[value.sourceModule] -> byte(valueToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
+            }
+        } else {
+            -1 => parameterOrdinal!
+            (ownerIndex >= 0 and context.ir[ownerIndex].kind == 0 and context.ir[ownerIndex].operand1 >= 0 and value.kind == 5) -> if {
+                value.symbol == context.ir[context.ir[ownerIndex].operand1].symbol -> if { 0 => parameterOrdinal! } else {
+                    ownerIndex -> additionalParameterOrdinal(value.symbol) => parameterOrdinal!
+                }
+            }
+            parameterOrdinal! >= 0 -> if {
+                parameterOrdinal! == 0 -> if { "%arg" -> print } else { "%arg$(parameterOrdinal!)" -> print }
+            } else { "%v$(nodeIndex)" -> print }
+        }
+    }
+    isOwnedFileType typeId: Int -> Bool {
+        false => owned!
+        (typeId >= 0 and typeId < (context.types -> len)) -> if {
+            context.types[typeId] => candidate
+            (candidate.kind == 1 and (candidate.origin == 0 or candidate.origin == 2) and candidate.module >= 0) -> if {
+                false => fileModule!
+                0 => moduleSearch!
+                moduleSearch! < (context.modules -> len) -> while {
+                    context.modules[moduleSearch!] => moduleIdentity
+                    (moduleIdentity.sourceIndex == candidate.module and moduleIdentity.pathHash == UInt64(1560534979202565016)) -> if { true => fileModule! }
+                    moduleSearch! + 1 => moduleSearch!
+                }
+                fileModule! -> if {
+                    context.ranges[candidate.module] => candidateRange
+                    (candidate.symbol >= 0 and candidate.symbol < candidateRange.symbolCount) -> if {
+                        context.symbols[candidateRange.symbolStart + candidate.symbol] => candidateSymbol
+                        context.tokens[candidateRange.tokenStart + candidateSymbol.nameToken] => candidateName
+                        candidateName.span.length == UIntSize(4) -> if {
+                            ((context.sources[candidate.module] -> byte(candidateName.span.start)) == UInt8(70) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(1))) == UInt8(105) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(2))) == UInt8(108) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(3))) == UInt8(101)) -> if { true => owned! }
+                        }
+                        candidateName.span.length == UIntSize(10) -> if {
+                            ((context.sources[candidate.module] -> byte(candidateName.span.start)) == UInt8(70) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(1))) == UInt8(105) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(2))) == UInt8(108) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(3))) == UInt8(101) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(4))) == UInt8(87) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(5))) == UInt8(114) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(6))) == UInt8(105) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(7))) == UInt8(116) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(8))) == UInt8(101) and (context.sources[candidate.module] -> byte(candidateName.span.start + UIntSize(9))) == UInt8(114)) -> if { true => owned! }
+                        }
+                    }
+                }
+            }
+        }
+        owned!
+    }
     aggregateValueIndex wrapperIndex: Int -> Int {
         wrapperIndex => resolved!
         (wrapperIndex >= 0 and context.ir[wrapperIndex].kind == 9 and context.ir[wrapperIndex].opcode == -1) -> if {
@@ -1816,16 +1871,21 @@ emitCore context: move EmitContext -> Unit uses Console {
                     "  ret void" -> println
                 }
                 (dropType.kind == 1 and (dropType.origin == 0 or dropType.origin == 2) and not (dropTypeIndex! -> isNominalEnumType)) -> if {
-                    0 => dropFieldIndex!
-                    dropFieldIndex! < (context.fields -> len) -> while {
-                        context.fields[dropFieldIndex!] => dropField
-                        (dropField.status == 0 and dropField.ownerType == dropTypeIndex! and dropField.fieldType >= 0 and context.typeTraits[dropField.fieldType] % 2 == 1) -> if {
-                            "  %field$(dropField.ordinal) = extractvalue %sollang.struct.m$(dropType.module)_s$(dropType.symbol) %value, $(dropField.ordinal)" -> println
-                            "  call void @sollang_drop_t$(dropField.fieldType)(" -> print
-                            dropField.fieldType -> writeSemanticTypeId
-                            " %field$(dropField.ordinal))" -> println
+                    dropTypeIndex! -> isOwnedFileType -> if {
+                        "  %handle = extractvalue %sollang.struct.m$(dropType.module)_s$(dropType.symbol) %value, 0" -> println
+                        "  call void @sollang_platform_close_owned_file(i64 %handle)" -> println
+                    } else {
+                        0 => dropFieldIndex!
+                        dropFieldIndex! < (context.fields -> len) -> while {
+                            context.fields[dropFieldIndex!] => dropField
+                            (dropField.status == 0 and dropField.ownerType == dropTypeIndex! and dropField.fieldType >= 0 and context.typeTraits[dropField.fieldType] % 2 == 1) -> if {
+                                "  %field$(dropField.ordinal) = extractvalue %sollang.struct.m$(dropType.module)_s$(dropType.symbol) %value, $(dropField.ordinal)" -> println
+                                "  call void @sollang_drop_t$(dropField.fieldType)(" -> print
+                                dropField.fieldType -> writeSemanticTypeId
+                                " %field$(dropField.ordinal))" -> println
+                            }
+                            dropFieldIndex! + 1 => dropFieldIndex!
                         }
-                        dropFieldIndex! + 1 => dropFieldIndex!
                     }
                     "  ret void" -> println
                 }
@@ -2447,6 +2507,333 @@ emitCore context: move EmitContext -> Unit uses Console {
         "  %v$(request.callIndex) = load " -> print
         call -> writeIrType
         ", ptr %v$(request.callIndex)_process_result_slot, align 8" -> println
+    }
+    emitFileCall request: FileCallRequest -> Unit uses Console {
+        context.ir[request.callIndex] => call
+        -1 => enclosingFileMatch!
+        call.parent => fileCallAncestor!
+        (fileCallAncestor! >= 0 and enclosingFileMatch! < 0) -> while {
+            context.ir[fileCallAncestor!].kind == 27 -> if { fileCallAncestor! => enclosingFileMatch! } else { context.ir[fileCallAncestor!].parent => fileCallAncestor! }
+        }
+        (call.opcode == -216 or call.opcode == -217) -> if {
+            request.callIndex -> callArgumentIndex => pathIndex!
+            pathIndex! -> aggregateValueIndex => pathIndex!
+            context.ir[pathIndex!] => path
+            "  %v$(request.callIndex)_file_path_data = extractvalue %sollang.text " -> print
+            path.kind == 2 -> if {
+                path -> sourceToken => pathToken
+                Int(TextLiteralRequest { sourceModule: path.sourceModule, token: pathToken } -> textLiteralLength) => pathLength
+                "{ ptr @sollang_str_$(pathIndex!), i64 $pathLength }" -> print
+            } else { pathIndex! -> writeValue(request.ownerIndex) }
+            ", 0" -> println
+            "  %v$(request.callIndex)_file_path_length = extractvalue %sollang.text " -> print
+            path.kind == 2 -> if {
+                path -> sourceToken => pathLengthToken
+                Int(TextLiteralRequest { sourceModule: path.sourceModule, token: pathLengthToken } -> textLiteralLength) => literalPathLength
+                "{ ptr @sollang_str_$(pathIndex!), i64 $literalPathLength }" -> print
+            } else { pathIndex! -> writeValue(request.ownerIndex) }
+            ", 1" -> println
+            "  %v$(request.callIndex)_file_open_raw = call %sollang.file_handle_result @sollang_platform_open_owned_" -> print
+            call.opcode == -217 -> if { "write" -> print } else { "read" -> print }
+            "_file(ptr %v$(request.callIndex)_file_path_data, i64 %v$(request.callIndex)_file_path_length)" -> println
+            "  %v$(request.callIndex)_file_open_handle = extractvalue %sollang.file_handle_result %v$(request.callIndex)_file_open_raw, 0" -> println
+            "  %v$(request.callIndex)_file_open_status = extractvalue %sollang.file_handle_result %v$(request.callIndex)_file_open_raw, 1" -> println
+            "  %v$(request.callIndex)_file_open_ok = icmp ne i32 %v$(request.callIndex)_file_open_status, 0" -> println
+            "  %v$(request.callIndex)_file_result_slot = alloca " -> print
+            call -> writeIrType
+            ", align 8" -> println
+            "  store " -> print
+            call -> writeIrType
+            " zeroinitializer, ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+            "  br i1 %v$(request.callIndex)_file_open_ok, label %file$(request.callIndex)_open_ok, label %file$(request.callIndex)_open_error" -> println
+            "file$(request.callIndex)_open_ok:" -> println
+            context.types[call.typeId].first => openedFileTypeId
+            "  %v$(request.callIndex)_file_value = insertvalue " -> print
+            openedFileTypeId -> writeSemanticTypeId
+            " poison, i64 %v$(request.callIndex)_file_open_handle, 0" -> println
+            "  %v$(request.callIndex)_file_ok_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 0, ptr %v$(request.callIndex)_file_ok_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_ok_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  store " -> print
+            openedFileTypeId -> writeSemanticTypeId
+            " %v$(request.callIndex)_file_value, ptr %v$(request.callIndex)_file_ok_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_open_merge" -> println
+            "file$(request.callIndex)_open_error:" -> println
+            "  %v$(request.callIndex)_file_error_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 1, ptr %v$(request.callIndex)_file_error_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_error_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  %v$(request.callIndex)_file_error_text0 = insertvalue %sollang.text poison, ptr @sollang_file_error_io, 0" -> println
+            "  %v$(request.callIndex)_file_error_text = insertvalue %sollang.text %v$(request.callIndex)_file_error_text0, i64 2, 1" -> println
+            "  store %sollang.text %v$(request.callIndex)_file_error_text, ptr %v$(request.callIndex)_file_error_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_open_merge" -> println
+            "file$(request.callIndex)_open_merge:" -> println
+            "  %v$(request.callIndex) = load " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+        }
+        call.opcode == -218 -> if {
+            enclosingFileMatch! >= 0 -> if {
+                context.ir[enclosingFileMatch!] => syncWriterMatch
+                context.types[context.ir[syncWriterMatch.operand0].typeId].first => syncWriterTypeId
+                "  %v$(request.callIndex)_file_sync_writer_payload = getelementptr inbounds " -> print
+                context.ir[syncWriterMatch.operand0] -> writeIrType
+                ", ptr %v$(enclosingFileMatch!)_subject_slot, i32 0, i32 1" -> println
+                "  %v$(request.callIndex)_file_sync_writer = load " -> print
+                syncWriterTypeId -> writeSemanticTypeId
+                ", ptr %v$(request.callIndex)_file_sync_writer_payload, align 8" -> println
+                "  %v$(request.callIndex)_file_sync_handle = extractvalue " -> print
+                syncWriterTypeId -> writeSemanticTypeId
+                " %v$(request.callIndex)_file_sync_writer, 0" -> println
+            } else {
+                request.callIndex -> callArgumentIndex => writerIndex!
+                writerIndex! -> aggregateValueIndex => writerIndex!
+                context.ir[writerIndex!] => writer
+                "  %v$(request.callIndex)_file_sync_handle = extractvalue " -> print
+                writer -> writeIrType
+                " " -> print
+                writerIndex! -> writeValue(request.ownerIndex)
+                ", 0" -> println
+            }
+            "  %v$(request.callIndex)_file_sync_raw = call i32 @sollang_platform_sync_owned_file(i64 %v$(request.callIndex)_file_sync_handle)" -> println
+            "  %v$(request.callIndex) = icmp ne i32 %v$(request.callIndex)_file_sync_raw, 0" -> println
+        }
+        call.opcode == -219 -> if {
+            request.callIndex -> callArgumentIndex => replaceIndex!
+            replaceIndex! -> aggregateValueIndex => replaceIndex!
+            context.ir[replaceIndex!] => replace
+            "  %v$(request.callIndex)_file_temporary = extractvalue " -> print
+            replace -> writeIrType
+            " " -> print
+            replaceIndex! -> writeValue(request.ownerIndex)
+            ", 0" -> println
+            "  %v$(request.callIndex)_file_destination = extractvalue " -> print
+            replace -> writeIrType
+            " " -> print
+            replaceIndex! -> writeValue(request.ownerIndex)
+            ", 1" -> println
+            "  %v$(request.callIndex)_file_temporary_data = extractvalue %sollang.text %v$(request.callIndex)_file_temporary, 0" -> println
+            "  %v$(request.callIndex)_file_temporary_length = extractvalue %sollang.text %v$(request.callIndex)_file_temporary, 1" -> println
+            "  %v$(request.callIndex)_file_destination_data = extractvalue %sollang.text %v$(request.callIndex)_file_destination, 0" -> println
+            "  %v$(request.callIndex)_file_destination_length = extractvalue %sollang.text %v$(request.callIndex)_file_destination, 1" -> println
+            "  %v$(request.callIndex)_file_replace_raw = call i32 @sollang_platform_atomic_replace_file(ptr %v$(request.callIndex)_file_temporary_data, i64 %v$(request.callIndex)_file_temporary_length, ptr %v$(request.callIndex)_file_destination_data, i64 %v$(request.callIndex)_file_destination_length)" -> println
+            "  %v$(request.callIndex) = icmp ne i32 %v$(request.callIndex)_file_replace_raw, 0" -> println
+        }
+        call.opcode == -221 -> if {
+            call.operand0 -> aggregateValueIndex => scalarIndex
+            call.operand1 -> aggregateValueIndex => offsetIndex
+            context.ir[scalarIndex] => scalar
+            scalar.typeId => scalarTypeId!
+            scalarTypeId! < 0 -> if { scalar.typeSymbol => scalarTypeId! }
+            context.typeSizes[scalarTypeId!] => scalarSize
+            context.typeAligns[scalarTypeId!] => scalarAlign
+            "  %v$(request.callIndex)_file_write_slot = alloca " -> print
+            scalarTypeId! -> writeSemanticTypeId
+            ", align $scalarAlign" -> println
+            "  store " -> print
+            scalarTypeId! -> writeSemanticTypeId
+            " " -> print
+            scalarIndex -> writeValue(request.ownerIndex)
+            ", ptr %v$(request.callIndex)_file_write_slot, align $scalarAlign" -> println
+            enclosingFileMatch! >= 0 -> if {
+                context.ir[enclosingFileMatch!] => fileWriterMatch
+                context.types[context.ir[fileWriterMatch.operand0].typeId].first => fileWriterTypeId
+                "  %v$(request.callIndex)_file_writer_payload = getelementptr inbounds " -> print
+                context.ir[fileWriterMatch.operand0] -> writeIrType
+                ", ptr %v$(enclosingFileMatch!)_subject_slot, i32 0, i32 1" -> println
+                "  %v$(request.callIndex)_file_writer = load " -> print
+                fileWriterTypeId -> writeSemanticTypeId
+                ", ptr %v$(request.callIndex)_file_writer_payload, align 8" -> println
+                "  %v$(request.callIndex)_file_write_handle = extractvalue " -> print
+                fileWriterTypeId -> writeSemanticTypeId
+                " %v$(request.callIndex)_file_writer, 0" -> println
+            }
+            "  %v$(request.callIndex)_file_write_raw = call %sollang.file_count_result @sollang_platform_write_owned_file_at(i64 %v$(request.callIndex)_file_write_handle, ptr %v$(request.callIndex)_file_write_slot, i64 $scalarSize, i64 " -> print
+            offsetIndex -> writeValue(request.ownerIndex)
+            ")" -> println
+            "  %v$(request.callIndex)_file_write_count = extractvalue %sollang.file_count_result %v$(request.callIndex)_file_write_raw, 0" -> println
+            "  %v$(request.callIndex)_file_write_status = extractvalue %sollang.file_count_result %v$(request.callIndex)_file_write_raw, 1" -> println
+            "  %v$(request.callIndex)_file_write_called = icmp ne i32 %v$(request.callIndex)_file_write_status, 0" -> println
+            "  %v$(request.callIndex)_file_write_full = icmp eq i64 %v$(request.callIndex)_file_write_count, $scalarSize" -> println
+            "  %v$(request.callIndex)_file_write_ok = and i1 %v$(request.callIndex)_file_write_called, %v$(request.callIndex)_file_write_full" -> println
+            "  %v$(request.callIndex)_file_result_slot = alloca " -> print
+            call -> writeIrType
+            ", align 8" -> println
+            "  store " -> print
+            call -> writeIrType
+            " zeroinitializer, ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+            "  br i1 %v$(request.callIndex)_file_write_ok, label %file$(request.callIndex)_write_ok, label %file$(request.callIndex)_write_error" -> println
+            "file$(request.callIndex)_write_ok:" -> println
+            "  %v$(request.callIndex)_file_write_ok_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 0, ptr %v$(request.callIndex)_file_write_ok_tag, align 4" -> println
+            "  br label %file$(request.callIndex)_write_merge" -> println
+            "file$(request.callIndex)_write_error:" -> println
+            "  %v$(request.callIndex)_file_write_error_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 1, ptr %v$(request.callIndex)_file_write_error_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_write_error_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  %v$(request.callIndex)_file_write_error_text0 = insertvalue %sollang.text poison, ptr @sollang_file_error_io, 0" -> println
+            "  %v$(request.callIndex)_file_write_error_text = insertvalue %sollang.text %v$(request.callIndex)_file_write_error_text0, i64 2, 1" -> println
+            "  store %sollang.text %v$(request.callIndex)_file_write_error_text, ptr %v$(request.callIndex)_file_write_error_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_write_merge" -> println
+            "file$(request.callIndex)_write_merge:" -> println
+            "  %v$(request.callIndex) = load " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+        }
+        call.opcode == -220 -> if {
+            call.operand0 -> aggregateValueIndex => offsetIndex
+            context.types[call.typeId].first => optionTypeId
+            context.types[optionTypeId].first => scalarTypeId
+            context.typeSizes[scalarTypeId] => scalarSize
+            context.typeAligns[scalarTypeId] => scalarAlign
+            "  %v$(request.callIndex)_file_read_slot = alloca " -> print
+            scalarTypeId == 23 -> if { "i8" -> print } else { scalarTypeId -> writeSemanticTypeId }
+            ", align $scalarAlign" -> println
+            enclosingFileMatch! >= 0 -> if {
+                context.ir[enclosingFileMatch!] => fileReaderMatch
+                context.types[context.ir[fileReaderMatch.operand0].typeId].first => fileReaderTypeId
+                "  %v$(request.callIndex)_file_reader_payload = getelementptr inbounds " -> print
+                context.ir[fileReaderMatch.operand0] -> writeIrType
+                ", ptr %v$(enclosingFileMatch!)_subject_slot, i32 0, i32 1" -> println
+                "  %v$(request.callIndex)_file_reader = load " -> print
+                fileReaderTypeId -> writeSemanticTypeId
+                ", ptr %v$(request.callIndex)_file_reader_payload, align 8" -> println
+                "  %v$(request.callIndex)_file_read_handle = extractvalue " -> print
+                fileReaderTypeId -> writeSemanticTypeId
+                " %v$(request.callIndex)_file_reader, 0" -> println
+            }
+            "  %v$(request.callIndex)_file_read_raw = call %sollang.file_count_result @sollang_platform_read_owned_file_at(i64 %v$(request.callIndex)_file_read_handle, ptr %v$(request.callIndex)_file_read_slot, i64 $scalarSize, i64 " -> print
+            offsetIndex -> writeValue(request.ownerIndex)
+            ")" -> println
+            "  %v$(request.callIndex)_file_read_count = extractvalue %sollang.file_count_result %v$(request.callIndex)_file_read_raw, 0" -> println
+            "  %v$(request.callIndex)_file_read_status = extractvalue %sollang.file_count_result %v$(request.callIndex)_file_read_raw, 1" -> println
+            "  %v$(request.callIndex)_file_read_ok = icmp ne i32 %v$(request.callIndex)_file_read_status, 0" -> println
+            "  %v$(request.callIndex)_file_result_slot = alloca " -> print
+            call -> writeIrType
+            ", align 8" -> println
+            "  store " -> print
+            call -> writeIrType
+            " zeroinitializer, ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+            "  br i1 %v$(request.callIndex)_file_read_ok, label %file$(request.callIndex)_read_count, label %file$(request.callIndex)_read_io" -> println
+            "file$(request.callIndex)_read_io:" -> println
+            "  br label %file$(request.callIndex)_read_error_io" -> println
+            "file$(request.callIndex)_read_count:" -> println
+            "  %v$(request.callIndex)_file_read_eof = icmp eq i64 %v$(request.callIndex)_file_read_count, 0" -> println
+            "  br i1 %v$(request.callIndex)_file_read_eof, label %file$(request.callIndex)_read_none, label %file$(request.callIndex)_read_nonempty" -> println
+            "file$(request.callIndex)_read_nonempty:" -> println
+            "  %v$(request.callIndex)_file_read_full = icmp eq i64 %v$(request.callIndex)_file_read_count, $scalarSize" -> println
+            "  br i1 %v$(request.callIndex)_file_read_full, label %file$(request.callIndex)_read_loaded, label %file$(request.callIndex)_read_error_truncated" -> println
+            "file$(request.callIndex)_read_loaded:" -> println
+            "  %v$(request.callIndex)_file_read_loaded = load " -> print
+            scalarTypeId == 23 -> if { "i8" -> print } else { scalarTypeId -> writeSemanticTypeId }
+            ", ptr %v$(request.callIndex)_file_read_slot, align $scalarAlign" -> println
+            scalarTypeId == 23 -> if {
+                "  %v$(request.callIndex)_file_read_encoding_ok = icmp ule i8 %v$(request.callIndex)_file_read_loaded, 1" -> println
+                "  br i1 %v$(request.callIndex)_file_read_encoding_ok, label %file$(request.callIndex)_read_valid, label %file$(request.callIndex)_read_error_invalid" -> println
+            } else {
+                scalarTypeId == 14 -> if {
+                    "  %v$(request.callIndex)_file_read_in_range = icmp ule i32 %v$(request.callIndex)_file_read_loaded, 1114111" -> println
+                    "  %v$(request.callIndex)_file_read_before_surrogate = icmp ult i32 %v$(request.callIndex)_file_read_loaded, 55296" -> println
+                    "  %v$(request.callIndex)_file_read_after_surrogate = icmp ugt i32 %v$(request.callIndex)_file_read_loaded, 57343" -> println
+                    "  %v$(request.callIndex)_file_read_not_surrogate = or i1 %v$(request.callIndex)_file_read_before_surrogate, %v$(request.callIndex)_file_read_after_surrogate" -> println
+                    "  %v$(request.callIndex)_file_read_encoding_ok = and i1 %v$(request.callIndex)_file_read_in_range, %v$(request.callIndex)_file_read_not_surrogate" -> println
+                    "  br i1 %v$(request.callIndex)_file_read_encoding_ok, label %file$(request.callIndex)_read_valid, label %file$(request.callIndex)_read_error_invalid" -> println
+                } else { "  br label %file$(request.callIndex)_read_valid" -> println }
+            }
+            "file$(request.callIndex)_read_valid:" -> println
+            scalarTypeId == 23 -> if { "  %v$(request.callIndex)_file_read_scalar = trunc i8 %v$(request.callIndex)_file_read_loaded to i1" -> println }
+            "  %v$(request.callIndex)_file_option_slot = alloca " -> print
+            optionTypeId -> writeSemanticTypeId
+            ", align 8" -> println
+            "  store " -> print
+            optionTypeId -> writeSemanticTypeId
+            " zeroinitializer, ptr %v$(request.callIndex)_file_option_slot, align 8" -> println
+            "  %v$(request.callIndex)_file_some_tag = getelementptr inbounds " -> print
+            optionTypeId -> writeSemanticTypeId
+            ", ptr %v$(request.callIndex)_file_option_slot, i32 0, i32 0" -> println
+            "  store i32 1, ptr %v$(request.callIndex)_file_some_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_some_payload = getelementptr inbounds " -> print
+            optionTypeId -> writeSemanticTypeId
+            ", ptr %v$(request.callIndex)_file_option_slot, i32 0, i32 1" -> println
+            "  store " -> print
+            scalarTypeId -> writeSemanticTypeId
+            " " -> print
+            scalarTypeId == 23 -> if { "%v$(request.callIndex)_file_read_scalar" -> print } else { "%v$(request.callIndex)_file_read_loaded" -> print }
+            ", ptr %v$(request.callIndex)_file_some_payload, align $scalarAlign" -> println
+            "  %v$(request.callIndex)_file_some = load " -> print
+            optionTypeId -> writeSemanticTypeId
+            ", ptr %v$(request.callIndex)_file_option_slot, align 8" -> println
+            "  %v$(request.callIndex)_file_result_ok_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 0, ptr %v$(request.callIndex)_file_result_ok_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_result_ok_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  store " -> print
+            optionTypeId -> writeSemanticTypeId
+            " %v$(request.callIndex)_file_some, ptr %v$(request.callIndex)_file_result_ok_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_read_merge" -> println
+            "file$(request.callIndex)_read_none:" -> println
+            "  %v$(request.callIndex)_file_none = insertvalue " -> print
+            optionTypeId -> writeSemanticTypeId
+            " zeroinitializer, i32 0, 0" -> println
+            "  %v$(request.callIndex)_file_none_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 0, ptr %v$(request.callIndex)_file_none_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_none_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  store " -> print
+            optionTypeId -> writeSemanticTypeId
+            " %v$(request.callIndex)_file_none, ptr %v$(request.callIndex)_file_none_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_read_merge" -> println
+            "file$(request.callIndex)_read_error_truncated:" -> println
+            "  br label %file$(request.callIndex)_read_error_truncated_store" -> println
+            "file$(request.callIndex)_read_error_invalid:" -> println
+            "  br label %file$(request.callIndex)_read_error_invalid_store" -> println
+            "file$(request.callIndex)_read_error_io:" -> println
+            "  %v$(request.callIndex)_file_io_text0 = insertvalue %sollang.text poison, ptr @sollang_file_error_io, 0" -> println
+            "  %v$(request.callIndex)_file_io_text = insertvalue %sollang.text %v$(request.callIndex)_file_io_text0, i64 2, 1" -> println
+            "  br label %file$(request.callIndex)_read_error_store" -> println
+            "file$(request.callIndex)_read_error_truncated_store:" -> println
+            "  %v$(request.callIndex)_file_truncated_text0 = insertvalue %sollang.text poison, ptr @sollang_file_error_truncated, 0" -> println
+            "  %v$(request.callIndex)_file_truncated_text = insertvalue %sollang.text %v$(request.callIndex)_file_truncated_text0, i64 9, 1" -> println
+            "  br label %file$(request.callIndex)_read_error_store" -> println
+            "file$(request.callIndex)_read_error_invalid_store:" -> println
+            "  %v$(request.callIndex)_file_invalid_text0 = insertvalue %sollang.text poison, ptr @sollang_file_error_invalid, 0" -> println
+            "  %v$(request.callIndex)_file_invalid_text = insertvalue %sollang.text %v$(request.callIndex)_file_invalid_text0, i64 7, 1" -> println
+            "  br label %file$(request.callIndex)_read_error_store" -> println
+            "file$(request.callIndex)_read_error_store:" -> println
+            "  %v$(request.callIndex)_file_error_text = phi %sollang.text [ %v$(request.callIndex)_file_io_text, %file$(request.callIndex)_read_error_io ], [ %v$(request.callIndex)_file_truncated_text, %file$(request.callIndex)_read_error_truncated_store ], [ %v$(request.callIndex)_file_invalid_text, %file$(request.callIndex)_read_error_invalid_store ]" -> println
+            "  %v$(request.callIndex)_file_read_error_tag = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 0" -> println
+            "  store i32 1, ptr %v$(request.callIndex)_file_read_error_tag, align 4" -> println
+            "  %v$(request.callIndex)_file_read_error_payload = getelementptr inbounds " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, i32 0, i32 1" -> println
+            "  store %sollang.text %v$(request.callIndex)_file_error_text, ptr %v$(request.callIndex)_file_read_error_payload, align 8" -> println
+            "  br label %file$(request.callIndex)_read_merge" -> println
+            "file$(request.callIndex)_read_merge:" -> println
+            "  %v$(request.callIndex) = load " -> print
+            call -> writeIrType
+            ", ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
+        }
     }
     emitDirectoryCall request: DirectoryCallRequest -> Unit uses Console {
         context.ir[request.callIndex] => call
@@ -5240,7 +5627,10 @@ emitCore context: move EmitContext -> Unit uses Console {
             (regionNode.kind == 6 and (regionNode.opcode == -210 or regionNode.opcode == -211)) -> if {
                 ProcessCallRequest { callIndex: regionNodeIndex!, ownerIndex: ownerIndex! } -> emitProcessCall
             }
-            (regionNode.kind == 6 and regionNode.symbol != -115 and regionNode.opcode != -205 and regionNode.opcode != -206 and regionNode.opcode != -207 and regionNode.opcode != -208 and regionNode.opcode != -209 and regionNode.opcode != -210 and regionNode.opcode != -211 and regionNode.opcode != -212 and regionNode.opcode != -214 and regionNode.opcode != -215 and not (regionNode.parent >= 0 and context.ir[regionNode.parent].kind == 6 and (context.ir[regionNode.parent].opcode == -207 or context.ir[regionNode.parent].opcode == -209) and context.ir[regionNode.parent].operand1 == regionNodeIndex!)) -> if {
+            ((regionNode.kind == 6 or regionNode.kind == 9) and regionNode.opcode <= -216 and regionNode.opcode >= -221) -> if {
+                FileCallRequest { callIndex: regionNodeIndex!, ownerIndex: ownerIndex! } -> emitFileCall
+            }
+            (regionNode.kind == 6 and regionNode.symbol != -115 and regionNode.opcode != -205 and regionNode.opcode != -206 and regionNode.opcode != -207 and regionNode.opcode != -208 and regionNode.opcode != -209 and regionNode.opcode != -210 and regionNode.opcode != -211 and regionNode.opcode != -212 and regionNode.opcode != -214 and regionNode.opcode != -215 and (regionNode.opcode > -216 or regionNode.opcode < -221) and not (regionNode.parent >= 0 and context.ir[regionNode.parent].kind == 6 and (context.ir[regionNode.parent].opcode == -207 or context.ir[regionNode.parent].opcode == -209) and context.ir[regionNode.parent].operand1 == regionNodeIndex!)) -> if {
                 (regionNode.symbol == -101 or regionNode.symbol == -102) -> if {
                     regionNodeIndex! -> callArgumentIndex => regionArgumentIndex
                     context.ir[regionArgumentIndex] => regionArgument
@@ -5687,6 +6077,15 @@ emitCore context: move EmitContext -> Unit uses Console {
     emitEnumMatch matchIndex: Int -> Unit uses Console {
         context.ir[matchIndex] => match
         context.ir[match.operand0] => subject
+        matchIndex - 1 => matchOwnerIndex!
+        (matchOwnerIndex! >= 0 and context.ir[matchOwnerIndex!].kind != 0 and context.ir[matchOwnerIndex!].kind != 11) -> while {
+            matchOwnerIndex! - 1 => matchOwnerIndex!
+        }
+        -1 => ownedMatchFileTypeId!
+        (subject.typeId >= 0 and context.types[subject.typeId].kind == 7 and context.types[subject.typeId].first >= 0) -> if {
+            context.types[subject.typeId].first => matchPayloadTypeId
+            matchPayloadTypeId -> isOwnedFileType -> if { matchPayloadTypeId => ownedMatchFileTypeId! }
+        }
         "  %v$(matchIndex)_tag = extractvalue " -> print
         subject -> writeIrType
         " " -> print
@@ -5721,6 +6120,7 @@ emitCore context: move EmitContext -> Unit uses Console {
             }
             armBindingIndex! >= 0 -> if {
                 context.ir[armBindingIndex!] => armBinding
+                not (armBinding.typeOrigin == 1 and armBinding.typeSymbol == 0) -> if {
                 "  %v$(matchIndex)_arm$(armOrdinal!)_payload = getelementptr inbounds " -> print
                 subject -> writeIrType
                 ", ptr %v$(matchIndex)_subject_slot, i32 0, i32 1" -> println
@@ -5728,20 +6128,60 @@ emitCore context: move EmitContext -> Unit uses Console {
                 armBinding -> writeIrType
                 ", ptr %v$(matchIndex)_arm$(armOrdinal!)_payload, align " -> print
                 armBinding -> storageAlign -> writeDecimalLine
+                }
             }
-            armIndex! -> emitRegion
+            armIndex! => emittedArmRegion!
+            (arm.operand0 >= 0 and arm.operand0 == arm.operand1 and context.ir[arm.operand0].kind == 19) -> if {
+                false => nestedArmHasExplicitReturn!
+                0 => nestedArmReturnSearch!
+                nestedArmReturnSearch! < (context.ir -> len) -> while {
+                    (context.ir[nestedArmReturnSearch!].parent == arm.operand0 and context.ir[nestedArmReturnSearch!].kind == 23) -> if { true => nestedArmHasExplicitReturn! }
+                    nestedArmReturnSearch! + 1 => nestedArmReturnSearch!
+                }
+                not nestedArmHasExplicitReturn! -> if { arm.operand0 => emittedArmRegion! }
+            }
+            emittedArmRegion! -> emitRegion
             not (match.typeOrigin == 1 and match.typeSymbol == 0) -> if {
                 armIndex! -> matchRegionResultValueIndex => armValueIndex
                 context.ir[armValueIndex] => armValue
+                (armValue.kind == 6 and armValue.targetModule >= 0 and armValue.operand0 < 0) -> if {
+                    CallEnvironmentRequest { callerIndex: matchOwnerIndex!, callIndex: armValueIndex, targetModule: armValue.targetModule, targetSymbol: armValue.symbol, hasArgument: false } -> emitCallEnvironmentValues
+                    (armValue.typeOrigin == 1 and armValue.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(armValueIndex) = call " -> print }
+                    armValue -> writeIrType
+                    " @sollang_m$(armValue.targetModule)_s$(armValue.symbol)(" -> print
+                    CallEnvironmentRequest { callerIndex: matchOwnerIndex!, callIndex: armValueIndex, targetModule: armValue.targetModule, targetSymbol: armValue.symbol, hasArgument: false } -> emitCallEnvironment => directArmCallEnvironment
+                    ")" -> println
+                }
+                (armValue.kind == 26) -> if {
+                    WhileValueRequest { whileIndex: armValueIndex, ownerIndex: matchIndex, nodeIndex: armValueIndex } -> emitEnumConstructor
+                }
+                (armBindingIndex! < 0 and (armValueIndex == armIndex! or (armValue.kind == 19 and armValue.operand0 < 0))) => directArmPayload
+                (armBindingIndex! >= 0 and armValue.kind == 5 and (armValue.operand0 == armBindingIndex! or armValue.symbol == context.ir[armBindingIndex!].symbol)) => armValueUsesBinding
+                (armBindingIndex! >= 0 and armValue.kind == 19 and armValue.operand0 < 0 and (match.typeKind == 7 or (match.typeId >= 0 and context.types[match.typeId].kind == 7))) => emptyPayloadlessArm
+                directArmPayload -> if {
+                    "  %v$(matchIndex)_arm$(armOrdinal!)_direct_payload = getelementptr inbounds " -> print
+                    subject -> writeIrType
+                    ", ptr %v$(matchIndex)_subject_slot, i32 0, i32 1" -> println
+                    "  %v$(matchIndex)_arm$(armOrdinal!)_direct_value = load " -> print
+                    match -> writeIrType
+                    ", ptr %v$(matchIndex)_arm$(armOrdinal!)_direct_payload, align " -> print
+                    match -> storageAlign -> writeDecimalLine
+                }
                 "  store " -> print
                 match -> writeIrType
                 " " -> print
+                directArmPayload -> if { "%v$(matchIndex)_arm$(armOrdinal!)_direct_value" -> print } else {
+                emptyPayloadlessArm -> if { "zeroinitializer" -> print } else {
+                armValueUsesBinding -> if { "%v$(armBindingIndex!)" -> print } else {
                 (armValue.kind == 3 or armValue.kind == 4) -> if {
                     armValue -> sourceToken => armValueToken
                     armValue.kind == 3 -> if { context.sources[armValue.sourceModule] -> slice(armValueToken.span.start, armValueToken.span.length) -> print } else {
                         ((context.sources[armValue.sourceModule] -> byte(armValueToken.span.start)) == UInt8(116)) -> if { "1" -> print } else { "0" -> print }
                     }
                 } else { "%v$(armValueIndex)" -> print }
+                }
+                }
+                }
                 ", ptr %v$(matchIndex)_result, align " -> print
                 match -> storageAlign -> writeDecimalLine
             }
@@ -5758,6 +6198,23 @@ emitCore context: move EmitContext -> Unit uses Console {
             match -> writeIrType
             ", ptr %v$(matchIndex)_result, align " -> print
             match -> storageAlign -> writeDecimalLine
+        }
+        (ownedMatchFileTypeId! >= 0 and match.typeId != ownedMatchFileTypeId!) -> if {
+            "  %v$(matchIndex)_owned_file_present = icmp eq i32 %v$(matchIndex)_tag, 0" -> println
+            "  br i1 %v$(matchIndex)_owned_file_present, label %match$(matchIndex)_owned_file_close, label %match$(matchIndex)_owned_file_done" -> println
+            "match$(matchIndex)_owned_file_close:" -> println
+            "  %v$(matchIndex)_owned_file_payload = getelementptr inbounds " -> print
+            subject -> writeIrType
+            ", ptr %v$(matchIndex)_subject_slot, i32 0, i32 1" -> println
+            "  %v$(matchIndex)_owned_file_value = load " -> print
+            ownedMatchFileTypeId! -> writeSemanticTypeId
+            ", ptr %v$(matchIndex)_owned_file_payload, align 8" -> println
+            "  %v$(matchIndex)_owned_file_handle = extractvalue " -> print
+            ownedMatchFileTypeId! -> writeSemanticTypeId
+            " %v$(matchIndex)_owned_file_value, 0" -> println
+            "  call void @sollang_platform_close_owned_file(i64 %v$(matchIndex)_owned_file_handle)" -> println
+            "  br label %match$(matchIndex)_owned_file_done" -> println
+            "match$(matchIndex)_owned_file_done:" -> println
         }
     }
     emitFunction requestedFunctionIndex: Int -> Int uses Console {
@@ -6071,11 +6528,11 @@ emitCore context: move EmitContext -> Unit uses Console {
                                 }
                             }
                         }
-                        (scheduleReady! and (scheduleNode.kind == 6 or scheduleNode.kind == 18 or scheduleNode.kind == 20 or scheduleNode.kind == 24 or scheduleNode.kind == 25 or (scheduleNode.kind == 17 and scheduleNode.flags == 1) or (scheduleNode.kind == 9 and (scheduleNode.opcode == -204 or scheduleNode.opcode == -205 or scheduleNode.opcode == -213)))) -> if {
+                        (scheduleReady! and (scheduleNode.kind == 6 or scheduleNode.kind == 18 or scheduleNode.kind == 20 or scheduleNode.kind == 24 or scheduleNode.kind == 25 or (scheduleNode.kind == 17 and scheduleNode.flags == 1) or (scheduleNode.kind == 9 and (scheduleNode.opcode == -204 or scheduleNode.opcode == -205 or scheduleNode.opcode == -213 or scheduleNode.opcode == -220 or scheduleNode.opcode == -221)))) -> if {
                             true => rootEffect!
                             scheduleNode.parent => effectAncestor!
                             (effectAncestor! >= expressionStart and rootEffect!) -> while {
-                                (context.ir[effectAncestor!].kind == 6 or context.ir[effectAncestor!].kind == 18 or context.ir[effectAncestor!].kind == 20 or context.ir[effectAncestor!].kind == 24 or context.ir[effectAncestor!].kind == 25 or (context.ir[effectAncestor!].kind == 17 and context.ir[effectAncestor!].flags == 1) or (context.ir[effectAncestor!].kind == 9 and (context.ir[effectAncestor!].opcode == -204 or context.ir[effectAncestor!].opcode == -205 or context.ir[effectAncestor!].opcode == -213))) -> if { false => rootEffect! } else { context.ir[effectAncestor!].parent => effectAncestor! }
+                                (context.ir[effectAncestor!].kind == 6 or context.ir[effectAncestor!].kind == 18 or context.ir[effectAncestor!].kind == 20 or context.ir[effectAncestor!].kind == 24 or context.ir[effectAncestor!].kind == 25 or (context.ir[effectAncestor!].kind == 17 and context.ir[effectAncestor!].flags == 1) or (context.ir[effectAncestor!].kind == 9 and (context.ir[effectAncestor!].opcode == -204 or context.ir[effectAncestor!].opcode == -205 or context.ir[effectAncestor!].opcode == -213 or context.ir[effectAncestor!].opcode == -220 or context.ir[effectAncestor!].opcode == -221))) -> if { false => rootEffect! } else { context.ir[effectAncestor!].parent => effectAncestor! }
                             }
                             rootEffect! -> if {
                                 expressionStart => earlierEffectSearch!
@@ -6087,7 +6544,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                                         false => earlierInsideRegion!
                                         (earlierEffectAncestor! >= expressionStart and earlierRootEffect! and not earlierInsideRegion!) -> while {
                                             (context.ir[earlierEffectAncestor!].kind == 19 or context.ir[earlierEffectAncestor!].kind == 20) -> if { true => earlierInsideRegion! } else {
-                                            (context.ir[earlierEffectAncestor!].kind == 6 or context.ir[earlierEffectAncestor!].kind == 18 or context.ir[earlierEffectAncestor!].kind == 20 or context.ir[earlierEffectAncestor!].kind == 24 or context.ir[earlierEffectAncestor!].kind == 25 or (context.ir[earlierEffectAncestor!].kind == 17 and context.ir[earlierEffectAncestor!].flags == 1) or (context.ir[earlierEffectAncestor!].kind == 9 and (context.ir[earlierEffectAncestor!].opcode == -204 or context.ir[earlierEffectAncestor!].opcode == -205 or context.ir[earlierEffectAncestor!].opcode == -213))) -> if { false => earlierRootEffect! } else { context.ir[earlierEffectAncestor!].parent => earlierEffectAncestor! }
+                                            (context.ir[earlierEffectAncestor!].kind == 6 or context.ir[earlierEffectAncestor!].kind == 18 or context.ir[earlierEffectAncestor!].kind == 20 or context.ir[earlierEffectAncestor!].kind == 24 or context.ir[earlierEffectAncestor!].kind == 25 or (context.ir[earlierEffectAncestor!].kind == 17 and context.ir[earlierEffectAncestor!].flags == 1) or (context.ir[earlierEffectAncestor!].kind == 9 and (context.ir[earlierEffectAncestor!].opcode == -204 or context.ir[earlierEffectAncestor!].opcode == -205 or context.ir[earlierEffectAncestor!].opcode == -213 or context.ir[earlierEffectAncestor!].opcode == -220 or context.ir[earlierEffectAncestor!].opcode == -221))) -> if { false => earlierRootEffect! } else { context.ir[earlierEffectAncestor!].parent => earlierEffectAncestor! }
                                             }
                                         }
                                         (earlierRootEffect! and not earlierInsideRegion!) -> if { false => scheduleReady! }
@@ -7030,7 +7487,10 @@ emitCore context: move EmitContext -> Unit uses Console {
                 (expression.kind == 6 and expression.opcode == -215) -> if {
                     DirectoryCallRequest { callIndex: expressionIndex!, ownerIndex: functionIndex! } -> emitDirectoryCall
                 }
-                (expression.kind == 6 and expression.symbol != -115 and expression.opcode != -205 and expression.opcode != -206 and expression.opcode != -207 and expression.opcode != -208 and expression.opcode != -209 and expression.opcode != -210 and expression.opcode != -211 and expression.opcode != -212 and expression.opcode != -214 and expression.opcode != -215 and not (expression.parent >= 0 and context.ir[expression.parent].kind == 6 and (context.ir[expression.parent].opcode == -207 or context.ir[expression.parent].opcode == -209) and context.ir[expression.parent].operand1 == expressionIndex!)) -> if {
+                ((expression.kind == 6 or expression.kind == 9) and expression.opcode <= -216 and expression.opcode >= -221) -> if {
+                    FileCallRequest { callIndex: expressionIndex!, ownerIndex: functionIndex! } -> emitFileCall
+                }
+                (expression.kind == 6 and expression.symbol != -115 and expression.opcode != -205 and expression.opcode != -206 and expression.opcode != -207 and expression.opcode != -208 and expression.opcode != -209 and expression.opcode != -210 and expression.opcode != -211 and expression.opcode != -212 and expression.opcode != -214 and expression.opcode != -215 and (expression.opcode > -216 or expression.opcode < -221) and not (expression.parent >= 0 and context.ir[expression.parent].kind == 6 and (context.ir[expression.parent].opcode == -207 or context.ir[expression.parent].opcode == -209) and context.ir[expression.parent].operand1 == expressionIndex!)) -> if {
                     (expression.symbol == -101 or expression.symbol == -102) -> if {
                         expressionIndex! -> callArgumentIndex => runtimeArgumentIndex
                         context.ir[runtimeArgumentIndex] => runtimeArgument
@@ -7984,6 +8444,16 @@ emitCore context: move EmitContext -> Unit uses Console {
         sourceTextTypeSearch! + 1 => sourceTextTypeSearch!
     }
     usesSourceText! -> if { "%sollang.source_text = type { ptr, i64, ptr, i64 }" -> println }
+    context -> usesOwnedFileRuntime => usesOwnedFile!
+    usesOwnedFile! -> if {
+        "%sollang.file_handle_result = type { i64, i32 }" -> println
+        "%sollang.file_count_result = type { i64, i32 }" -> println
+        """
+        @sollang_file_error_io = private constant [2 x i8] c"io"
+        @sollang_file_error_truncated = private constant [9 x i8] c"truncated"
+        @sollang_file_error_invalid = private constant [7 x i8] c"invalid"
+        """ -> println
+    }
     context -> usesDirectoryRuntime => usesDirectoryTraversal
     usesDirectoryTraversal -> if {
         "%sollang.directory_result = type { ptr, i64, i64, i32 }" -> println
@@ -8090,7 +8560,7 @@ emitCore context: move EmitContext -> Unit uses Console {
         context.ir[textTypeSearch!].typeSymbol == 1 -> if { true => usesText! }
         textTypeSearch! + 1 => textTypeSearch!
     }
-    usesSourceText! -> if { true => usesText! }
+    (usesSourceText! or usesOwnedFile!) -> if { true => usesText! }
     usesText! -> if {
         "%sollang.text = type { ptr, i64 }" -> println
         0 => textGlobalIndex!
@@ -8403,7 +8873,7 @@ emitCore context: move EmitContext -> Unit uses Console {
                                     }
                                 }
                             }
-                            (entryScheduleReady! and (entryScheduleNode.kind == 6 or entryScheduleNode.kind == 18 or entryScheduleNode.kind == 20 or entryScheduleNode.kind == 24 or entryScheduleNode.kind == 25 or (entryScheduleNode.kind == 17 and entryScheduleNode.flags == 1) or (entryScheduleNode.kind == 9 and (entryScheduleNode.opcode == -204 or entryScheduleNode.opcode == -205 or entryScheduleNode.opcode == -213)))) -> if {
+                            (entryScheduleReady! and (entryScheduleNode.kind == 6 or entryScheduleNode.kind == 18 or entryScheduleNode.kind == 20 or entryScheduleNode.kind == 24 or entryScheduleNode.kind == 25 or (entryScheduleNode.kind == 17 and entryScheduleNode.flags == 1) or (entryScheduleNode.kind == 9 and (entryScheduleNode.opcode == -204 or entryScheduleNode.opcode == -205 or entryScheduleNode.opcode == -213 or entryScheduleNode.opcode == -220 or entryScheduleNode.opcode == -221)))) -> if {
                                 true => entryRootEffect!
                                 entryScheduleNode.parent => entryEffectAncestor!
                                 (entryEffectAncestor! > functionIndex! and entryRootEffect!) -> while {
@@ -8881,7 +9351,10 @@ emitCore context: move EmitContext -> Unit uses Console {
                     (entryExpression.kind == 6 and (entryExpression.opcode == -210 or entryExpression.opcode == -211)) -> if {
                         ProcessCallRequest { callIndex: entryExpressionIndex!, ownerIndex: functionIndex! } -> emitProcessCall
                     }
-                    (entryExpression.kind == 6 and entryExpression.symbol != -115 and entryExpression.opcode != -205 and entryExpression.opcode != -207 and entryExpression.opcode != -208 and entryExpression.opcode != -209 and entryExpression.opcode != -210 and entryExpression.opcode != -211 and entryExpression.opcode != -212 and entryExpression.opcode != -215 and not (entryExpression.parent >= 0 and context.ir[entryExpression.parent].kind == 6 and (context.ir[entryExpression.parent].opcode == -207 or context.ir[entryExpression.parent].opcode == -209) and context.ir[entryExpression.parent].operand1 == entryExpressionIndex!)) -> if {
+                    ((entryExpression.kind == 6 or entryExpression.kind == 9) and entryExpression.opcode <= -216 and entryExpression.opcode >= -221) -> if {
+                        FileCallRequest { callIndex: entryExpressionIndex!, ownerIndex: functionIndex! } -> emitFileCall
+                    }
+                    (entryExpression.kind == 6 and entryExpression.symbol != -115 and entryExpression.opcode != -205 and entryExpression.opcode != -207 and entryExpression.opcode != -208 and entryExpression.opcode != -209 and entryExpression.opcode != -210 and entryExpression.opcode != -211 and entryExpression.opcode != -212 and entryExpression.opcode != -215 and (entryExpression.opcode > -216 or entryExpression.opcode < -221) and not (entryExpression.parent >= 0 and context.ir[entryExpression.parent].kind == 6 and (context.ir[entryExpression.parent].opcode == -207 or context.ir[entryExpression.parent].opcode == -209) and context.ir[entryExpression.parent].operand1 == entryExpressionIndex!)) -> if {
                         (entryExpression.symbol == -101 or entryExpression.symbol == -102) -> if {
                             entryExpressionIndex! -> callArgumentIndex => entryRuntimeArgumentIndex
                             context.ir[entryRuntimeArgumentIndex] => runtimeArgument
@@ -9363,6 +9836,17 @@ usesDirectoryRuntime context: EmitContext -> Bool {
     0 => nodeIndex!
     nodeIndex! < (context.ir -> len) -> while {
         context.ir[nodeIndex!].opcode == -215 -> if { true => usesRuntime! }
+        nodeIndex! + 1 => nodeIndex!
+    }
+    usesRuntime!
+}
+
+usesOwnedFileRuntime context: EmitContext -> Bool {
+    false => usesRuntime!
+    0 => nodeIndex!
+    nodeIndex! < (context.ir -> len) -> while {
+        context.ir[nodeIndex!] => node
+        (node.opcode <= -216 and node.opcode >= -221) -> if { true => usesRuntime! }
         nodeIndex! + 1 => nodeIndex!
     }
     usesRuntime!
@@ -10679,6 +11163,7 @@ public emit sources: move [Text; ~] -> Unit uses Console {
     context! -> usesTextRuntime => usesTextOutput
     context! -> usesProcessRuntime => needsProcessRuntime
     context! -> usesDirectoryRuntime => needsDirectoryRuntime
+    context! -> usesOwnedFileRuntime => needsOwnedFileRuntime
     capturesParallelOutput -> if { emitMemoryOutputSinkRuntime }
     (usesTextOutput or capturesParallelOutput) -> if { capturesParallelOutput -> emitWindowsTextRuntime }
     capturesParallelOutput -> if { emitWindowsComputeRuntime }
@@ -10696,6 +11181,7 @@ public emit sources: move [Text; ~] -> Unit uses Console {
     context! -> emitCore
     needsProcessRuntime -> if { emitWindowsProcessRuntime }
     needsDirectoryRuntime -> if { llvmRuntime.emitWindowsDirectory }
+    needsOwnedFileRuntime -> if { llvmRuntime.emitWindowsOwnedFile }
     runtimeModule! >= 0 -> if {
         runtimeModule! -> llvmRuntime.emitWindows
     }
@@ -10716,6 +11202,7 @@ public emitLinux sources: move [Text; ~] -> Unit uses Console {
     context! -> usesProcessRuntime => needsProcessRuntime
     context! -> usesSourceTextRuntime => needsSourceTextRuntime
     context! -> usesDirectoryRuntime => needsDirectoryRuntime
+    context! -> usesOwnedFileRuntime => needsOwnedFileRuntime
     capturesParallelOutput -> if { emitMemoryOutputSinkRuntime }
     (usesTextOutput or capturesParallelOutput) -> if { capturesParallelOutput -> emitLinuxTextRuntime }
     capturesParallelOutput -> if { emitLinuxComputeRuntime }
@@ -10725,6 +11212,7 @@ public emitLinux sources: move [Text; ~] -> Unit uses Console {
     context! -> emitCore
     needsProcessRuntime -> if { capturesParallelOutput -> emitLinuxProcessRuntime }
     needsDirectoryRuntime -> if { llvmRuntime.emitLinuxDirectory }
+    needsOwnedFileRuntime -> if { llvmRuntime.emitLinuxOwnedFile }
     needsSourceTextRuntime -> if {
         not needsProcessRuntime -> if { "declare i32 @open(ptr, i32, i32)" -> println }
         (not capturesParallelOutput and not needsProcessRuntime) -> if { "declare i32 @close(i32)" -> println }

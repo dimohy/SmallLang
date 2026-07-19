@@ -756,3 +756,350 @@ public emitLinuxSourceText: -> Unit uses Console {
     }
     """ -> println
 }
+
+emitOwnedFilePathCopy capacity: Int -> Unit uses Console {
+    "define internal i32 @sollang_owned_file_copy_path(ptr %data, i64 %length, ptr %output) {" -> println
+    "entry:" -> println
+    "  %fits = icmp ult i64 %length, $capacity" -> println
+    "  br i1 %fits, label %loop, label %failure" -> println
+    "loop:" -> println
+    "  %index = phi i64 [ 0, %entry ], [ %next, %copy ]" -> println
+    "  %done = icmp eq i64 %index, %length" -> println
+    "  br i1 %done, label %terminate, label %copy" -> println
+    "copy:" -> println
+    "  %source = getelementptr i8, ptr %data, i64 %index" -> println
+    "  %byte = load i8, ptr %source, align 1" -> println
+    "  %destination = getelementptr i8, ptr %output, i64 %index" -> println
+    "  store i8 %byte, ptr %destination, align 1" -> println
+    "  %next = add i64 %index, 1" -> println
+    "  br label %loop" -> println
+    "terminate:" -> println
+    "  %terminator = getelementptr i8, ptr %output, i64 %length" -> println
+    "  store i8 0, ptr %terminator, align 1" -> println
+    "  ret i32 1" -> println
+    "failure:" -> println
+    "  ret i32 0" -> println
+    "}" -> println
+}
+
+public emitWindowsOwnedFile: -> Unit uses Console {
+    """
+    declare dllimport i32 @ReadFile(ptr, ptr, i32, ptr, ptr)
+    declare dllimport i32 @GetOverlappedResult(ptr, ptr, ptr, i32)
+    declare dllimport i32 @FlushFileBuffers(ptr)
+    declare dllimport i32 @MoveFileExA(ptr, ptr, i32)
+    """ -> println
+    4096 -> emitOwnedFilePathCopy
+    """
+    define internal %sollang.file_handle_result @sollang_platform_open_owned_read_file(ptr %path, i64 %length) {
+    entry:
+      %buffer = alloca [4096 x i8], align 1
+      %buffer_ptr = getelementptr inbounds [4096 x i8], ptr %buffer, i64 0, i64 0
+      %copied = call i32 @sollang_owned_file_copy_path(ptr %path, i64 %length, ptr %buffer_ptr)
+      %valid_path = icmp ne i32 %copied, 0
+      br i1 %valid_path, label %open, label %failure
+    open:
+      %handle = call ptr @CreateFileA(ptr %buffer_ptr, i32 -2147483648, i32 1, ptr null, i32 3, i32 1073741952, ptr null)
+      %handle_value = ptrtoint ptr %handle to i64
+      %valid_handle = icmp ne i64 %handle_value, -1
+      br i1 %valid_handle, label %success, label %failure
+    success:
+      %result0 = insertvalue %sollang.file_handle_result poison, i64 %handle_value, 0
+      %result1 = insertvalue %sollang.file_handle_result %result0, i32 1, 1
+      ret %sollang.file_handle_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_handle_result poison, i64 -1, 0
+      %failure1 = insertvalue %sollang.file_handle_result %failure0, i32 0, 1
+      ret %sollang.file_handle_result %failure1
+    }
+
+    define internal %sollang.file_handle_result @sollang_platform_open_owned_write_file(ptr %path, i64 %length) {
+    entry:
+      %buffer = alloca [4096 x i8], align 1
+      %buffer_ptr = getelementptr inbounds [4096 x i8], ptr %buffer, i64 0, i64 0
+      %copied = call i32 @sollang_owned_file_copy_path(ptr %path, i64 %length, ptr %buffer_ptr)
+      %valid_path = icmp ne i32 %copied, 0
+      br i1 %valid_path, label %open, label %failure
+    open:
+      %handle = call ptr @CreateFileA(ptr %buffer_ptr, i32 1073741824, i32 1, ptr null, i32 2, i32 1073741952, ptr null)
+      %handle_value = ptrtoint ptr %handle to i64
+      %valid_handle = icmp ne i64 %handle_value, -1
+      br i1 %valid_handle, label %success, label %failure
+    success:
+      %result0 = insertvalue %sollang.file_handle_result poison, i64 %handle_value, 0
+      %result1 = insertvalue %sollang.file_handle_result %result0, i32 1, 1
+      ret %sollang.file_handle_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_handle_result poison, i64 -1, 0
+      %failure1 = insertvalue %sollang.file_handle_result %failure0, i32 0, 1
+      ret %sollang.file_handle_result %failure1
+    }
+
+    define internal %sollang.file_count_result @sollang_platform_read_owned_file_at(i64 %handle_value, ptr %data, i64 %length, i64 %offset) {
+    entry:
+      %valid_handle = icmp ne i64 %handle_value, -1
+      %valid_offset = icmp ule i64 %offset, 9223372036854775807
+      %fits = icmp ule i64 %length, 4294967295
+      %ready0 = and i1 %valid_handle, %valid_offset
+      %ready = and i1 %ready0, %fits
+      br i1 %ready, label %read, label %failure
+    read:
+      %handle = inttoptr i64 %handle_value to ptr
+      %overlapped = alloca [32 x i8], align 8
+      store [32 x i8] zeroinitializer, ptr %overlapped, align 8
+      %offset_low_slot = getelementptr i8, ptr %overlapped, i64 16
+      %offset_low = trunc i64 %offset to i32
+      store i32 %offset_low, ptr %offset_low_slot, align 4
+      %offset_high_slot = getelementptr i8, ptr %overlapped, i64 20
+      %offset_shifted = lshr i64 %offset, 32
+      %offset_high = trunc i64 %offset_shifted to i32
+      store i32 %offset_high, ptr %offset_high_slot, align 4
+      %count_slot = alloca i32, align 4
+      store i32 0, ptr %count_slot, align 4
+      %length32 = trunc i64 %length to i32
+      %started = call i32 @ReadFile(ptr %handle, ptr %data, i32 %length32, ptr null, ptr %overlapped)
+      %completed = call i32 @GetOverlappedResult(ptr %handle, ptr %overlapped, ptr %count_slot, i32 1)
+      %ok = icmp ne i32 %completed, 0
+      br i1 %ok, label %success, label %failure
+    success:
+      %count32 = load i32, ptr %count_slot, align 4
+      %count = zext i32 %count32 to i64
+      %result0 = insertvalue %sollang.file_count_result poison, i64 %count, 0
+      %result1 = insertvalue %sollang.file_count_result %result0, i32 1, 1
+      ret %sollang.file_count_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_count_result poison, i64 0, 0
+      %failure1 = insertvalue %sollang.file_count_result %failure0, i32 0, 1
+      ret %sollang.file_count_result %failure1
+    }
+
+    define internal %sollang.file_count_result @sollang_platform_write_owned_file_at(i64 %handle_value, ptr %data, i64 %length, i64 %offset) {
+    entry:
+      %valid_handle = icmp ne i64 %handle_value, -1
+      %valid_offset = icmp ule i64 %offset, 9223372036854775807
+      %fits = icmp ule i64 %length, 4294967295
+      %ready0 = and i1 %valid_handle, %valid_offset
+      %ready = and i1 %ready0, %fits
+      br i1 %ready, label %write, label %failure
+    write:
+      %handle = inttoptr i64 %handle_value to ptr
+      %overlapped = alloca [32 x i8], align 8
+      store [32 x i8] zeroinitializer, ptr %overlapped, align 8
+      %offset_low_slot = getelementptr i8, ptr %overlapped, i64 16
+      %offset_low = trunc i64 %offset to i32
+      store i32 %offset_low, ptr %offset_low_slot, align 4
+      %offset_high_slot = getelementptr i8, ptr %overlapped, i64 20
+      %offset_shifted = lshr i64 %offset, 32
+      %offset_high = trunc i64 %offset_shifted to i32
+      store i32 %offset_high, ptr %offset_high_slot, align 4
+      %count_slot = alloca i32, align 4
+      store i32 0, ptr %count_slot, align 4
+      %length32 = trunc i64 %length to i32
+      %started = call i32 @WriteFile(ptr %handle, ptr %data, i32 %length32, ptr null, ptr %overlapped)
+      %completed = call i32 @GetOverlappedResult(ptr %handle, ptr %overlapped, ptr %count_slot, i32 1)
+      %ok = icmp ne i32 %completed, 0
+      br i1 %ok, label %success, label %failure
+    success:
+      %count32 = load i32, ptr %count_slot, align 4
+      %count = zext i32 %count32 to i64
+      %result0 = insertvalue %sollang.file_count_result poison, i64 %count, 0
+      %result1 = insertvalue %sollang.file_count_result %result0, i32 1, 1
+      ret %sollang.file_count_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_count_result poison, i64 0, 0
+      %failure1 = insertvalue %sollang.file_count_result %failure0, i32 0, 1
+      ret %sollang.file_count_result %failure1
+    }
+
+    define internal i32 @sollang_platform_sync_owned_file(i64 %handle_value) {
+    entry:
+      %valid = icmp ne i64 %handle_value, -1
+      br i1 %valid, label %sync, label %failure
+    sync:
+      %handle = inttoptr i64 %handle_value to ptr
+      %result = call i32 @FlushFileBuffers(ptr %handle)
+      ret i32 %result
+    failure:
+      ret i32 0
+    }
+
+    define internal void @sollang_platform_close_owned_file(i64 %handle_value) {
+    entry:
+      %valid = icmp ne i64 %handle_value, -1
+      br i1 %valid, label %close, label %done
+    close:
+      %handle = inttoptr i64 %handle_value to ptr
+      %ignored = call i32 @CloseHandle(ptr %handle)
+      br label %done
+    done:
+      ret void
+    }
+
+    define internal i32 @sollang_platform_atomic_replace_file(ptr %temporary, i64 %temporary_length, ptr %destination, i64 %destination_length) {
+    entry:
+      %temporary_buffer = alloca [4096 x i8], align 1
+      %temporary_ptr = getelementptr inbounds [4096 x i8], ptr %temporary_buffer, i64 0, i64 0
+      %temporary_copied = call i32 @sollang_owned_file_copy_path(ptr %temporary, i64 %temporary_length, ptr %temporary_ptr)
+      %temporary_ok = icmp ne i32 %temporary_copied, 0
+      br i1 %temporary_ok, label %destination_path, label %failure
+    destination_path:
+      %destination_buffer = alloca [4096 x i8], align 1
+      %destination_ptr = getelementptr inbounds [4096 x i8], ptr %destination_buffer, i64 0, i64 0
+      %destination_copied = call i32 @sollang_owned_file_copy_path(ptr %destination, i64 %destination_length, ptr %destination_ptr)
+      %destination_ok = icmp ne i32 %destination_copied, 0
+      br i1 %destination_ok, label %replace, label %failure
+    replace:
+      %result = call i32 @MoveFileExA(ptr %temporary_ptr, ptr %destination_ptr, i32 9)
+      ret i32 %result
+    failure:
+      ret i32 0
+    }
+    """ -> println
+}
+
+public emitLinuxOwnedFile: -> Unit uses Console {
+    """
+    declare i64 @pread(i32, ptr, i64, i64)
+    declare i64 @pwrite(i32, ptr, i64, i64)
+    declare i32 @open(ptr, i32, i32)
+    declare i32 @close(i32)
+    declare i32 @fsync(i32)
+    declare i32 @rename(ptr, ptr)
+    """ -> println
+    4096 -> emitOwnedFilePathCopy
+    """
+    define internal %sollang.file_handle_result @sollang_platform_open_owned_read_file(ptr %path, i64 %length) {
+    entry:
+      %buffer = alloca [4096 x i8], align 1
+      %buffer_ptr = getelementptr inbounds [4096 x i8], ptr %buffer, i64 0, i64 0
+      %copied = call i32 @sollang_owned_file_copy_path(ptr %path, i64 %length, ptr %buffer_ptr)
+      %valid_path = icmp ne i32 %copied, 0
+      br i1 %valid_path, label %open_file, label %failure
+    open_file:
+      %descriptor = call i32 @open(ptr %buffer_ptr, i32 0, i32 0)
+      %valid = icmp sge i32 %descriptor, 0
+      br i1 %valid, label %success, label %failure
+    success:
+      %handle = sext i32 %descriptor to i64
+      %result0 = insertvalue %sollang.file_handle_result poison, i64 %handle, 0
+      %result1 = insertvalue %sollang.file_handle_result %result0, i32 1, 1
+      ret %sollang.file_handle_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_handle_result poison, i64 -1, 0
+      %failure1 = insertvalue %sollang.file_handle_result %failure0, i32 0, 1
+      ret %sollang.file_handle_result %failure1
+    }
+
+    define internal %sollang.file_handle_result @sollang_platform_open_owned_write_file(ptr %path, i64 %length) {
+    entry:
+      %buffer = alloca [4096 x i8], align 1
+      %buffer_ptr = getelementptr inbounds [4096 x i8], ptr %buffer, i64 0, i64 0
+      %copied = call i32 @sollang_owned_file_copy_path(ptr %path, i64 %length, ptr %buffer_ptr)
+      %valid_path = icmp ne i32 %copied, 0
+      br i1 %valid_path, label %open_file, label %failure
+    open_file:
+      %descriptor = call i32 @open(ptr %buffer_ptr, i32 577, i32 438)
+      %valid = icmp sge i32 %descriptor, 0
+      br i1 %valid, label %success, label %failure
+    success:
+      %handle = sext i32 %descriptor to i64
+      %result0 = insertvalue %sollang.file_handle_result poison, i64 %handle, 0
+      %result1 = insertvalue %sollang.file_handle_result %result0, i32 1, 1
+      ret %sollang.file_handle_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_handle_result poison, i64 -1, 0
+      %failure1 = insertvalue %sollang.file_handle_result %failure0, i32 0, 1
+      ret %sollang.file_handle_result %failure1
+    }
+
+    define internal %sollang.file_count_result @sollang_platform_read_owned_file_at(i64 %handle, ptr %data, i64 %length, i64 %offset) {
+    entry:
+      %valid_handle = icmp sge i64 %handle, 0
+      %valid_offset = icmp ule i64 %offset, 9223372036854775807
+      %ready = and i1 %valid_handle, %valid_offset
+      br i1 %ready, label %read_file, label %failure
+    read_file:
+      %descriptor = trunc i64 %handle to i32
+      %count = call i64 @pread(i32 %descriptor, ptr %data, i64 %length, i64 %offset)
+      %ok = icmp sge i64 %count, 0
+      br i1 %ok, label %success, label %failure
+    success:
+      %result0 = insertvalue %sollang.file_count_result poison, i64 %count, 0
+      %result1 = insertvalue %sollang.file_count_result %result0, i32 1, 1
+      ret %sollang.file_count_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_count_result poison, i64 0, 0
+      %failure1 = insertvalue %sollang.file_count_result %failure0, i32 0, 1
+      ret %sollang.file_count_result %failure1
+    }
+
+    define internal %sollang.file_count_result @sollang_platform_write_owned_file_at(i64 %handle, ptr %data, i64 %length, i64 %offset) {
+    entry:
+      %valid_handle = icmp sge i64 %handle, 0
+      %valid_offset = icmp ule i64 %offset, 9223372036854775807
+      %ready = and i1 %valid_handle, %valid_offset
+      br i1 %ready, label %write_file, label %failure
+    write_file:
+      %descriptor = trunc i64 %handle to i32
+      %count = call i64 @pwrite(i32 %descriptor, ptr %data, i64 %length, i64 %offset)
+      %ok = icmp sge i64 %count, 0
+      br i1 %ok, label %success, label %failure
+    success:
+      %result0 = insertvalue %sollang.file_count_result poison, i64 %count, 0
+      %result1 = insertvalue %sollang.file_count_result %result0, i32 1, 1
+      ret %sollang.file_count_result %result1
+    failure:
+      %failure0 = insertvalue %sollang.file_count_result poison, i64 0, 0
+      %failure1 = insertvalue %sollang.file_count_result %failure0, i32 0, 1
+      ret %sollang.file_count_result %failure1
+    }
+
+    define internal i32 @sollang_platform_sync_owned_file(i64 %handle) {
+    entry:
+      %descriptor = trunc i64 %handle to i32
+      %valid = icmp sge i32 %descriptor, 0
+      br i1 %valid, label %sync_file, label %failure
+    sync_file:
+      %status = call i32 @fsync(i32 %descriptor)
+      %ok = icmp eq i32 %status, 0
+      %result = zext i1 %ok to i32
+      ret i32 %result
+    failure:
+      ret i32 0
+    }
+
+    define internal void @sollang_platform_close_owned_file(i64 %handle) {
+    entry:
+      %valid = icmp sge i64 %handle, 0
+      br i1 %valid, label %close_file, label %done
+    close_file:
+      %descriptor = trunc i64 %handle to i32
+      %ignored = call i32 @close(i32 %descriptor)
+      br label %done
+    done:
+      ret void
+    }
+
+    define internal i32 @sollang_platform_atomic_replace_file(ptr %temporary, i64 %temporary_length, ptr %destination, i64 %destination_length) {
+    entry:
+      %temporary_buffer = alloca [4096 x i8], align 1
+      %temporary_ptr = getelementptr inbounds [4096 x i8], ptr %temporary_buffer, i64 0, i64 0
+      %temporary_copied = call i32 @sollang_owned_file_copy_path(ptr %temporary, i64 %temporary_length, ptr %temporary_ptr)
+      %temporary_ok = icmp ne i32 %temporary_copied, 0
+      br i1 %temporary_ok, label %destination_path, label %failure
+    destination_path:
+      %destination_buffer = alloca [4096 x i8], align 1
+      %destination_ptr = getelementptr inbounds [4096 x i8], ptr %destination_buffer, i64 0, i64 0
+      %destination_copied = call i32 @sollang_owned_file_copy_path(ptr %destination, i64 %destination_length, ptr %destination_ptr)
+      %destination_ok = icmp ne i32 %destination_copied, 0
+      br i1 %destination_ok, label %replace, label %failure
+    replace:
+      %status = call i32 @rename(ptr %temporary_ptr, ptr %destination_ptr)
+      %ok = icmp eq i32 %status, 0
+      %result = zext i1 %ok to i32
+      ret i32 %result
+    failure:
+      ret i32 0
+    }
+    """ -> println
+}

@@ -922,6 +922,125 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
         callIndex! + 1 => callIndex!
     }
 
+    # readAt<T>/writeAt<T> are compiler-provided owned File members rather
+    # than declarations in sys.file. Materialize their canonical result types
+    # here so enum matching and subsequent flow calls see the same types as the
+    # reference compiler. The final identifier outside type/call arguments is
+    # the member target; this keeps an outer `readAt -> helper` flow from being
+    # mistaken for the nested read operation.
+    0 => fileMemberSourceIndex!
+    fileMemberSourceIndex! < (prepared.package.ranges -> len) -> while {
+        prepared.package.ranges[fileMemberSourceIndex!] => fileMemberRange
+        prepared.package.sources[fileMemberSourceIndex!] -> len => fileMemberSourceLength
+        prepared.package.sources[fileMemberSourceIndex!] -> slice(UIntSize(0), fileMemberSourceLength) => fileMemberSource
+        0 => fileMemberAstIndex!
+        fileMemberAstIndex! < fileMemberRange.astCount -> while {
+            prepared.package.nodes[fileMemberRange.astStart + fileMemberAstIndex!] => fileMemberNode
+            fileMemberNode.kind == 10 -> if {
+                -1 => fileMemberTargetToken!
+                -1 => fileMemberTypeToken!
+                false => fileMemberInTypeArguments!
+                false => fileMemberInCallArguments!
+                false => fileMemberCompletedCallArguments!
+                fileMemberNode.firstToken => fileMemberTokenIndex!
+                fileMemberTokenIndex! < fileMemberNode.firstToken + fileMemberNode.tokenCount -> while {
+                    prepared.package.tokens[fileMemberRange.tokenStart + fileMemberTokenIndex!] => fileMemberToken
+                    fileMemberToken.kind == grammar.tokenIdLess -> if { true => fileMemberInTypeArguments! }
+                    fileMemberToken.kind == grammar.tokenIdGreater -> if { false => fileMemberInTypeArguments! }
+                    fileMemberToken.kind == grammar.tokenIdLeftParen -> if { true => fileMemberInCallArguments! }
+                    fileMemberToken.kind == grammar.tokenIdRightParen -> if {
+                        false => fileMemberInCallArguments!
+                        true => fileMemberCompletedCallArguments!
+                    }
+                    (fileMemberToken.kind == grammar.tokenIdIdentifier and fileMemberInTypeArguments! and fileMemberTypeToken! < 0) -> if { fileMemberTokenIndex! => fileMemberTypeToken! }
+                    (fileMemberToken.kind == grammar.tokenIdIdentifier and not fileMemberInTypeArguments! and not fileMemberInCallArguments! and not fileMemberCompletedCallArguments!) -> if { fileMemberTokenIndex! => fileMemberTargetToken! }
+                    fileMemberTokenIndex! + 1 => fileMemberTokenIndex!
+                }
+                false => fileMemberReadAt!
+                false => fileMemberWriteAt!
+                fileMemberTargetToken! >= 0 -> if {
+                    prepared.package.tokens[fileMemberRange.tokenStart + fileMemberTargetToken!] => fileMemberTarget
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTarget.span.start, length: fileMemberTarget.span.length, expected: "readAt" } -> textMatches => fileMemberReadAt!
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTarget.span.start, length: fileMemberTarget.span.length, expected: "writeAt" } -> textMatches => fileMemberWriteAt!
+                }
+                -1 => fileMemberResultType!
+                fileMemberWriteAt! -> if {
+                    0 => fileWriteResultSearch!
+                    fileWriteResultSearch! < (types! -> len) -> while {
+                        types![fileWriteResultSearch!] => fileWriteResultCandidate
+                        (fileWriteResultCandidate.kind == 7 and fileWriteResultCandidate.origin == 4 and fileWriteResultCandidate.symbol == 1 and fileWriteResultCandidate.first == 0 and fileWriteResultCandidate.second == 1 and fileWriteResultCandidate.status == 0) -> if { fileWriteResultSearch! => fileMemberResultType! }
+                        fileWriteResultSearch! + 1 => fileWriteResultSearch!
+                    }
+                    fileMemberResultType! < 0 -> if {
+                        types! -> len => fileMemberResultType!
+                        types! -> push(typeIds.SemanticType { kind: 7, origin: 4, module: -1, symbol: 1, first: 0, second: 1, length: -1, lengthHash: UInt64(0), containsParameter: false, status: 0 })
+                    }
+                }
+                (fileMemberReadAt! and fileMemberTypeToken! >= 0) -> if {
+                    prepared.package.tokens[fileMemberRange.tokenStart + fileMemberTypeToken!] => fileMemberTypeName
+                    -1 => fileMemberScalarType!
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Int" } -> textMatches -> if { 2 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "UInt8" } -> textMatches -> if { 3 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "UInt16" } -> textMatches -> if { 4 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "UInt32" } -> textMatches -> if { 5 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "UInt64" } -> textMatches -> if { 6 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Long" } -> textMatches -> if { 7 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Int8" } -> textMatches -> if { 8 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Int16" } -> textMatches -> if { 9 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Int32" } -> textMatches -> if { 10 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Int64" } -> textMatches -> if { 11 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Size" } -> textMatches -> if { 12 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "UIntSize" } -> textMatches -> if { 13 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "CodePoint" } -> textMatches -> if { 14 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Float" } -> textMatches -> if { 19 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Float32" } -> textMatches -> if { 20 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Float64" } -> textMatches -> if { 21 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Double" } -> textMatches -> if { 22 => fileMemberScalarType! }
+                    TextMatchRequest { source: fileMemberSource, start: fileMemberTypeName.span.start, length: fileMemberTypeName.span.length, expected: "Bool" } -> textMatches -> if { 23 => fileMemberScalarType! }
+                    fileMemberScalarType! >= 0 -> if {
+                        -1 => fileMemberOptionType!
+                        0 => fileOptionSearch!
+                        fileOptionSearch! < (types! -> len) -> while {
+                            types![fileOptionSearch!] => fileOptionCandidate
+                            (fileOptionCandidate.kind == 7 and fileOptionCandidate.origin == 4 and fileOptionCandidate.symbol == 0 and fileOptionCandidate.first == fileMemberScalarType! and fileOptionCandidate.second < 0 and fileOptionCandidate.status == 0) -> if { fileOptionSearch! => fileMemberOptionType! }
+                            fileOptionSearch! + 1 => fileOptionSearch!
+                        }
+                        fileMemberOptionType! < 0 -> if {
+                            types! -> len => fileMemberOptionType!
+                            types! -> push(typeIds.SemanticType { kind: 7, origin: 4, module: -1, symbol: 0, first: fileMemberScalarType!, second: -1, length: -1, lengthHash: UInt64(0), containsParameter: false, status: 0 })
+                        }
+                        0 => fileReadResultSearch!
+                        fileReadResultSearch! < (types! -> len) -> while {
+                            types![fileReadResultSearch!] => fileReadResultCandidate
+                            (fileReadResultCandidate.kind == 7 and fileReadResultCandidate.origin == 4 and fileReadResultCandidate.symbol == 1 and fileReadResultCandidate.first == fileMemberOptionType! and fileReadResultCandidate.second == 1 and fileReadResultCandidate.status == 0) -> if { fileReadResultSearch! => fileMemberResultType! }
+                            fileReadResultSearch! + 1 => fileReadResultSearch!
+                        }
+                        fileMemberResultType! < 0 -> if {
+                            types! -> len => fileMemberResultType!
+                            types! -> push(typeIds.SemanticType { kind: 7, origin: 4, module: -1, symbol: 1, first: fileMemberOptionType!, second: 1, length: -1, lengthHash: UInt64(0), containsParameter: false, status: 0 })
+                        }
+                    }
+                }
+                fileMemberResultType! >= 0 -> if {
+                    fileMemberRange.astStart + fileMemberAstIndex! => fileMemberGlobalAst
+                    expressionIndexByAst![fileMemberGlobalAst] => fileMemberExpressionIndex!
+                    fileMemberExpressionIndex! < 0 -> if {
+                        expressions! -> len => fileMemberExpressionIndex!
+                        expressions! -> push(ExpressionTypeId { sourceModule: fileMemberSourceIndex!, astNode: fileMemberAstIndex!, typeId: fileMemberResultType!, status: 0 })
+                        fileMemberExpressionIndex! => expressionIndexByAst![fileMemberGlobalAst]
+                    } else {
+                        expressions![fileMemberExpressionIndex!] => fileMemberExpression!
+                        fileMemberResultType! => fileMemberExpression!.typeId
+                        0 => fileMemberExpression!.status
+                        fileMemberExpression! => expressions![fileMemberExpressionIndex!]
+                    }
+                }
+            }
+            fileMemberAstIndex! + 1 => fileMemberAstIndex!
+        }
+        fileMemberSourceIndex! + 1 => fileMemberSourceIndex!
+    }
+
     # A result-producing parallel role returns one value per source element.
     # Its result generic is selected by the block value rather than by the
     # ordinary input argument, so specialize the canonical result to [R; ~]

@@ -3,6 +3,7 @@ import sollang.compiler.llvm.source_root as llvmRoot
 import sollang.compiler.semantic.context as semanticContext
 import sollang.compiler.semantic.module_interfaces as moduleInterfaces
 import sollang.compiler.semantic.module_cache as moduleCache
+import sollang.compiler.semantic.module_cache_io as moduleCacheIo
 import sys.path as path
 import sys.process as process
 
@@ -134,11 +135,15 @@ emitFingerprints pathStart: UIntSize -> Unit uses Console, File, Process {
 }
 
 runInterfaceCache: -> Unit uses Console, File, Process {
-    UIntSize(2) -> collectPaths => paths!
+    process.arguments => arguments
+    UIntSize(4) -> collectPaths => paths!
     paths! -> semanticContext.prepareFiles => snapshot!
     snapshot!.package -> moduleCache.encodeAnalyzed(UInt64(1)) => current!
-    snapshot!.package -> moduleCache.reuseAnalyzed(current!, UInt64(1)) => reuse
-    "module cache = $(reuse.status),$(reuse.hits),$(reuse.misses),$(reuse.bodyOnlyConsumerHits),1" -> println
+    current! -> moduleCacheIo.publish(arguments[2], arguments[3]) => published
+    arguments[2] -> moduleCacheIo.load => loaded!
+    snapshot!.package -> moduleCache.reuseAnalyzed(loaded!, UInt64(1)) => reuse
+    (published and reuse.status == 0) -> if { 1 } else { 0 } => persistent
+    "module cache = $(reuse.status),$(reuse.hits),$(reuse.misses),$(reuse.bodyOnlyConsumerHits),$persistent" -> println
 }
 
 buildWindows pathStart: UIntSize -> Unit uses Console, File, Process {
