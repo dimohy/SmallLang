@@ -277,9 +277,9 @@ milestone without changing the broader 60-gate language-capability score.
 - Missing (1): a complete path-sensitive borrow checker for references returned
   from functions and stored in user values.
 
-### Modules, visibility, and builds — 6.5 / 8
+### Modules, visibility, and builds — 7.5 / 8
 
-- Complete (6): file namespaces/import aliases; multiple user source files in
+- Complete (7): file namespaces/import aliases; multiple user source files in
   one compilation unit; root imports recursively discover module files with
   missing, cycle, namespace-mismatch, and duplicate-module diagnostics;
   functions, structs, enums, and traits are internal by default with explicit
@@ -287,15 +287,15 @@ milestone without changing the broader 60-gate language-capability score.
   names a confined root source and output identity, and source-free
   `sollang build` discovers it from ancestor directories; the standard library
   recursively discovers every `.slg` module below its confined root in stable
-  relative-path order and verifies path-to-namespace identity.
-- Partial (2): the package graph has deterministic multiple-product selection,
+  relative-path order and verifies path-to-namespace identity; ordinary builds
+  use validated exact-input frontend and product generations, persistent
+  prefix/module/suffix LLVM units, and schema-4 partial-source semantic body
+  rehydration with atomic publication and Windows/Linux invalidation parity.
+- Partial (1): the package graph has deterministic multiple-product selection,
   exact local path dependencies,
   direct-dependency visibility, transitive resolution, and cycle/name-collision
   diagnostics, but not versions, registries, Git sources, a lock file, or
-  workspaces. The ordinary C# bootstrap build now reuses validated LLVM
-  prefix/module/suffix units from a persistent old generation and atomically
-  publishes a complete new generation after linking; raw-source and typed-IR
-  artifacts are not yet consumed before semantic analysis.
+  workspaces.
 - Missing (0).
 
 ### Compiler-construction primitives — 11.5 / 12
