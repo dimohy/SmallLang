@@ -1,0 +1,4 @@
+*.slg text eol=lf
+*.lexer text eol=lf
+*.grammar text eol=lf
+*.sh text eol=lf
