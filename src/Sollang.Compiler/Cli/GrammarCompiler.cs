@@ -36,7 +36,8 @@ internal static class GrammarCompiler
         var sourceHash = Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(lexerSource + "\n---grammar---\n" + grammarSource)))
             .ToLowerInvariant();
-        var source = EmitSlModule(compiled, lexerPath, grammarPath, sourceHash);
+        var source = EmitSlModule(compiled, lexerPath, grammarPath, sourceHash)
+            .ReplaceLineEndings("\n");
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)
             ?? Directory.GetCurrentDirectory());
         File.WriteAllText(outputPath, source, new UTF8Encoding(false));
