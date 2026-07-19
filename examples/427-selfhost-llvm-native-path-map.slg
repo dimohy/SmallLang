@@ -10,9 +10,8 @@ main {
             style: Style
         }
 
-        public enum Style {
-            Posix
-            Windows
+        public struct Style {
+            tag: Int32
         }
 
         public mapPath value: Path -> SourceText uses File = intrinsic
@@ -24,7 +23,7 @@ main {
                 bytes! -> push(value -> byte(index!))
                 index! + UIntSize(1) => index!
             }
-            Style.Windows => style
+            Style { tag: Int32(1) } => style
             Path { bytes: bytes!, style: style } => result!
             result!
         }
