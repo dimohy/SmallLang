@@ -1,6 +1,6 @@
 import sollang.compiler.llvm.text as llvm
 
-# Verifies pointer ABI and projected-address returns for self-host ref T.
+# Verifies that a temporary cannot back a readonly reference which may escape.
 main {
     [
         """
@@ -13,16 +13,12 @@ main {
             pair.second
         }
 
-        read value: ref Int -> Int {
-            value
-        }
-
         main {
-            Pair { first: 7, second: 42 } => pair
-            pair -> second -> read -> println
+            Pair { first: 7, second: 42 } -> second -> println
         }
         """,
         ~
     ] => sources!
-    sources! -> llvm.emitLinux
+    sources! -> llvm.emitLinuxChecked => diagnosticCount
+    "blocked=$diagnosticCount" -> println
 }

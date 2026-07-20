@@ -1,0 +1,13 @@
+# A temporary cannot back a readonly reference which may escape the call.
+struct Pair {
+    first: Int
+    second: Int
+}
+
+second pair: ref Pair -> ref Int {
+    pair.second
+}
+
+main {
+    Pair { first: 7, second: 42 } -> second -> println
+}

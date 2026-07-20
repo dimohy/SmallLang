@@ -891,6 +891,18 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         targetFunctionIr!
     }
+    callTargetParameter callIndex: Int, ordinal: Int -> Int {
+        context.ir[callIndex] => call
+        CallEnvironmentRequest { callerIndex: -1, callIndex: callIndex, targetModule: call.targetModule, targetSymbol: call.symbol, hasArgument: call.operand0 >= 0 } -> targetFunctionIndex => targetFunction
+        -1 => parameter!
+        targetFunction >= 0 -> if { context.ir[targetFunction].operand1 => parameter! }
+        0 => parameterOrdinal!
+        (parameter! >= 0 and parameterOrdinal! < ordinal) -> while {
+            context.ir[parameter!].nextOperand => parameter!
+            parameterOrdinal! + 1 => parameterOrdinal!
+        }
+        parameter!
+    }
     sourceTokenIs sourceIndex: Int, tokenIndex: Int, expected: Text -> Bool {
         false => equal!
         (sourceIndex >= 0 and sourceIndex < (context.ranges -> len) and tokenIndex >= 0) -> if {
@@ -1157,7 +1169,41 @@ emitCore context: EmitContext -> Unit uses Console {
             }
         }
     }
+    emitReferenceArgumentValues argumentIndex: Int, callIndex: Int, ownerIndex: Int, ordinal: Int -> Unit uses Console {
+        (argumentIndex >= 0 and context.ir[argumentIndex].parent == callIndex) -> if {
+            context.ir[argumentIndex] => callArgument
+            argumentIndex -> aggregateValueIndex => referenceArgumentIndex
+            context.ir[referenceArgumentIndex] => referenceArgument
+            callIndex -> callTargetParameter(ordinal) => referenceParameterIndex
+            referenceParameterIndex >= 0 -> if {
+                context.ir[referenceParameterIndex] => referenceParameter
+                (referenceParameter.typeId >= 0 and context.types[referenceParameter.typeId].kind == 8 and not (callArgument.typeId >= 0 and context.types[callArgument.typeId].kind == 8)) -> if {
+                    context.types[referenceParameter.typeId].first => referenceOwnerType
+                    "  %callref" -> print
+                    callIndex -> writeDecimal
+                    "_arg" -> print
+                    ordinal -> writeDecimal
+                    " = alloca " -> print
+                    referenceOwnerType -> writeSemanticTypeId
+                    ", align " -> print
+                    context.typeAligns[referenceOwnerType] -> writeDecimalLine
+                    "  store " -> print
+                    referenceOwnerType -> writeSemanticTypeId
+                    " " -> print
+                    referenceArgumentIndex -> writeValue(ownerIndex)
+                    ", ptr %callref" -> print
+                    callIndex -> writeDecimal
+                    "_arg" -> print
+                    ordinal -> writeDecimal
+                    ", align " -> print
+                    context.typeAligns[referenceOwnerType] -> writeDecimalLine
+                }
+            }
+            context.ir[argumentIndex].nextOperand -> emitReferenceArgumentValues(callIndex, ownerIndex, ordinal + 1)
+        }
+    }
     emitCallEnvironmentValues request: CallEnvironmentRequest -> Unit uses Console {
+        context.ir[request.callIndex].operand0 -> emitReferenceArgumentValues(request.callIndex, request.callerIndex, 0)
         -1 => targetFunctionIr!
         (request.targetModule >= 0 and request.targetModule < (context.ranges -> len)) -> if {
             context.ranges[request.targetModule].symbolStart + request.targetSymbol => targetGlobalSymbol
@@ -1476,9 +1522,21 @@ emitCore context: EmitContext -> Unit uses Console {
     additionalParameterOrdinal functionIndex: Int, symbol: Int -> Int {
         context.ir[functionIndex].nextOperand -> findAdditionalParameterOrdinal(symbol, 1)
     }
-    writeCallArgument argumentIndex: Int, ownerIndex: Int -> Unit uses Console {
+    writeCallArgument argumentIndex: Int, callIndex: Int, ownerIndex: Int, ordinal: Int -> Unit uses Console {
         ownerIndex => callOwnerIndex
         context.ir[argumentIndex] => argument
+        callIndex -> callTargetParameter(ordinal) => argumentParameterIndex
+        false => argumentNeedsReferenceSlot!
+        argumentParameterIndex >= 0 -> if {
+            context.ir[argumentParameterIndex] => argumentParameter
+            (argumentParameter.typeId >= 0 and context.types[argumentParameter.typeId].kind == 8 and not (argument.typeId >= 0 and context.types[argument.typeId].kind == 8)) -> if { true => argumentNeedsReferenceSlot! }
+        }
+        argumentNeedsReferenceSlot! -> if {
+            "ptr %callref" -> print
+            callIndex -> writeDecimal
+            "_arg" -> print
+            ordinal -> writeDecimal
+        } else {
         argument -> writeIrType
         " " -> print
         argument.kind == 2 -> if {
@@ -1503,20 +1561,21 @@ emitCore context: EmitContext -> Unit uses Console {
                 primaryParameterArgument! -> if { "%arg" -> print } else { "%v$(argumentIndex)" -> print }
             }
         }
+        }
     }
-    emitCallArgumentChain argumentIndex: Int, callIndex: Int, ownerIndex: Int, separator: Bool -> Unit uses Console {
+    emitCallArgumentChain argumentIndex: Int, callIndex: Int, ownerIndex: Int, ordinal: Int, separator: Bool -> Unit uses Console {
         callIndex => chainCallIndex
         ownerIndex => chainOwnerIndex
         separator => chainSeparator
         (argumentIndex >= 0 and context.ir[argumentIndex].parent == chainCallIndex) -> if {
             chainSeparator -> if { ", " -> print }
-            argumentIndex -> writeCallArgument(chainOwnerIndex)
-            context.ir[argumentIndex].nextOperand -> emitCallArgumentChain(chainCallIndex, chainOwnerIndex, true)
+            argumentIndex -> writeCallArgument(chainCallIndex, chainOwnerIndex, ordinal)
+            context.ir[argumentIndex].nextOperand -> emitCallArgumentChain(chainCallIndex, chainOwnerIndex, ordinal + 1, true)
         }
     }
     emitCallArguments callIndex: Int, ownerIndex: Int -> Unit uses Console {
         context.ir[callIndex] => call
-        call.operand0 -> emitCallArgumentChain(callIndex, ownerIndex, false)
+        call.operand0 -> emitCallArgumentChain(callIndex, ownerIndex, 0, false)
     }
     sourceStart node: typedIr.TypedIrNode -> UIntSize {
         context.nodes[context.ranges[node.sourceModule].astStart + node.astNode].start
@@ -10127,6 +10186,18 @@ emitCore context: EmitContext -> Unit uses Console {
                         (entryExpression.symbol == -101 or entryExpression.symbol == -102) -> if {
                             entryExpressionIndex! -> callArgumentIndex => entryRuntimeArgumentIndex
                             context.ir[entryRuntimeArgumentIndex] => runtimeArgument
+                            (runtimeArgument.typeId >= 0 and context.types[runtimeArgument.typeId].kind == 1 and context.types[runtimeArgument.typeId].origin == 1 and ((context.types[runtimeArgument.typeId].symbol -> integerWidth) > 0 or context.types[runtimeArgument.typeId].symbol == 23)) -> if {
+                                context.types[runtimeArgument.typeId].symbol == 23 -> if {
+                                    "  call void @sollang_runtime_print_i1(i1 " -> print
+                                } else {
+                                    (context.types[runtimeArgument.typeId].symbol -> integerWidth) == 64 -> if {
+                                        "  call void @sollang_runtime_print_i64(i64 " -> print
+                                    } else { "  call void @sollang_runtime_print_i32(i32 " -> print }
+                                }
+                                entryRuntimeArgumentIndex -> writeValue(functionIndex!)
+                                ", i1 " -> print
+                                entryExpression.symbol == -102 -> if { "true)" -> println } else { "false)" -> println }
+                            } else {
                             runtimeArgument.kind == 2 -> if {
                                 runtimeArgument -> sourceToken => runtimeArgumentToken
                                 Int(TextLiteralRequest { sourceModule: runtimeArgument.sourceModule, token: runtimeArgumentToken } -> textLiteralLength) => runtimeArgumentLength
@@ -10424,6 +10495,7 @@ emitCore context: EmitContext -> Unit uses Console {
                                 "  call void @sollang_runtime_print(ptr %v$(entryExpressionIndex!)_runtime_ptr, i64 %v$(entryExpressionIndex!)_runtime_len, i1 " -> print
                             }
                             entryExpression.symbol == -102 -> if { "true)" -> println } else { "false)" -> println }
+                            }
                         } else {
                         (entryExpression.targetModule < 0 and entryExpression.typeOrigin == 1 and (entryExpression.typeSymbol -> integerWidth) > 0 and entryExpression.operand0 >= 0) -> if {
                             context.ir[entryExpression.operand0] => entryIntegerArgument
@@ -10456,6 +10528,7 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                             }
                         } else {
+                        CallEnvironmentRequest { callerIndex: functionIndex!, callIndex: entryExpressionIndex!, targetModule: entryExpression.targetModule, targetSymbol: entryExpression.symbol, hasArgument: entryExpression.operand0 >= 0 } -> emitCallEnvironmentValues
                         (entryExpression.typeOrigin == 1 and entryExpression.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(entryExpressionIndex!) = call " -> print }
                         entryExpression -> writeIrType
                         " @sollang_m$(entryExpression.targetModule)_s$(entryExpression.symbol)(" -> print
@@ -11978,6 +12051,13 @@ emitOwnershipDiagnostics context: EmitContext -> Unit uses Console {
                             diagnosticSpan.start => diagnosticStart
                             diagnosticSpan.length => diagnosticLength
                             "; sollang error[E21]: origin moved while a borrowed Text view is still live (source $(diagnostic.sourceModule), byte $diagnosticStart, length $diagnosticLength)" -> println
+                        } else {
+                            diagnostic.code == 22 -> if {
+                                diagnostic.span => diagnosticSpan
+                                diagnosticSpan.start => diagnosticStart
+                                diagnosticSpan.length => diagnosticLength
+                                "; sollang error[E22]: readonly reference argument requires stable immutable storage (source $(diagnostic.sourceModule), byte $diagnosticStart, length $diagnosticLength)" -> println
+                            }
                         }
                     }
                 }
@@ -11997,6 +12077,7 @@ blockingOwnershipDiagnosticCount context: EmitContext -> Int {
         diagnosticCode == 19 -> if { count! + 1 => count! }
         diagnosticCode == 20 -> if { count! + 1 => count! }
         diagnosticCode == 21 -> if { count! + 1 => count! }
+        diagnosticCode == 22 -> if { count! + 1 => count! }
         diagnosticIndex! + 1 => diagnosticIndex!
     }
     count!

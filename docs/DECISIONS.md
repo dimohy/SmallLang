@@ -8303,8 +8303,9 @@ Completion checklist:
 - [ ] generic substitution and trait interactions verified by examples
 - [x] Sollang self-host type arena, typed-IR reference projection, pointer ABI,
   projected field address, and transparent return load
-- [ ] Sollang self-host caller-side address formation, origin/ownership
-  enforcement, and executable returned-reference path
+- [x] Sollang self-host caller-side address formation, executable
+  returned-reference path, and production temporary-origin rejection
+- [ ] complete Sollang self-host CFG origin/liveness conflict enforcement
 - [x] Windows/Linux regression suites and the required Stage2 checkpoint
 
 The design combines Mojo's explicit `ref` surface and inferred origins with
@@ -8761,3 +8762,32 @@ References:
 - [Rust RFC 2094: non-lexical lifetimes](https://rust-lang.github.io/rfcs/2094-nll.html)
 - [Mojo lifetimes, origins, and references](https://mojolang.org/docs/manual/values/lifetimes/)
 - [Swift memory safety and overlapping access](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
+
+## D216 - Self-Host Readonly-Reference Call Boundary
+
+Status: implemented and cross-target Stage2 verified
+Date: 2026-07-20
+
+The self-host LLVM backend now derives each call parameter from the canonical
+target function. When a parameter is `ref T` and the argument is a stable
+immutable value, the caller creates an aligned stack slot, stores the value
+once, and passes the slot as `ptr`. An argument which is already `ref T` is
+forwarded directly. This preserves the non-owning pointer ABI established in
+D215 without adding lifetime punctuation to ordinary Sollang calls.
+
+Readonly references may escape through a return, so not every expression may
+be placed in an anonymous slot. New production diagnostic E22 rejects literals,
+constructor and call temporaries, and mutable bindings as reference origins.
+The checked compiler reports the source span and exits before any target header
+or LLVM body. Stable immutable bindings are the intentionally conservative
+first accepted place class; general CFG liveness and stored references remain
+future work.
+
+Example 507 executes the complete path and prints `42`. Its LLVM contains the
+caller `alloca` and store, a projected-field `getelementptr`, direct pointer
+forwarding into a reference consumer, and one final scalar load. Example 508
+and the Stage2 fixture prove E22 in both compiler generations. Linux passes
+680/680 in one full run; Windows covers 680/680 after the known timing-sensitive
+example 381 is rerun alone. Windows Stage2 passes 7/7 at 11,963,482 LLVM bytes;
+Linux Stage2 passes 6/6 at 11,960,061 LLVM bytes. Formal progress remains
+53/60 (88.3%), and the periodic Stage3 cadence advances to 4/10.

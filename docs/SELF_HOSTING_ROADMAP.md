@@ -2658,7 +2658,9 @@ This does not yet close the ownership/storage gate.
 - [ ] stored references and aggregate/index projections
 - [x] self-host recursive type arena, typed-IR field projection, pointer ABI,
   projected address return, and transparent return load
-- [ ] self-host caller-side address formation and origin/ownership enforcement
+- [x] self-host caller-side address formation for stable immutable bindings and
+  production rejection of temporary origins
+- [ ] complete self-host origin/liveness conflict analysis
 - [x] cross-target regression and Stage2 verification of the C# vertical slice
 
 Formal progress stays at **49 complete, 8 partial, 3 missing: 53/60 (88.3%)**
@@ -2677,6 +2679,31 @@ general reference gate remains open. Windows/Linux full suites pass **679/679**.
 Windows Stage2 passes **7/7** at **11,910,020 LLVM bytes**, and Linux Stage2
 passes **6/6** at **11,906,599 LLVM bytes**. Formal progress remains **49
 complete, 8 partial, 3 missing: 53/60 (88.3%)**. Stage3 cadence is **3/10**.
+
+D216 completes the caller boundary for the first self-host readonly-reference
+slice. A call whose parameter is `ref T` now materializes stable immutable
+values in an aligned caller slot, passes that slot as `ptr`, and forwards an
+existing reference without copying. Example 507 now executes the complete
+owner -> reference-returning function -> reference-consuming function path and
+prints `42`; its generated LLVM proves the `alloca`, store, projected GEP,
+pointer forwarding, and final scalar read.
+
+The ownership pass adds production diagnostic E22. A literal, constructor
+result, call result, or mutable binding cannot become the origin of a readonly
+reference that may escape the call. Example 508 and the dedicated Stage2
+fixture prove that both Stage1 and Stage2 stop before the LLVM target header.
+The implementation remains deliberately narrower than general borrow checking:
+CFG last-use conflicts, indexed and nested places, origin unions, and references
+stored in user values remain open.
+
+The Release build has zero warnings and errors. Linux passes **680/680** in one
+full run. Windows covers **680/680** after the known timing-sensitive example
+381 is rerun alone; its parallel run observed the correct eight results but
+missed the optional parent-help event. Windows Stage2 passes **7/7** at
+**11,963,482 LLVM bytes** and
+Linux Stage2 passes **6/6** at **11,960,061 LLVM bytes**. Formal progress stays
+at **49 complete, 8 partial, 3 missing: 53/60 (88.3%)**. Stage3 cadence advances
+to **4/10**, so Stage3 is not due.
 
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics

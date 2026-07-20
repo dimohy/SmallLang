@@ -38,6 +38,7 @@ struct BorrowedTextBinding {
 # Code 19 identifies a structurally non-sendable parallel callback capture.
 # Code 20 identifies a branch or loop that exits with a partially moved path.
 # Code 21 identifies an origin moved while a returned borrowed Text is live.
+# Code 22 identifies a readonly-reference argument without stable storage.
 # The view region ends at its last typed-IR use rather than at lexical scope end.
 public analyze sources: [Text; ~] -> [OwnershipDiagnostic; ~] {
     sources -> semanticContext.prepare => prepared
@@ -439,6 +440,72 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
     }
     typed -> typedIr.movesFrom => moves!
     [OwnershipDiagnostic; ~] => diagnostics!
+
+    # A value passed to ref T must already be a reference or resolve to an
+    # immutable binding place. Literals, constructor results, and call results
+    # are temporaries and cannot become the origin of a returned reference.
+    0 => referenceCallIndex!
+    referenceCallIndex! < (typed -> len) -> while {
+        typed[referenceCallIndex!] => referenceCall
+        (referenceCall.kind == 6 and referenceCall.targetModule >= 0 and referenceCall.symbol >= 0 and referenceCall.operand0 >= 0) -> if {
+            -1 => referenceTargetFunction!
+            0 => referenceTargetSearch!
+            referenceTargetSearch! < (typed -> len) -> while {
+                typed[referenceTargetSearch!] => referenceTargetCandidate
+                (referenceTargetCandidate.kind == 0 and referenceTargetCandidate.sourceModule == referenceCall.targetModule and referenceTargetCandidate.symbol == referenceCall.symbol) -> if {
+                    referenceTargetSearch! => referenceTargetFunction!
+                }
+                referenceTargetSearch! + 1 => referenceTargetSearch!
+            }
+            referenceTargetFunction! >= 0 -> if {
+                typed[referenceTargetFunction!] => referenceTarget
+                referenceCall.operand0 => referenceArgumentIr!
+                referenceTarget.operand1 => referenceParameterIr!
+                (referenceArgumentIr! >= 0 and referenceParameterIr! >= 0) -> while {
+                    typed[referenceArgumentIr!] => referenceArgument
+                    typed[referenceParameterIr!] => referenceParameter
+                    false => parameterIsReadonlyReference!
+                    (referenceParameter.typeId >= 0 and referenceParameter.typeId < (prepared.semantic.types -> len)) -> if {
+                        prepared.semantic.types[referenceParameter.typeId].kind == 8 -> if { true => parameterIsReadonlyReference! }
+                    }
+                    false => argumentIsReadonlyReference!
+                    (referenceArgument.typeId >= 0 and referenceArgument.typeId < (prepared.semantic.types -> len)) -> if {
+                        prepared.semantic.types[referenceArgument.typeId].kind == 8 -> if { true => argumentIsReadonlyReference! }
+                    }
+                    (parameterIsReadonlyReference! and not argumentIsReadonlyReference!) -> if {
+                        referenceArgumentIr! -> placeRootBinding => referenceRootBinding
+                        false => referenceAddressable!
+                        referenceRootBinding >= 0 -> if {
+                            typed[referenceRootBinding] => referenceRoot
+                            ((referenceRoot.kind == 10 or referenceRoot.kind == 17) and referenceRoot.flags % 2 == 0) -> if { true => referenceAddressable! }
+                        }
+                        not referenceAddressable! -> if {
+                            prepared.package.ranges[referenceArgument.sourceModule] => referenceArgumentRange
+                            prepared.package.nodes[referenceArgumentRange.astStart + referenceArgument.astNode] => referenceArgumentAst
+                            diagnostics! -> push(OwnershipDiagnostic {
+                                code: 22
+                                sourceModule: referenceArgument.sourceModule
+                                functionSymbol: referenceCall.symbol
+                                expectedOrigin: -1
+                                expectedModule: referenceCall.targetModule
+                                expectedSymbol: referenceParameter.symbol
+                                actualOrigin: referenceArgument.typeOrigin
+                                actualModule: referenceArgument.typeModule
+                                actualSymbol: referenceArgument.typeSymbol
+                                actualBuiltin: referenceArgument.typeSymbol
+                                span: syntax.SourceSpan { fileId: referenceArgument.sourceModule, start: referenceArgumentAst.start, length: referenceArgumentAst.length }
+                            })
+                        }
+                    }
+                    typed[referenceArgumentIr!].nextOperand => referenceArgumentIr!
+                    referenceParameterIr! == referenceTarget.operand1 -> if {
+                        referenceTarget.nextOperand => referenceParameterIr!
+                    } else { typed[referenceParameterIr!].nextOperand => referenceParameterIr! }
+                }
+            }
+        }
+        referenceCallIndex! + 1 => referenceCallIndex!
+    }
 
     # Semantic type children precede their owners. Classify Text containment
     # once so aggregate-origin discovery is allocation-free and target-stable.

@@ -1,0 +1,2 @@
+; sollang error[E22]: readonly reference argument requires stable immutable storage (source 0, byte 113, length 29)
+blocked=1
