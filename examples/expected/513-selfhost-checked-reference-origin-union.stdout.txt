@@ -1,0 +1,2 @@
+; sollang error[E23]: owner mutation conflicts with a live readonly reference (source 0, byte 333, length 19)
+blocked=1

@@ -2656,6 +2656,7 @@ This does not yet close the ownership/storage gate.
 - [x] executable owner -> function -> returned reference -> read path
 - [ ] complete C# origin/liveness conflict analysis
 - [x] C# mutable-owner root origins with last-use mutation conflicts
+- [x] C# inferred return-parameter origins and branch-selected origin unions
 - [ ] stored references and aggregate/index projections
 - [x] self-host recursive type arena, typed-IR field projection, pointer ABI,
   projected address return, and transparent return load
@@ -2663,6 +2664,7 @@ This does not yet close the ownership/storage gate.
   production rejection of temporary origins
 - [ ] complete self-host origin/liveness conflict analysis
 - [x] self-host mutable-owner slots and first production E23 liveness conflict
+- [x] self-host return-parameter origin unions and additional `ref` parameter ABI
 - [x] cross-target regression and Stage2 verification of the C# vertical slice
 
 Formal progress stays at **49 complete, 8 partial, 3 missing: 53/60 (88.3%)**
@@ -2731,6 +2733,30 @@ Linux Stage2 passes **6/6** at **11,987,197 LLVM bytes**. Both enforce E17-E23
 in Stage1 and Stage2 before LLVM emission. Formal progress remains **49
 complete, 8 partial, 3 missing: 53/60 (88.3%)**. The periodic Stage3 cadence
 advances to **5/10**, so Stage3 is not due.
+
+D218 adds inferred symbolic origin contracts to reference-returning functions.
+Only parameters that can reach an implicit or explicit return are recorded, so
+an unrelated `ref` argument remains usable. Multiple branch-selected return
+parameters form a union: every possible owner stays locked until the returned
+reference's last reachable use. The C# and self-host compilers infer and map the
+same call-site contract without exposing lifetime syntax.
+
+The implementation also closes two adjacent pointer-ABI defects. Explicit C#
+`ref` returns now emit the addressable pointer directly. The self-host parameter
+walker crosses from the primary parameter to the separate additional-parameter
+chain, causing later `ref` arguments to pass stable `%slot` pointers and branch
+returns to emit `%arg1` or `%arg2` rather than aggregate values. Example 512,
+the origin-union diagnostic, and examples 513-514 cover precision, E23, LLVM
+assembly, link, and execution. The Stage2 E23 fixture enforces the union in
+Stage1 and Stage2.
+
+Release builds with zero warnings and errors. Windows and Linux full suites
+pass **687/687**. Windows Stage2 passes **7/7** at **12,021,178 LLVM bytes**;
+Linux Stage2 passes **6/6** at **12,017,757 LLVM bytes**. Formal progress remains
+**49 complete, 8 partial, 3 missing: 53/60 (88.3%)** because indexed/nested
+projected-place precision, owner move/rebind/drop conflicts, branch-local loan
+liveness, and stored references remain open. The periodic Stage3 cadence is
+**6/10**, so Stage3 is not due.
 
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics

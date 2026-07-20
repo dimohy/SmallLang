@@ -1,0 +1,35 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies that self-host ownership keeps both branch-selected ref origins live.
+main {
+    [
+        """
+        struct Pair {
+            first: Int
+        }
+
+        choose condition: Bool, left: ref Pair, right: ref Pair -> ref Pair {
+            condition -> if {
+                left -> return
+            }
+            right
+        }
+
+        read pair: ref Pair -> Int {
+            pair.first
+        }
+
+        main {
+            Pair { first: 11 } => left!
+            Pair { first: 21 } => right!
+            choose(true, left!, right!) => borrowed
+            22 => right!.first
+            borrowed -> read => observed
+            "$(observed)" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinuxChecked => diagnosticCount
+    "blocked=$diagnosticCount" -> println
+}

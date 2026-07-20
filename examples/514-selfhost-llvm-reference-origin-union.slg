@@ -1,0 +1,35 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies branch-selected ref returns in native self-host LLVM output.
+main {
+    [
+        """
+        struct Pair {
+            first: Int
+        }
+
+        choose condition: Bool, left: ref Pair, right: ref Pair -> ref Pair {
+            condition -> if {
+                left -> return
+            }
+            right
+        }
+
+        read pair: ref Pair -> Int {
+            pair.first
+        }
+
+        main {
+            Pair { first: 11 } => left!
+            Pair { first: 21 } => right!
+            choose(true, left!, right!) => borrowed
+            borrowed -> read => observed
+            12 => left!.first
+            22 => right!.first
+            "$(observed)" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinux
+}

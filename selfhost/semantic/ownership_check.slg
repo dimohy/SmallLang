@@ -33,6 +33,12 @@ struct BorrowedTextBinding {
     ownerPlaceIr: Int
 }
 
+struct ReadonlyReferenceReturn {
+    sourceModule: Int
+    functionSymbol: Int
+    parameterOrdinal: Int
+}
+
 # Code 17 identifies whole-owner or overlapping-field use after a partial move.
 # Code 18 identifies a mutable binding captured by a parallel callback.
 # Code 19 identifies a structurally non-sendable parallel callback capture.
@@ -507,8 +513,63 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
         referenceCallIndex! + 1 => referenceCallIndex!
     }
 
+    # Infer which ref parameters can reach each function return. Multiple
+    # branch returns form an internal origin union with no lifetime syntax.
+    [ReadonlyReferenceReturn; ~] => readonlyReferenceReturns!
+    0 => referenceFunctionIndex!
+    referenceFunctionIndex! < (typed -> len) -> while {
+        typed[referenceFunctionIndex!] => referenceFunction
+        (referenceFunction.kind == 0 and referenceFunction.operand1 >= 0) -> if {
+            referenceFunction.operand1 => originParameterIr!
+            0 => originParameterOrdinal!
+            originParameterIr! >= 0 -> while {
+                typed[originParameterIr!] => originParameter
+                false => parameterReturnsReference!
+                (originParameter.typeId >= 0 and originParameter.typeId < (prepared.semantic.types -> len) and prepared.semantic.types[originParameter.typeId].kind == 8) -> if {
+                    0 => originReturnSearch!
+                    originReturnSearch! < (typed -> len) -> while {
+                        typed[originReturnSearch!] => originReturn
+                        false => belongsToReferenceFunction!
+                        (originReturn.kind == 1 and originReturn.parent == referenceFunctionIndex!) -> if { true => belongsToReferenceFunction! }
+                        (originReturn.kind == 23 and (originReturnSearch! -> nodeBelongsTo(referenceFunctionIndex!))) -> if { true => belongsToReferenceFunction! }
+                        (belongsToReferenceFunction! and originReturn.operand0 >= 0) -> if {
+                            0 => originUseSearch!
+                            originUseSearch! < (typed -> len) -> while {
+                                typed[originUseSearch!] => originUse
+                                (originUse.kind == 5 and originUse.sourceModule == originParameter.sourceModule and originUse.symbol == originParameter.symbol) -> if {
+                                    originUseSearch! => originAncestor!
+                                    (originAncestor! >= 0 and originAncestor! != originReturn.operand0) -> while {
+                                        typed[originAncestor!].parent => originAncestor!
+                                    }
+                                    originAncestor! == originReturn.operand0 -> if { true => parameterReturnsReference! }
+                                }
+                                originUseSearch! + 1 => originUseSearch!
+                            }
+                        }
+                        originReturnSearch! + 1 => originReturnSearch!
+                    }
+                }
+                parameterReturnsReference! -> if {
+                    readonlyReferenceReturns! -> push(ReadonlyReferenceReturn {
+                        sourceModule: referenceFunction.sourceModule
+                        functionSymbol: referenceFunction.symbol
+                        parameterOrdinal: originParameterOrdinal!
+                    })
+                }
+                originParameterIr! == referenceFunction.operand1 -> if {
+                    referenceFunction.nextOperand => originParameterIr!
+                } else {
+                    originParameter.nextOperand => originParameterIr!
+                }
+                originParameterOrdinal! + 1 => originParameterOrdinal!
+            }
+        }
+        referenceFunctionIndex! + 1 => referenceFunctionIndex!
+    }
+
     # A mutable owner may be borrowed, but its storage cannot change while a
-    # returned readonly reference still has a reachable use.
+    # returned readonly reference still has a reachable use. All possible
+    # branch-selected origins remain locked until that last use.
     0 => referenceBindingIndex!
     referenceBindingIndex! < (typed -> len) -> while {
         typed[referenceBindingIndex!] => referenceBinding
@@ -522,16 +583,26 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
         referenceBindingIsReadonlyReference! -> if {
             typed[referenceBinding.operand0] => referenceCall
             (referenceCall.kind == 6 and referenceCall.operand0 >= 0) -> if {
-                referenceCall.operand0 -> placeRootBinding => referenceOwnerBinding
-                referenceOwnerBinding >= 0 -> if {
-                    0 => referenceMutationIndex!
-                    referenceMutationIndex! < (typed -> len) -> while {
-                        typed[referenceMutationIndex!] => referenceMutation
-                        false => mutatesReferenceOwner!
-                        (referenceMutation.kind == 25 and referenceMutation.sourceModule == typed[referenceOwnerBinding].sourceModule and referenceMutation.symbol == typed[referenceOwnerBinding].symbol) -> if {
-                            true => mutatesReferenceOwner!
-                        }
-                        (mutatesReferenceOwner! and referenceBindingIndex! < referenceMutationIndex! and (referenceBindingIndex! -> borrowedBindingUsedAfterSite(referenceMutationIndex!))) -> if {
+                0 => referenceMutationIndex!
+                referenceMutationIndex! < (typed -> len) -> while {
+                    typed[referenceMutationIndex!] => referenceMutation
+                    false => referenceMutationReported!
+                    0 => referenceOriginIndex!
+                    referenceOriginIndex! < (readonlyReferenceReturns! -> len) -> while {
+                        readonlyReferenceReturns![referenceOriginIndex!] => referenceOrigin
+                        (not referenceMutationReported! and referenceOrigin.sourceModule == referenceCall.targetModule and referenceOrigin.functionSymbol == referenceCall.symbol) -> if {
+                            referenceCall.operand0 => referenceArgumentIr!
+                            0 => referenceArgumentOrdinal!
+                            (referenceArgumentIr! >= 0 and referenceArgumentOrdinal! < referenceOrigin.parameterOrdinal) -> while {
+                                typed[referenceArgumentIr!].nextOperand => referenceArgumentIr!
+                                referenceArgumentOrdinal! + 1 => referenceArgumentOrdinal!
+                            }
+                            referenceArgumentIr! -> placeRootBinding => referenceOwnerBinding
+                            false => mutatesReferenceOwner!
+                            (referenceOwnerBinding >= 0 and referenceMutation.kind == 25 and referenceMutation.sourceModule == typed[referenceOwnerBinding].sourceModule and referenceMutation.symbol == typed[referenceOwnerBinding].symbol) -> if {
+                                true => mutatesReferenceOwner!
+                            }
+                            (mutatesReferenceOwner! and referenceBindingIndex! < referenceMutationIndex! and (referenceBindingIndex! -> borrowedBindingUsedAfterSite(referenceMutationIndex!))) -> if {
                             prepared.package.ranges[referenceMutation.sourceModule] => referenceMutationRange
                             prepared.package.nodes[referenceMutationRange.astStart + referenceMutation.astNode] => referenceMutationAst
                             diagnostics! -> push(OwnershipDiagnostic {
@@ -547,9 +618,12 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                 actualBuiltin: -1
                                 span: syntax.SourceSpan { fileId: referenceMutation.sourceModule, start: referenceMutationAst.start, length: referenceMutationAst.length }
                             })
+                                true => referenceMutationReported!
+                            }
                         }
-                        referenceMutationIndex! + 1 => referenceMutationIndex!
+                        referenceOriginIndex! + 1 => referenceOriginIndex!
                     }
+                    referenceMutationIndex! + 1 => referenceMutationIndex!
                 }
             }
         }

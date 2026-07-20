@@ -1,0 +1,37 @@
+# Verifies that a branch-selected ref keeps every possible owner alive until last use.
+struct Pair {
+    first: Int
+}
+
+choose condition: Bool, left: ref Pair, right: ref Pair -> ref Pair {
+    condition -> if {
+        left -> return
+    }
+    right
+}
+
+firstOf left: ref Pair, ignored: ref Pair -> ref Pair {
+    left
+}
+
+read pair: ref Pair -> Int {
+    pair.first
+}
+
+main {
+    Pair { first: 11 } => left!
+    Pair { first: 21 } => right!
+    firstOf(left!, right!) => leftOnly
+
+    # A ref argument that cannot reach the result is not locked.
+    20 => right!.first
+    leftOnly -> read => firstSelected
+
+    choose(true, left!, right!) => borrowed
+    borrowed -> read => selected
+
+    # Both inferred loans end above, so both owners may change here.
+    12 => left!.first
+    22 => right!.first
+    "first=$firstSelected selected=$selected left=$(left!.first) right=$(right!.first)" -> println
+}

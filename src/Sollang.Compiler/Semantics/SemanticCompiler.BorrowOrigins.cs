@@ -4,6 +4,256 @@ namespace Sollang.Compiler.Semantics;
 
 internal sealed partial class SemanticCompiler
 {
+    private void DiscoverReadonlyReferenceReturnOrigins(
+        IReadOnlyDictionary<string, BoundFunction> functions)
+    {
+        var candidates = new HashSet<BoundFunction>(ReferenceEqualityComparer.Instance);
+        foreach (var function in functions.Values)
+        {
+            CollectFunctionTree(function, candidates);
+        }
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var function in candidates)
+            {
+                if (_readonlyReferenceReturnOrigins.ContainsKey(function)
+                    || !_types.IsReference(function.ReturnType)
+                    || !ReadonlyReferenceOriginParameterNames(function).Any())
+                {
+                    continue;
+                }
+
+                if (TryInferFunctionReadonlyReferenceOrigins(function, functions, out var origins))
+                {
+                    _readonlyReferenceReturnOrigins.Add(function, origins);
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    private IEnumerable<string> ReadonlyReferenceOriginParameterNames(BoundFunction function)
+    {
+        if (function.InputType is { } inputType && _types.IsReference(inputType))
+        {
+            yield return function.InputName ?? "it";
+        }
+        foreach (var parameter in function.AdditionalParameters ?? [])
+        {
+            if (_types.IsReference(parameter.Type))
+            {
+                yield return parameter.Name;
+            }
+        }
+    }
+
+    private bool TryInferFunctionReadonlyReferenceOrigins(
+        BoundFunction function,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        out IReadOnlySet<string> origins)
+    {
+        var locals = ReadonlyReferenceOriginParameterNames(function).ToDictionary(
+            static name => name,
+            static name => (IReadOnlySet<string>)new HashSet<string>([name], StringComparer.Ordinal),
+            StringComparer.Ordinal);
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        CollectReadonlyReferenceReturnOrigins(function.BlockBody, functions, locals, union);
+        if (function.Body is not null
+            && TryInferReadonlyReferenceOrigins(function.Body, functions, locals, out var bodyOrigins))
+        {
+            union.UnionWith(bodyOrigins);
+        }
+        origins = union;
+        return union.Count > 0;
+    }
+
+    private void CollectReadonlyReferenceReturnOrigins(
+        IReadOnlyList<Statement> statements,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        Dictionary<string, IReadOnlySet<string>> locals,
+        HashSet<string> union)
+    {
+        foreach (var statement in statements)
+        {
+            switch (statement)
+            {
+                case BindingStatement binding:
+                    CollectNestedReadonlyReferenceReturnOrigins(binding.Value, functions, locals, union);
+                    if (TryInferReadonlyReferenceOrigins(binding.Value, functions, locals, out var bindingOrigins))
+                    {
+                        locals[binding.Name] = bindingOrigins;
+                    }
+                    break;
+                case ReturnStatement { Value: { } value }:
+                    if (TryInferReadonlyReferenceOrigins(value, functions, locals, out var returnOrigins))
+                    {
+                        union.UnionWith(returnOrigins);
+                    }
+                    CollectNestedReadonlyReferenceReturnOrigins(value, functions, locals, union);
+                    break;
+                case ExpressionStatement expression:
+                    CollectNestedReadonlyReferenceReturnOrigins(expression.Expression, functions, locals, union);
+                    break;
+                case BlockFunctionCallStatement block:
+                    CollectNestedReadonlyReferenceReturnOrigins(block.Source, functions, locals, union);
+                    var blockLocals = new Dictionary<string, IReadOnlySet<string>>(locals, StringComparer.Ordinal);
+                    CollectReadonlyReferenceReturnOrigins(block.Body, functions, blockLocals, union);
+                    break;
+            }
+        }
+    }
+
+    private void CollectNestedReadonlyReferenceReturnOrigins(
+        Expression expression,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> locals,
+        HashSet<string> union)
+    {
+        switch (expression)
+        {
+            case IfExpression conditional:
+                CollectBlockReadonlyReferenceReturnOrigins(conditional.Then, functions, locals, union);
+                if (conditional.Else is not null)
+                {
+                    CollectBlockReadonlyReferenceReturnOrigins(conditional.Else, functions, locals, union);
+                }
+                break;
+            case WhenExpression match:
+                foreach (var arm in match.Arms)
+                {
+                    CollectBlockReadonlyReferenceReturnOrigins(arm.Body, functions, locals, union);
+                }
+                CollectBlockReadonlyReferenceReturnOrigins(match.Else, functions, locals, union);
+                break;
+        }
+    }
+
+    private void CollectBlockReadonlyReferenceReturnOrigins(
+        BlockBody block,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> parentLocals,
+        HashSet<string> union)
+    {
+        var locals = new Dictionary<string, IReadOnlySet<string>>(parentLocals, StringComparer.Ordinal);
+        CollectReadonlyReferenceReturnOrigins(block.Statements, functions, locals, union);
+        if (block.Value is not null
+            && TryInferReadonlyReferenceOrigins(block.Value, functions, locals, out var origins))
+        {
+            union.UnionWith(origins);
+        }
+    }
+
+    private bool TryInferReadonlyReferenceOrigins(
+        Expression expression,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> locals,
+        out IReadOnlySet<string> origins)
+    {
+        if (expression is NameExpression name && locals.TryGetValue(name.Name, out origins!))
+        {
+            return true;
+        }
+        if (expression is FieldAccessExpression field)
+        {
+            return TryInferReadonlyReferenceOrigins(field.Source, functions, locals, out origins);
+        }
+        if (expression is IndexExpression index)
+        {
+            return TryInferReadonlyReferenceOrigins(index.Source, functions, locals, out origins);
+        }
+        if (expression is CallExpression call
+            && TryGetFunction(call.Path, functions, out var called)
+            && _readonlyReferenceReturnOrigins.TryGetValue(called, out var returnOrigins))
+        {
+            return TryMapReadonlyReferenceReturnOrigins(
+                called, returnOrigins, call.Arguments, functions, locals, out origins);
+        }
+        if (expression is FlowExpression flow && flow.Targets.Count > 0)
+        {
+            var target = flow.Targets[^1];
+            if (TryGetFunction(target.Path, functions, out var flowed)
+                && _readonlyReferenceReturnOrigins.TryGetValue(flowed, out var flowedReturnOrigins))
+            {
+                var arguments = new Expression[] { flow.Source }.Concat(target.Arguments).ToArray();
+                return TryMapReadonlyReferenceReturnOrigins(
+                    flowed, flowedReturnOrigins, arguments, functions, locals, out origins);
+            }
+        }
+        if (expression is IfExpression conditional && conditional.Else is not null)
+        {
+            var union = new HashSet<string>(StringComparer.Ordinal);
+            CollectBlockReadonlyReferenceOrigins(conditional.Then, functions, locals, union);
+            CollectBlockReadonlyReferenceOrigins(conditional.Else, functions, locals, union);
+            origins = union;
+            return union.Count > 0;
+        }
+        if (expression is WhenExpression match)
+        {
+            var union = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var arm in match.Arms)
+            {
+                CollectBlockReadonlyReferenceOrigins(arm.Body, functions, locals, union);
+            }
+            CollectBlockReadonlyReferenceOrigins(match.Else, functions, locals, union);
+            origins = union;
+            return union.Count > 0;
+        }
+
+        origins = EmptyBorrowOrigins();
+        return false;
+    }
+
+    private void CollectBlockReadonlyReferenceOrigins(
+        BlockBody block,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> parentLocals,
+        HashSet<string> union)
+    {
+        var locals = new Dictionary<string, IReadOnlySet<string>>(parentLocals, StringComparer.Ordinal);
+        foreach (var statement in block.Statements)
+        {
+            if (statement is BindingStatement binding
+                && TryInferReadonlyReferenceOrigins(binding.Value, functions, locals, out var bindingOrigins))
+            {
+                locals[binding.Name] = bindingOrigins;
+            }
+        }
+        if (block.Value is not null
+            && TryInferReadonlyReferenceOrigins(block.Value, functions, locals, out var origins))
+        {
+            union.UnionWith(origins);
+        }
+    }
+
+    private bool TryMapReadonlyReferenceReturnOrigins(
+        BoundFunction called,
+        IReadOnlySet<string> returnOrigins,
+        IReadOnlyList<Expression> arguments,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> locals,
+        out IReadOnlySet<string> origins)
+    {
+        var parameters = FunctionParameters(called);
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var returnOrigin in returnOrigins)
+        {
+            var ordinal = parameters.FindIndex(parameter =>
+                StringComparer.Ordinal.Equals(parameter, returnOrigin));
+            if (ordinal < 0 || ordinal >= arguments.Count
+                || !TryInferReadonlyReferenceOrigins(arguments[ordinal], functions, locals, out var argumentOrigins))
+            {
+                origins = EmptyBorrowOrigins();
+                return false;
+            }
+            union.UnionWith(argumentOrigins);
+        }
+        origins = union;
+        return union.Count > 0;
+    }
+
     private void DiscoverBorrowedTextReturnOrigins(
         IReadOnlyDictionary<string, BoundFunction> functions)
     {
@@ -558,11 +808,19 @@ internal sealed partial class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         out IReadOnlySet<string> origins)
     {
-        var parameterTypes = FunctionParameterTypes(called);
-        var union = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = 0; index < parameterTypes.Count && index < arguments.Count; index++)
+        if (!_readonlyReferenceReturnOrigins.TryGetValue(called, out var returnOrigins))
         {
-            if (!_types.IsReference(parameterTypes[index]))
+            origins = EmptyBorrowOrigins();
+            return false;
+        }
+
+        var parameters = FunctionParameters(called);
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var returnOrigin in returnOrigins)
+        {
+            var index = parameters.FindIndex(parameter =>
+                StringComparer.Ordinal.Equals(parameter, returnOrigin));
+            if (index < 0 || index >= arguments.Count)
             {
                 continue;
             }

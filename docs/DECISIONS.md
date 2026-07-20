@@ -8819,3 +8819,45 @@ LLVM bytes. Linux covers 683/683 and Stage2 6/6 at 11,987,197 LLVM bytes. Formal
 progress remains 53/60 (88.3%) because branch-sensitive reference uses, origin
 unions, indexed/nested places, owner moves/rebinds, and stored references remain
 open. This is Stage3 cadence 5/10, so the periodic Stage3 run is not due.
+
+## D218 - Inferred Readonly-Reference Origin Unions
+
+Status: implemented first return-parameter union vertical and cross-target Stage2 verified
+Date: 2026-07-21
+
+A reference-returning function now has an inferred symbolic contract containing
+only the `ref T` parameters that can reach a return. An ordinary function that
+always returns `left` does not lock an unrelated `right` argument. When control
+flow can return either parameter, the contract is their union and both owners
+remain protected until the returned reference's last reachable use. Sollang
+keeps this contract internal and adds no explicit lifetime punctuation.
+
+The C# compiler discovers contracts to a fixed point, maps them through direct
+and flow calls, and emits an explicit reference return as the selected pointer
+rather than loading the pointee. The self-host ownership pass derives the same
+contracts from implicit and explicit return nodes and applies E23 to every
+possible call-site origin. Its parameter walker now follows the distinct first
+and additional-parameter chains, so LLVM calls pass later `ref` arguments as
+`ptr` and early returns correctly emit `%arg1`, `%arg2`, and subsequent pointer
+parameters.
+
+Example 512 proves call-site precision and safe mutation after union last use.
+The `ref-origin-union-owner-mutation` diagnostic proves that either possible
+owner is protected. Examples 513-514 prove self-host E23 plus native LLVM
+assembly, link, and execution. The Stage2 E23 fixture now uses the same
+branch-selected union in both compiler generations. Release builds with zero
+warnings and errors; Windows and Linux full suites pass 687/687. Windows
+Stage2 passes 7/7 at 12,021,178 LLVM bytes, and Linux Stage2 passes 6/6 at
+12,017,757 LLVM bytes. Formal progress remains 53/60 (88.3%) because projected
+place precision, owner move/rebind/drop conflicts, branch-local loan liveness,
+and references stored in user aggregates remain open. Stage3 cadence advances
+to 6/10, so the periodic Stage3 run is not due.
+
+The rule follows Mojo's symbolic union origins, Polonius's origins containing
+live loans, and Swift's overlapping-access duration/location model.
+
+References:
+
+- [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes)
+- [Polonius relation rules](https://rust-lang.github.io/polonius/rules/relations.html)
+- [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)

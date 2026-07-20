@@ -18,6 +18,8 @@ internal sealed partial class SemanticCompiler
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundFunction, IReadOnlySet<string>> _borrowedTextReturnOrigins =
         new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundFunction, IReadOnlySet<string>> _readonlyReferenceReturnOrigins =
+        new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, IReadOnlySet<string>> _activeBorrowedTextOrigins =
         new(StringComparer.Ordinal);
     private readonly HashSet<string> _activeReadonlyReferenceBindings =
@@ -51,6 +53,7 @@ internal sealed partial class SemanticCompiler
         _program = InferPrivateFunctionSignatures(_program);
         var functions = DeclareFunctions();
         DiscoverBorrowedTextReturnOrigins(functions);
+        DiscoverReadonlyReferenceReturnOrigins(functions);
         var declarationFingerprint = SemanticStableIdentity.DeclarationFingerprint(
             _types,
             _traits.Values,

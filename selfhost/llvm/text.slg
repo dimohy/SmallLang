@@ -898,7 +898,11 @@ emitCore context: EmitContext -> Unit uses Console {
         targetFunction >= 0 -> if { context.ir[targetFunction].operand1 => parameter! }
         0 => parameterOrdinal!
         (parameter! >= 0 and parameterOrdinal! < ordinal) -> while {
-            context.ir[parameter!].nextOperand => parameter!
+            parameterOrdinal! == 0 -> if {
+                context.ir[targetFunction].nextOperand => parameter!
+            } else {
+                context.ir[parameter!].nextOperand => parameter!
+            }
             parameterOrdinal! + 1 => parameterOrdinal!
         }
         parameter!
@@ -1537,6 +1541,28 @@ emitCore context: EmitContext -> Unit uses Console {
     }
     additionalParameterOrdinal functionIndex: Int, symbol: Int -> Int {
         context.ir[functionIndex].nextOperand -> findAdditionalParameterOrdinal(symbol, 1)
+    }
+    writeReferencePlaceValue functionIndex: Int, valueIndex: Int -> Unit uses Console {
+        context.ir[functionIndex] => referenceFunction
+        context.ir[valueIndex] => referenceValue
+        false => wroteParameter!
+        (referenceValue.kind == 5 and referenceFunction.operand1 >= 0) -> if {
+            referenceValue.symbol == context.ir[referenceFunction.operand1].symbol -> if {
+                "%arg" -> print
+                true => wroteParameter!
+            } else {
+                functionIndex -> additionalParameterOrdinal(referenceValue.symbol) => referenceParameterOrdinal
+                referenceParameterOrdinal >= 1 -> if {
+                    "%arg" -> print
+                    referenceParameterOrdinal -> writeDecimal
+                    true => wroteParameter!
+                }
+            }
+        }
+        not wroteParameter! -> if {
+            "%v" -> print
+            valueIndex -> writeDecimal
+        }
     }
     writeCallArgument argumentIndex: Int, callIndex: Int, ownerIndex: Int, ordinal: Int -> Unit uses Console {
         ownerIndex => callOwnerIndex
@@ -5064,6 +5090,9 @@ emitCore context: EmitContext -> Unit uses Console {
                         returnOwner -> writeIrType
                         " " -> print
                         context.ir[regionNode.operand0] => returnedValue
+                        (returnOwner.typeId >= 0 and context.types[returnOwner.typeId].kind == 8) -> if {
+                            ownerIndex! -> writeReferencePlaceValue(regionNode.operand0)
+                        } else {
                         (returnedValue.kind == 3 or returnedValue.kind == 4) -> if {
                             returnedValue -> sourceToken => returnValueToken
                             returnedValue.kind == 3 -> if { context.sources[returnedValue.sourceModule] -> slice(returnValueToken.span.start, returnValueToken.span.length) -> print } else {
@@ -5071,6 +5100,7 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                         } else {
                             (returnOwner.operand1 >= 0 and returnedValue.kind == 5 and returnedValue.symbol == context.ir[returnOwner.operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        }
                         }
                         "" -> println
                     }
@@ -8788,6 +8818,10 @@ emitCore context: EmitContext -> Unit uses Console {
             function -> writeIrType
             " " -> print
             transparentReferenceReturn! -> if { "%return_ref_value" -> println } else {
+            (function.typeId >= 0 and context.types[function.typeId].kind == 8) -> if {
+                functionIndex! -> writeReferencePlaceValue(returnValueIndex)
+                "" -> println
+            } else {
             (returnOperand.kind == 3 or returnOperand.kind == 4) -> if {
                 returnOperand -> sourceToken => returnToken
                 returnOperand.kind == 3 -> if {
@@ -8800,6 +8834,7 @@ emitCore context: EmitContext -> Unit uses Console {
                     "%v" -> print
                     returnValueIndex -> writeDecimalLine
                 }
+            }
             }
             }
             }

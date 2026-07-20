@@ -1,4 +1,4 @@
-# A branch-selected readonly reference locks every possible mutable owner.
+# Every owner selected by a branch remains locked while the returned ref is live.
 struct Pair {
     first: Int
 }
@@ -15,10 +15,9 @@ read pair: ref Pair -> Int {
 }
 
 main {
-    Pair { first: 41 } => left!
-    Pair { first: 51 } => right!
+    Pair { first: 11 } => left!
+    Pair { first: 21 } => right!
     choose(true, left!, right!) => borrowed
-    52 => right!.first
-    borrowed -> read => observed
-    "$(observed)" -> println
+    22 => right!.first
+    borrowed -> read -> println
 }

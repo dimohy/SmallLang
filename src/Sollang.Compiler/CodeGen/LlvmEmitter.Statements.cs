@@ -191,6 +191,13 @@ internal sealed partial class LlvmEmitter
             return;
         }
 
+        if (_program.Types.IsReference(function.ReturnType))
+        {
+            var reference = EmitReferencePlace(statement.Value, function.ReturnType);
+            EmitRet("ptr", reference.PointerName);
+            return;
+        }
+
         var value = EmitExpression(statement.Value);
         EnsureRuntimeType(value, function.ReturnType, function.Name);
         var transferredOwnerName = IsOwnedContainerRuntimeValue(value)
