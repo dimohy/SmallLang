@@ -43,6 +43,13 @@ public analyze sources: [Text; ~] -> [OwnershipDiagnostic; ~] {
 }
 
 public analyzeContext prepared: semanticContext.SemanticSnapshot -> [OwnershipDiagnostic; ~] {
+    prepared -> typedIr.lowerContext => typed
+    prepared -> analyzeLoweredContext(typed)
+}
+
+# Ownership is a read-only consumer of the canonical typed IR. The compiler
+# driver lowers once and shares the same value with validation and LLVM output.
+public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~] -> [OwnershipDiagnostic; ~] {
     moveRegionFor nodeIndex: Int -> Int {
         typed[nodeIndex].parent => region!
         (region! >= 0 and typed[region!].kind != 1 and typed[region!].kind != 11 and typed[region!].kind != 19 and typed[region!].kind != 20) -> while {
@@ -97,7 +104,6 @@ public analyzeContext prepared: semanticContext.SemanticSnapshot -> [OwnershipDi
         }
         repaired!
     }
-    prepared -> typedIr.lowerContext => typed
     typed -> typedIr.movesFrom => moves!
     [OwnershipDiagnostic; ~] => diagnostics!
 

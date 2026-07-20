@@ -441,8 +441,8 @@ prepare request: move PrepareRequest -> EmitContext {
     request.supportsComputePool => supportsComputePool
     request.expectedPathStyle => expectedPathStyle
     request.sources -> semanticContext.prepare => prepared
-    prepared -> ownershipCheck.analyzeContext => ownershipDiagnostics!
     prepared -> typedIr.lowerContext => ir!
+    prepared -> ownershipCheck.analyzeLoweredContext(ir!) => ownershipDiagnostics!
     prepared -> expressionTypeIds.resolveContext => recursiveTypes
     [typeIds.SemanticType; ~] => semanticTypes!
     0 => semanticTypeCopyIndex351!
@@ -1128,7 +1128,15 @@ emitCore context: EmitContext -> Unit uses Console {
         context.ir[request.bindingIndex] => binding
         request.callerIndex -> functionEnd => callerEnd
         (request.bindingIndex > request.callerIndex and request.bindingIndex < callerEnd) -> if {
-            binding.kind == 10 -> if { "%arg" -> print } else {
+            binding.kind == 10 -> if {
+                -1 => captureParameterOrdinal!
+                (context.ir[request.callerIndex].kind == 0 and context.ir[request.callerIndex].operand1 >= 0) -> if {
+                    binding.symbol == context.ir[context.ir[request.callerIndex].operand1].symbol -> if { 0 => captureParameterOrdinal! } else {
+                        request.callerIndex -> additionalParameterOrdinal(binding.symbol) => captureParameterOrdinal!
+                    }
+                }
+                captureParameterOrdinal! == 0 -> if { "%arg" -> print } else { "%arg$(captureParameterOrdinal!)" -> print }
+            } else {
                 binding.flags == 1 -> if { "%callenv$(request.callIndex)_capture$(request.captureIndex)" -> print } else { "%v$(binding.operand0)" -> print }
             }
         } else {

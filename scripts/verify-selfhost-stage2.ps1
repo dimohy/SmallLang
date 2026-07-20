@@ -31,7 +31,7 @@ $semanticContextSource = Join-Path $repoRoot "selfhost\semantic\context.slg"
 $compilerRuntimeSources = Get-Content $runtimeManifestPath |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
     ForEach-Object { Join-Path $repoRoot $_.Trim() }
-$expectedStage2Bytes = 11581500L
+$expectedStage2Bytes = 11585512L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
@@ -118,7 +118,11 @@ if (Test-Stage2IsCurrent) {
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         ForEach-Object { (Resolve-Path (Join-Path $repoRoot $_.Trim())).Path }
     $sourcePaths += $compilerRuntimeSources | ForEach-Object { (Resolve-Path $_).Path }
+    $sourceLineCount = ($sourcePaths | ForEach-Object { [System.IO.File]::ReadAllLines($_).LongLength } | Measure-Object -Sum).Sum
     $stage2ErrorPath = Join-Path $artifactsDir "selfhost-stage2.err.log"
+    $stage2Started = Get-Date
+    $lastAnalysisHeartbeat = -1
+    Write-Host ("[stage2 2/7] phase 1/2 analyze {0:N0} source files / {1:N0} lines" -f $sourcePaths.Count, $sourceLineCount)
     $stage2Process = Invoke-ProcessToFile `
         -FilePath $stage1Path `
         -ArgumentList (@("windows") + $sourcePaths) `
@@ -128,8 +132,17 @@ if (Test-Stage2IsCurrent) {
     while (-not $stage2Process.HasExited) {
         Start-Sleep -Seconds 2
         $bytes = if (Test-Path $stage2LlvmPath) { (Get-Item $stage2LlvmPath).Length } else { 0L }
-        $percent = [Math]::Min(99.9, 100.0 * $bytes / $expectedStage2Bytes)
-        Write-Host ("[stage2 2/7] LLVM {0:N0} bytes ({1:N1}% heuristic)" -f $bytes, $percent)
+        if ($bytes -eq 0L) {
+            $elapsed = [int]((Get-Date) - $stage2Started).TotalSeconds
+            $heartbeat = [Math]::Floor($elapsed / 10)
+            if ($heartbeat -gt $lastAnalysisHeartbeat) {
+                Write-Host ("[stage2 2/7] phase 1/2 analyze active ({0:N0}s elapsed)" -f $elapsed)
+                $lastAnalysisHeartbeat = $heartbeat
+            }
+        } else {
+            $percent = [Math]::Min(100.0, 100.0 * $bytes / $expectedStage2Bytes)
+            Write-Host ("[stage2 2/7] phase 2/2 LLVM {0:N0} bytes ({1:N1}%)" -f $bytes, $percent)
+        }
         $stage2Process.Refresh()
     }
     Assert-ProcessSucceeded $stage2Process $stage2ErrorPath "stage-2 LLVM emission"

@@ -8018,6 +8018,62 @@ References:
 - [Mojo lifetimes, origins, and references](https://mojolang.org/docs/manual/values/lifetimes/)
 - [Swift memory safety and overlapping access](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 
+## D213D - Shared Canonical Typed IR and Observable Stage2 Phases
+
+Status: implemented and cross-target Stage2 verified
+Date: 2026-07-20
+
+Ownership validation and LLVM emission now consume one canonical typed-IR
+array. `llvm.text.prepare` lowers the semantic snapshot once, then lends that
+array read-only to `ownership_check.analyzeLoweredContext` before retaining it
+for emission. The public `analyzeContext` convenience API still lowers its own
+IR for standalone ownership tools, while the production driver avoids the
+duplicate work introduced by D213C.
+
+The attempted reuse exposed a self-host closure ABI defect. When a local
+function captured an owned additional parameter, `emitCaptureValue` always
+selected the primary `%arg`, even when the captured binding was `%arg1` or
+later. Capture lowering now derives the ordinal from the enclosing function's
+primary and linked additional parameter nodes and emits the matching LLVM
+argument. Complete Stage2 assembly is the regression gate because the former
+output stored a semantic-snapshot struct where a typed-IR array was required.
+
+Stage2 verification no longer repeats a misleading `LLVM 0 bytes (0.0%)` while
+front-end work is active. It reports `phase 1/2`, the exact source-file and
+source-line totals, and a ten-second elapsed heartbeat. Once LLVM output starts,
+`phase 2/2` reports bytes and a bounded percentage ending at 100.0%. This is an
+honest externally observable boundary; finer per-pass progress should later use
+a dedicated compiler instrumentation channel rather than estimated percentages.
+
+Fresh Windows Stage2 verification passes 7/7 in 68.17 seconds, down from
+101.8 seconds in D213C (33.0% faster), at 11,585,512 LLVM bytes with a
+1,626,624-byte executable. Fresh Linux Stage2 passes 6/6 in 145.13 seconds,
+down from 253.9 seconds (42.8% faster), at 11,582,091 LLVM bytes with a
+3,260,840-byte executable. Focused self-host/capture/ownership checks pass 6/6,
+Windows and Linux full suites pass 631/631, and the Release build has zero
+warnings and errors. This advances the periodic Stage3 cadence to 2/10, so
+Stage3 is intentionally deferred.
+
+Formal progress remains 49 complete, 8 partial, and 3 missing: 53/60 (88.3%).
+D213D removes a production performance regression and repairs canonical IR
+sharing, but it does not close the remaining CFG-sensitive lifetime, origin
+union, aggregate-reference, projected-conflict, or diagnostic-completeness
+work.
+
+Rust's compiler query model reuses tracked intermediate results instead of
+running redundant whole-program passes. Its LLVM backend integration keeps
+expensive codegen-unit artifacts under explicit lifetime control. LLVM and
+MLIR expose separate read-only pass/analysis instrumentation hooks. Sollang
+adopts the same separation at its current scale: one immutable typed IR,
+multiple consumers, and progress observation outside the IR mutation path.
+
+References:
+
+- [Rust compiler overview and query model](https://rustc-dev-guide.rust-lang.org/overview.html)
+- [Rust incremental compilation and backend integration](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html)
+- [LLVM pass instrumentation](https://llvm.org/doxygen/PassInstrumentation_8h.html)
+- [MLIR pass instrumentation](https://mlir.llvm.org/docs/PassManagement/#pass-instrumentation)
+
 ## D213C - Failure-First Ownership Diagnostics in the Production Driver
 
 Status: implemented and cross-target Stage2 verified

@@ -2215,6 +2215,45 @@ Research basis:
 - [Mojo lifetimes, origins, and references](https://mojolang.org/docs/manual/values/lifetimes/)
 - [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 
+## Shared Canonical Typed IR and Observable Stage2 Phases (D213D)
+
+D213D removes the duplicate typed-IR lowering introduced when D213C connected
+ownership validation to production code generation. LLVM preparation now
+lowers once, lends the canonical array read-only to the ownership analyzer,
+and retains the same array for emission. Standalone ownership analysis keeps
+its convenience API and may lower independently.
+
+Making this path real exposed and fixed a self-host closure ABI bug: a local
+function capturing an owned additional parameter always stored primary `%arg`
+into its borrow slot. Capture emission now resolves the parameter ordinal and
+uses `%arg`, `%arg1`, and later arguments correctly. Stage2 assembly proves the
+fix against the complete compiler.
+
+The Stage2 scripts now report two actual observable phases. Phase 1 prints the
+exact input count (**46 files / 32,303 lines**) and a ten-second analysis
+heartbeat. Phase 2 reports LLVM bytes and reaches 100.0%. It no longer presents
+the pre-output interval as repeated 0.0% LLVM progress.
+
+Fresh Windows Stage2 passes **7/7 in 68.17 seconds**, improving from 101.8
+seconds by **33.0%**, at **11,585,512 LLVM bytes** with a **1,626,624-byte
+executable**. Fresh Linux Stage2 passes **6/6 in 145.13 seconds**, improving
+from 253.9 seconds by **42.8%**, at **11,582,091 LLVM bytes** with a
+**3,260,840-byte executable**. Focused checks pass **6/6**, Windows/Linux full
+suites pass **631/631**, and Release build warnings/errors remain zero.
+
+The periodic Stage3 cadence advances to **2/10**, so Stage3 is not due. Formal
+progress remains **49 complete, 8 partial, 3 missing: 53/60 (88.3%)** because
+this checkpoint improves the compiler pipeline inside the existing ownership
+gate rather than completing CFG-sensitive lifetimes, origin unions, aggregate
+borrowed returns, projected conflicts, or E17-E20 production enforcement.
+
+Research basis:
+
+- [Rust compiler overview and query model](https://rustc-dev-guide.rust-lang.org/overview.html)
+- [Rust incremental compilation and backend integration](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html)
+- [LLVM pass instrumentation](https://llvm.org/doxygen/PassInstrumentation_8h.html)
+- [MLIR pass instrumentation](https://mlir.llvm.org/docs/PassManagement/#pass-instrumentation)
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).
