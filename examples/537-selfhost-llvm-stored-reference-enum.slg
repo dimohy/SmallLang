@@ -1,0 +1,32 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies self-host LLVM lowering for a readonly reference in an enum payload.
+main {
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            40 => owner!
+            IntView.Ref(owner! -> same) => stored
+            stored -> when {
+                Empty => 0
+                Ref(value) => value -> read
+            } -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinuxChecked => diagnosticCount
+}

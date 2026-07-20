@@ -1,0 +1,146 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies self-host E22/E23 for readonly references stored in enum payloads.
+main {
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            10 => owner!
+            IntView.Ref(owner! -> same) => stored
+            stored -> when {
+                Empty => 0
+                Ref(value) => value -> read
+            } => observed
+
+            # Rebinding is safe after the payload reference's final use.
+            20 => owner!
+            observed -> println
+        }
+        """,
+        ~
+    ] => safeSources!
+    safeSources! -> ownershipCheck.analyze => safeDiagnostics!
+    0 => safe!
+    safeDiagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if { safe! + 1 => safe! }
+    }
+
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            10 => owner!
+            IntView.Ref(owner! -> same) => stored
+
+            # The later enum match keeps the payload reference live.
+            20 => owner!
+            stored -> when {
+                Empty => 0
+                Ref(value) => value -> read
+            } -> println
+        }
+        """,
+        ~
+    ] => conflictSources!
+    conflictSources! -> ownershipCheck.analyze => conflictDiagnostics!
+    0 => conflicts!
+    conflictDiagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if { conflicts! + 1 => conflicts! }
+    }
+
+    [
+        """
+        struct Owner {
+            value: Int
+        }
+
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            Owner { value: 10 } => owner!
+            IntView.Ref(owner!.value -> same) => stored
+            stored -> when {
+                Empty => 0
+                Ref(value) {
+                    # A payload alias extracted through a stored member keeps
+                    # its owner locked until its final reachable use.
+                    20 => owner!.value
+                    value -> read
+                }
+            } -> println
+        }
+        """,
+        ~
+    ] => patternSources!
+    patternSources! -> ownershipCheck.analyze => patternDiagnostics!
+    0 => patternConflicts!
+    patternDiagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if { patternConflicts! + 1 => patternConflicts! }
+    }
+
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        escape: -> IntView {
+            10 => local
+            IntView.Ref(local -> same)
+        }
+
+        main {
+            escape => escaped
+        }
+        """,
+        ~
+    ] => escapeSources!
+    escapeSources! -> ownershipCheck.analyze => escapeDiagnostics!
+    0 => escapes!
+    escapeDiagnostics! -> each diagnostic {
+        diagnostic.code == 22 -> if { escapes! + 1 => escapes! }
+    }
+
+    "safe=$(safe!),conflict=$(conflicts!),pattern=$(patternConflicts!),escape=$(escapes!)" -> println
+}

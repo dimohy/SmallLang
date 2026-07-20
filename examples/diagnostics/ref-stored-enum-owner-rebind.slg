@@ -1,0 +1,31 @@
+# Rebinding an owner conflicts with a later enum-payload reference use.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+wrap value: ref Int -> IntView {
+    IntView.Ref(value -> same)
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+inspect view: IntView -> Int {
+    view -> when {
+        IntView.Empty => 0
+        IntView.Ref(value) => value -> read
+    }
+}
+
+main {
+    10 => owner!
+    owner! -> wrap => stored
+    20 => owner!
+    stored -> inspect -> println
+}

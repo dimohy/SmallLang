@@ -60,13 +60,54 @@ semanticTypeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot
                 true => contains!
             } else {
                 currentType.kind == 1 -> if {
-                    0 => fieldIndex!
-                    fieldIndex! < (prepared.semantic.fields -> len) -> while {
-                        prepared.semantic.fields[fieldIndex!] => field
-                        (field.status == 0 and field.ownerType == currentTypeId) -> if {
-                            pending! -> push(field.fieldType)
+                    currentType.module => ownerSourceModule!
+                    currentType.origin == 2 -> if {
+                        (currentType.module >= 0 and currentType.module < (prepared.modules -> len)) -> if {
+                            prepared.modules[currentType.module].sourceIndex => ownerSourceModule!
                         }
-                        fieldIndex! + 1 => fieldIndex!
+                    }
+                    -1 => ownerDeclarationAst!
+                    (ownerSourceModule! >= 0 and ownerSourceModule! < (prepared.package.ranges -> len)) -> if {
+                        prepared.package.ranges[ownerSourceModule!] => ownerRange
+                        (currentType.symbol >= 0 and currentType.symbol < ownerRange.symbolCount) -> if {
+                            prepared.package.symbols[ownerRange.symbolStart + currentType.symbol] => ownerSymbol
+                            ownerSymbol.astNode >= 0 -> if { ownerSymbol.astNode => ownerDeclarationAst! }
+                        }
+                    }
+                    false => ownerIsEnum!
+                    ownerDeclarationAst! >= 0 -> if {
+                        prepared.package.ranges[ownerSourceModule!] => ownerRange
+                        prepared.package.nodes[ownerRange.astStart + ownerDeclarationAst!].kind == 4 -> if { true => ownerIsEnum! }
+                    }
+                    ownerIsEnum! -> if {
+                        0 => payloadReferenceIndex!
+                        payloadReferenceIndex! < (prepared.semantic.references -> len) -> while {
+                            prepared.semantic.references[payloadReferenceIndex!] => payloadReference
+                            (payloadReference.status == 0 and payloadReference.sourceModule == ownerSourceModule! and payloadReference.typeAst >= 0) -> if {
+                                payloadReference.typeAst => payloadAncestor!
+                                false => payloadBelongs!
+                                prepared.package.ranges[ownerSourceModule!] => payloadRange
+                                (payloadAncestor! >= 0 and payloadAncestor! < payloadRange.astCount and not payloadBelongs!) -> while {
+                                    prepared.package.nodes[payloadRange.astStart + payloadAncestor!] => payloadNode
+                                    (payloadNode.kind == 27 and payloadNode.parent == ownerDeclarationAst!) -> if {
+                                        true => payloadBelongs!
+                                    } else {
+                                        payloadNode.parent => payloadAncestor!
+                                    }
+                                }
+                                payloadBelongs! -> if { pending! -> push(payloadReference.typeId) }
+                            }
+                            payloadReferenceIndex! + 1 => payloadReferenceIndex!
+                        }
+                    } else {
+                        0 => fieldIndex!
+                        fieldIndex! < (prepared.semantic.fields -> len) -> while {
+                            prepared.semantic.fields[fieldIndex!] => field
+                            (field.status == 0 and field.ownerType == currentTypeId) -> if {
+                                pending! -> push(field.fieldType)
+                            }
+                            fieldIndex! + 1 => fieldIndex!
+                        }
                     }
                 } else {
                     (currentType.kind == 3 or currentType.kind == 4 or currentType.kind == 6) -> if {
@@ -101,6 +142,48 @@ readonlyCarrierUseTouchesReference prepared: semanticContext.SemanticSnapshot, t
         }
     }
     touches!
+}
+
+typedNodeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~], nodeIndex: Int -> Bool {
+    false => contains!
+    (nodeIndex >= 0 and nodeIndex < (typed -> len)) -> if {
+        typed[nodeIndex] => candidate
+        (candidate.typeId >= 0 and candidate.typeId < (prepared.semantic.types -> len)) -> if {
+            prepared -> semanticTypeContainsReadonlyReference(candidate.typeId) => contains!
+        } else {
+            candidate.typeKind == 1 -> if {
+                candidate.typeModule => ownerSourceModule!
+                candidate.typeOrigin == 2 -> if {
+                    (candidate.typeModule >= 0 and candidate.typeModule < (prepared.modules -> len)) -> if { prepared.modules[candidate.typeModule].sourceIndex => ownerSourceModule! }
+                }
+                -1 => ownerDeclarationAst!
+                (ownerSourceModule! >= 0 and ownerSourceModule! < (prepared.package.ranges -> len)) -> if {
+                    prepared.package.ranges[ownerSourceModule!] => ownerRange
+                    (candidate.typeSymbol >= 0 and candidate.typeSymbol < ownerRange.symbolCount) -> if {
+                        prepared.package.symbols[ownerRange.symbolStart + candidate.typeSymbol] => ownerSymbol
+                        ownerSymbol.astNode >= 0 -> if { ownerSymbol.astNode => ownerDeclarationAst! }
+                    }
+                    (ownerDeclarationAst! >= 0 and prepared.package.nodes[ownerRange.astStart + ownerDeclarationAst!].kind == 4) -> if {
+                        0 => payloadReferenceIndex!
+                        (not contains! and payloadReferenceIndex! < (prepared.semantic.references -> len)) -> while {
+                            prepared.semantic.references[payloadReferenceIndex!] => payloadReference
+                            (payloadReference.status == 0 and payloadReference.sourceModule == ownerSourceModule! and payloadReference.typeAst >= 0) -> if {
+                                payloadReference.typeAst => payloadAncestor!
+                                false => payloadBelongs!
+                                (payloadAncestor! >= 0 and payloadAncestor! < ownerRange.astCount and not payloadBelongs!) -> while {
+                                    prepared.package.nodes[ownerRange.astStart + payloadAncestor!] => payloadNode
+                                    (payloadNode.kind == 27 and payloadNode.parent == ownerDeclarationAst!) -> if { true => payloadBelongs! } else { payloadNode.parent => payloadAncestor! }
+                                }
+                                (payloadBelongs! and (prepared -> semanticTypeContainsReadonlyReference(payloadReference.typeId))) -> if { true => contains! }
+                            }
+                            payloadReferenceIndex! + 1 => payloadReferenceIndex!
+                        }
+                    }
+                }
+            }
+        }
+    }
+    contains!
 }
 
 # Code 17 identifies whole-owner or overlapping-field use after a partial move.
@@ -534,12 +617,34 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                 borrowedTyped[borrowedSiteAncestor!].parent => borrowedSiteAncestor!
             }
         }
-        borrowedPrepared -> referenceBindingUsedAfterIndexSite(borrowedTyped, bindingIr, siteIr) => sourceOrderUsed
-        (sourceOrderUsed or borrowedSiteLoop! >= 0) => searchReachableUses
+        true => searchReachableUses
         0 => useIndex!
         (searchReachableUses and not used! and useIndex! < (borrowedTyped -> len)) -> while {
             borrowedTyped[useIndex!] => use
-            (siteStart >= UIntSize(0) and use.kind == 5 and use.sourceModule == borrowedTyped[siteIr].sourceModule and use.astNode >= 0 and use.operand0 == bindingIr and (carrierTypeId < 0 or (borrowedPrepared -> readonlyCarrierUseTouchesReference(borrowedTyped, useIndex!, carrierTypeId)))) -> if {
+            false => matchesCarrierUse!
+            use.operand0 == bindingIr -> if {
+                true => matchesCarrierUse!
+            } else {
+                # Keep the projected operand in a mutable scalar slot. Direct
+                # aggregate-field aliases can otherwise hide the extractvalue
+                # edge from self-host typed-IR scheduling.
+                -1 => patternBindingIr!
+                use.operand0 => patternBindingIr!
+                false => patternBindingContainsReference!
+                (patternBindingIr! >= 0 and patternBindingIr! < (borrowedTyped -> len)) -> if {
+                    borrowedTyped[patternBindingIr!].typeKind == 8 -> if { true => patternBindingContainsReference! }
+                    not patternBindingContainsReference! -> if { borrowedPrepared -> typedNodeContainsReadonlyReference(borrowedTyped, patternBindingIr!) => patternBindingContainsReference! }
+                }
+                (patternBindingIr! >= 0 and patternBindingIr! < (borrowedTyped -> len) and borrowedTyped[patternBindingIr!].kind == 29 and patternBindingContainsReference!) -> if {
+                    borrowedTyped[patternBindingIr!].parent => patternAncestor!
+                    (patternAncestor! >= 0 and patternAncestor! < (borrowedTyped -> len) and borrowedTyped[patternAncestor!].kind != 27) -> while { borrowedTyped[patternAncestor!].parent => patternAncestor! }
+                    (patternAncestor! >= 0 and patternAncestor! < (borrowedTyped -> len)) -> if {
+                        borrowedTyped[patternAncestor!].operand0 => patternSubjectIr!
+                        (patternSubjectIr! >= 0 and patternSubjectIr! < (borrowedTyped -> len) and borrowedTyped[patternSubjectIr!].kind == 5 and borrowedTyped[patternSubjectIr!].operand0 == bindingIr) -> if { true => matchesCarrierUse! }
+                    }
+                }
+            }
+            (siteStart >= UIntSize(0) and use.kind == 5 and use.sourceModule == borrowedTyped[siteIr].sourceModule and use.astNode >= 0 and matchesCarrierUse! and (carrierTypeId < 0 or use.operand0 != bindingIr or (borrowedPrepared -> readonlyCarrierUseTouchesReference(borrowedTyped, useIndex!, carrierTypeId)))) -> if {
                 borrowedPrepared.package.nodes[useRange.astStart + use.astNode].start => useStart
                 useStart > siteStart -> if {
                     borrowedPrepared -> referenceForwardUseReachable(borrowedTyped, siteIr, useIndex!) -> if { true => used! }
@@ -935,7 +1040,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                 typed[escapingReferenceReturn.operand0].typeId => escapingReferenceReturnTypeId!
             }
         }
-        (escapingReferenceFunction.kind == 0 and escapingReferenceReturnTypeId! >= 0 and (prepared -> semanticTypeContainsReadonlyReference(escapingReferenceReturnTypeId!))) -> if {
+        (escapingReferenceFunction.kind == 0 and escapingReferenceReturnTypeId! >= 0 and (prepared -> typedNodeContainsReadonlyReference(typed, escapingReferenceFunctionIndex!))) -> if {
             false => hasInferredReferenceOrigin!
             0 => inferredReferenceOriginIndex!
             inferredReferenceOriginIndex! < (readonlyReferenceReturns! -> len) -> while {
@@ -975,11 +1080,14 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
         false => referenceBindingIsReadonlyReference!
         -1 => referenceBindingCarrierType!
         (referenceBinding.kind == 17 and referenceBinding.operand0 >= 0) -> if {
-            typed[referenceBinding.operand0] => referenceBindingValue
-            (referenceBindingValue.typeId >= 0 and referenceBindingValue.typeId < (prepared.semantic.types -> len)) -> if {
-                referenceBindingValue.typeId => referenceBindingCarrierType!
-                prepared -> semanticTypeContainsReadonlyReference(referenceBindingValue.typeId) -> if { true => referenceBindingIsReadonlyReference! }
-            }
+            # Force the aggregate projection through a scalar slot before it
+            # becomes a nested-call argument; this preserves LLVM dominance
+            # in the compiler's own large typed-IR graph.
+            -1 => referenceBindingValueIr!
+            referenceBinding.operand0 => referenceBindingValueIr!
+            typed[referenceBindingValueIr!] => referenceBindingValue
+            (referenceBindingValue.typeId >= 0 and referenceBindingValue.typeId < (prepared.semantic.types -> len)) -> if { referenceBindingValue.typeId => referenceBindingCarrierType! }
+            prepared -> typedNodeContainsReadonlyReference(typed, referenceBindingValueIr!) -> if { true => referenceBindingIsReadonlyReference! }
         }
         referenceBindingIsReadonlyReference! -> if {
             0 => referenceCarrierCallIndex!

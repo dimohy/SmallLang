@@ -202,6 +202,21 @@ internal sealed partial class SemanticCompiler
                 locals,
                 out origins);
         }
+        if (expression is CallExpression enumConstructor
+            && TryGetReadonlyReferenceEnumConstructor(
+                enumConstructor,
+                out _,
+                out var enumVariant,
+                out var enumPayload)
+            && enumVariant.PayloadType is { } enumPayloadType
+            && TypeContainsReadonlyReference(enumPayloadType))
+        {
+            return TryInferReadonlyReferenceOrigins(
+                enumPayload,
+                functions,
+                locals,
+                out origins);
+        }
         if (expression is CallExpression call
             && TryGetFunction(call.Path, functions, out var called)
             && _readonlyReferenceReturnOrigins.TryGetValue(called, out var returnOrigins))
@@ -847,6 +862,22 @@ internal sealed partial class SemanticCompiler
                 out origins);
         }
 
+        if (expression is CallExpression enumConstructor
+            && TryGetReadonlyReferenceEnumConstructor(
+                enumConstructor,
+                out _,
+                out var enumVariant,
+                out var enumPayload)
+            && enumVariant.PayloadType is { } enumPayloadType
+            && TypeContainsReadonlyReference(enumPayloadType))
+        {
+            return TryGetReadonlyReferenceCallOrigins(
+                enumPayload,
+                functions,
+                bindings,
+                out origins);
+        }
+
         if (expression is CallExpression call
             && TryGetFunction(call.Path, functions, out var called)
             && TypeContainsReadonlyReference(called.ReturnType))
@@ -945,6 +976,24 @@ internal sealed partial class SemanticCompiler
                 return;
             }
 
+            if (_types.IsEnum(valueType)
+                && value is CallExpression enumConstructor
+                && TryGetReadonlyReferenceEnumConstructor(
+                    enumConstructor,
+                    out var enumType,
+                    out var enumVariant,
+                    out var enumPayload)
+                && enumType == valueType
+                && enumVariant.PayloadType is { } enumPayloadType
+                && TypeContainsReadonlyReference(enumPayloadType))
+            {
+                Collect(
+                    enumPayload,
+                    enumPayloadType,
+                    path + "[" + enumVariant.Name + "]");
+                return;
+            }
+
             if (value is NameExpression name)
             {
                 var prefix = CanonicalBorrowOriginName(name.Name);
@@ -974,6 +1023,87 @@ internal sealed partial class SemanticCompiler
             {
                 result[path + leaf] = aggregateOrigins;
             }
+        }
+    }
+
+    private bool TryGetReadonlyReferenceEnumConstructor(
+        CallExpression expression,
+        out BoundType enumType,
+        out BoundEnumVariant variant,
+        out Expression payload)
+    {
+        enumType = default;
+        variant = null!;
+        payload = null!;
+        if (expression.Path.Count < 2 || expression.Arguments.Count != 1)
+        {
+            return false;
+        }
+
+        var typeName = string.Join('.', expression.Path.Take(expression.Path.Count - 1));
+        if (!_types.TryResolve(typeName, out enumType))
+        {
+            if (!typeName.StartsWith("Option<", StringComparison.Ordinal)
+                && !typeName.StartsWith("Result<", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            enumType = ParseType(typeName, expression.Line, expression.Column);
+        }
+        if (!_types.IsEnum(enumType))
+        {
+            return false;
+        }
+
+        variant = _types.GetEnum(enumType).Variants.FirstOrDefault(candidate =>
+            StringComparer.Ordinal.Equals(candidate.Name, expression.Path[^1]))!;
+        if (variant?.PayloadType is null)
+        {
+            return false;
+        }
+        payload = expression.Arguments[0];
+        return true;
+    }
+
+    private IReadOnlyList<string> InstallReadonlyReferenceEnumPatternOrigins(
+        Expression subject,
+        BoundEnumVariant variant,
+        string bindingName)
+    {
+        if (!TryGetBorrowPlace(subject, out var subjectPlace))
+        {
+            return [];
+        }
+
+        var variantPlace = subjectPlace + "[" + variant.Name + "]";
+        var installed = new List<string>();
+        foreach (var carrier in _activeReadonlyReferenceBindings.ToArray())
+        {
+            if (!StringComparer.Ordinal.Equals(carrier, variantPlace)
+                && !carrier.StartsWith(variantPlace + ".", StringComparison.Ordinal)
+                && !carrier.StartsWith(variantPlace + "[", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (!_activeBorrowedTextOrigins.TryGetValue(carrier, out var origins))
+            {
+                continue;
+            }
+
+            var projected = bindingName + carrier[variantPlace.Length..];
+            _activeBorrowedTextOrigins[projected] = origins;
+            _activeReadonlyReferenceBindings.Add(projected);
+            installed.Add(projected);
+        }
+        return installed;
+    }
+
+    private void RemoveReadonlyReferencePatternOrigins(IEnumerable<string> bindings)
+    {
+        foreach (var binding in bindings)
+        {
+            _activeBorrowedTextOrigins.Remove(binding);
+            _activeReadonlyReferenceBindings.Remove(binding);
         }
     }
 

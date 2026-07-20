@@ -305,6 +305,48 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
         }
         tag!
     }
+    nominalVariantPayloadTypeId variantSourceModule: Int, subjectType: typeIds.SemanticType, variantToken: syntax.SyntaxToken -> Int {
+        -1 => payloadTypeId!
+        subjectType.module => ownerSourceModule!
+        subjectType.origin == 2 -> if {
+            (subjectType.module >= 0 and subjectType.module < (prepared.modules -> len)) -> if {
+                prepared.modules[subjectType.module].sourceIndex => ownerSourceModule!
+            }
+        }
+        -1 => ownerDeclarationAst!
+        (ownerSourceModule! >= 0 and ownerSourceModule! < (prepared.package.ranges -> len)) -> if {
+            prepared.package.ranges[ownerSourceModule!] => ownerRange
+            (subjectType.symbol >= 0 and subjectType.symbol < ownerRange.symbolCount) -> if {
+                prepared.package.symbols[ownerRange.symbolStart + subjectType.symbol] => ownerSymbol
+                ownerSymbol.astNode >= 0 -> if { ownerSymbol.astNode => ownerDeclarationAst! }
+            }
+            -1 => variantAst!
+            0 => variantSearch!
+            (ownerDeclarationAst! >= 0 and variantSearch! < ownerRange.astCount and variantAst! < 0) -> while {
+                prepared.package.nodes[ownerRange.astStart + variantSearch!] => candidateVariant
+                (candidateVariant.kind == 27 and candidateVariant.parent == ownerDeclarationAst! and candidateVariant.payloadToken >= 0) -> if {
+                    prepared.package.tokens[ownerRange.tokenStart + candidateVariant.payloadToken] => candidateToken
+                    candidateToken.span.length == variantToken.span.length => sameVariant!
+                    UIntSize(0) => variantByte!
+                    (sameVariant! and variantByte! < candidateToken.span.length) -> while {
+                        (prepared.package.sources[ownerSourceModule!] -> byte(candidateToken.span.start + variantByte!)) != (prepared.package.sources[variantSourceModule] -> byte(variantToken.span.start + variantByte!)) -> if { false => sameVariant! }
+                        variantByte! + UIntSize(1) => variantByte!
+                    }
+                    sameVariant! -> if { variantSearch! => variantAst! }
+                }
+                variantSearch! + 1 => variantSearch!
+            }
+            0 => payloadReferenceSearch!
+            (variantAst! >= 0 and payloadReferenceSearch! < (recursiveTypes.references -> len) and payloadTypeId! < 0) -> while {
+                recursiveTypes.references[payloadReferenceSearch!] => payloadReference
+                (payloadReference.status == 0 and payloadReference.sourceModule == ownerSourceModule! and payloadReference.typeAst >= 0 and prepared.package.nodes[ownerRange.astStart + payloadReference.typeAst].parent == variantAst!) -> if {
+                    payloadReference.typeId => payloadTypeId!
+                }
+                payloadReferenceSearch! + 1 => payloadReferenceSearch!
+            }
+        }
+        payloadTypeId!
+    }
     lowerFunction request: FunctionLowerRequest -> SourceTypedIr {
         [TypedIrNode; ~] => results!
         request.sourceIndex => sourceIndex!
@@ -924,7 +966,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         patternSubjectSearch! < sourceRange.astCount -> while {
                             prepared.package.nodes[sourceRange.astStart + patternSubjectSearch!] => patternSubjectAst
                             frozenRecursiveTypeByAst[sourceRange.astStart + patternSubjectSearch!] => patternSubjectCandidateType
-                            (patternSubjectAst.parent == patternFlowAst and patternSubjectAst.start < prepared.package.nodes[sourceRange.astStart + patternMatchAst].start and patternSubjectCandidateType >= 0 and frozenRecursiveSemanticTypes[patternSubjectCandidateType].kind == 7) -> if {
+                            (patternSubjectAst.parent == patternFlowAst and patternSubjectAst.start < prepared.package.nodes[sourceRange.astStart + patternMatchAst].start and patternSubjectCandidateType >= 0 and (frozenRecursiveSemanticTypes[patternSubjectCandidateType].kind == 7 or frozenRecursiveSemanticTypes[patternSubjectCandidateType].kind == 1)) -> if {
                                 (patternSubjectTypeId! < 0 or patternSubjectAst.start > patternSubjectStart!) -> if {
                                     patternSubjectCandidateType => patternSubjectTypeId!
                                     patternSubjectAst.start => patternSubjectStart!
@@ -935,8 +977,12 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         patternSubjectTypeId! >= 0 -> if {
                             frozenRecursiveSemanticTypes[patternSubjectTypeId!] => patternSubjectType
                             prepared.package.tokens[sourceRange.tokenStart + patternTypeNode.payloadToken] => patternVariantToken
-                            patternSubjectType.first => recursiveExpressionTypeId!
-                            (source -> byte(patternVariantToken.span.start)) == UInt8(69) -> if { patternSubjectType.second => recursiveExpressionTypeId! }
+                            patternSubjectType.kind == 7 -> if {
+                                patternSubjectType.first => recursiveExpressionTypeId!
+                                (source -> byte(patternVariantToken.span.start)) == UInt8(69) -> if { patternSubjectType.second => recursiveExpressionTypeId! }
+                            } else {
+                                sourceIndex! -> nominalVariantPayloadTypeId(patternSubjectType, patternVariantToken) => recursiveExpressionTypeId!
+                            }
                             recursiveExpressionTypeId! >= 0 -> if {
                                 frozenRecursiveSemanticTypes[recursiveExpressionTypeId!] => patternPayloadType
                                 patternPayloadType.origin => expressionTypeOrigin!
@@ -2241,7 +2287,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             entryPatternSubjectSearch! < sourceRange.astCount -> while {
                                 prepared.package.nodes[sourceRange.astStart + entryPatternSubjectSearch!] => entryPatternSubjectAst
                                 frozenRecursiveTypeByAst[sourceRange.astStart + entryPatternSubjectSearch!] => entryPatternSubjectCandidateType
-                                (entryPatternSubjectAst.parent == entryPatternFlowAst and entryPatternSubjectAst.start < prepared.package.nodes[sourceRange.astStart + entryPatternMatchAst].start and entryPatternSubjectCandidateType >= 0 and frozenRecursiveSemanticTypes[entryPatternSubjectCandidateType].kind == 7) -> if {
+                                (entryPatternSubjectAst.parent == entryPatternFlowAst and entryPatternSubjectAst.start < prepared.package.nodes[sourceRange.astStart + entryPatternMatchAst].start and entryPatternSubjectCandidateType >= 0 and (frozenRecursiveSemanticTypes[entryPatternSubjectCandidateType].kind == 7 or frozenRecursiveSemanticTypes[entryPatternSubjectCandidateType].kind == 1)) -> if {
                                     (entryPatternSubjectTypeId! < 0 or entryPatternSubjectAst.start > entryPatternSubjectStart!) -> if {
                                         entryPatternSubjectCandidateType => entryPatternSubjectTypeId!
                                         entryPatternSubjectAst.start => entryPatternSubjectStart!
@@ -2252,8 +2298,12 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             entryPatternSubjectTypeId! >= 0 -> if {
                                 frozenRecursiveSemanticTypes[entryPatternSubjectTypeId!] => entryPatternSubjectType
                                 prepared.package.tokens[sourceRange.tokenStart + entryPatternTypeNode.payloadToken] => entryPatternVariantToken
-                                entryPatternSubjectType.first => recursiveEntryExpressionTypeId!
-                                (source -> byte(entryPatternVariantToken.span.start)) == UInt8(69) -> if { entryPatternSubjectType.second => recursiveEntryExpressionTypeId! }
+                                entryPatternSubjectType.kind == 7 -> if {
+                                    entryPatternSubjectType.first => recursiveEntryExpressionTypeId!
+                                    (source -> byte(entryPatternVariantToken.span.start)) == UInt8(69) -> if { entryPatternSubjectType.second => recursiveEntryExpressionTypeId! }
+                                } else {
+                                    sourceIndex! -> nominalVariantPayloadTypeId(entryPatternSubjectType, entryPatternVariantToken) => recursiveEntryExpressionTypeId!
+                                }
                                 recursiveEntryExpressionTypeId! >= 0 -> if {
                                     frozenRecursiveSemanticTypes[recursiveEntryExpressionTypeId!] => entryPatternPayloadType
                                     entryPatternPayloadType.origin => entryExpressionTypeOrigin!

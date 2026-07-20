@@ -1,0 +1,34 @@
+# Verifies inferred origins for a readonly reference stored in an enum payload.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+wrap value: ref Int -> IntView {
+    IntView.Ref(value -> same)
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+inspect view: IntView -> Int {
+    view -> when {
+        IntView.Empty => 0
+        IntView.Ref(value) => value -> read
+    }
+}
+
+main {
+    40 => owner!
+    owner! -> wrap => stored
+    stored -> inspect => observed
+
+    # The owner may be rebound after the enum's final reference-bearing use.
+    50 => owner!
+    "observed=$observed,next=$(owner!)" -> println
+}

@@ -1,0 +1,1 @@
+safe=0,conflict=1,pattern=1,escape=1

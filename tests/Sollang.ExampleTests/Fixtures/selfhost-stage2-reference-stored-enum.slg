@@ -1,0 +1,23 @@
+# A readonly reference stored in an enum payload keeps its owner live.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    10 => owner!
+    IntView.Ref(owner! -> same) => stored
+    20 => owner!
+    stored -> when {
+        Empty => 0
+        Ref(value) => value -> read
+    } -> println
+}

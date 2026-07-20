@@ -357,7 +357,10 @@ The measured roadmap is currently **53/60 gates (88.3%)**:
 
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2
-compiler and passes Windows and Linux differential gates. Local package
+compiler and passes Windows and Linux differential gates. The latest ownership
+checkpoint infers readonly-reference origins stored in
+both user structs and enum payloads; array and dictionary element storage is
+the next open vertical. Local package
 identities, SemVer requirements, content-pinned Git dependencies, shared
 deterministic workspace locks, and self-host parsers for both versions and
 lock manifests and registry-index selection are implemented. Exact

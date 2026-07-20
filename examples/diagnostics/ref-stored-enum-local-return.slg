@@ -1,0 +1,16 @@
+# An enum cannot return a reference to callee-owned storage.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+bad: -> IntView {
+    10 => local
+    IntView.Ref(local -> same)
+}
+
+main { }

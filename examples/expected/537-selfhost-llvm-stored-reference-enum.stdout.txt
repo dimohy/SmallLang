@@ -1,0 +1,139 @@
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+@sollang_runtime_newline = private constant [1 x i8] c"\0A"
+declare i64 @write(i32, ptr, i64)
+define internal void @sollang_runtime_flush_stdout() {
+entry:
+  ret void
+}
+define internal void @sollang_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  %written = call i64 @write(i32 1, ptr %data, i64 %len)
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i64 @write(i32 1, ptr @sollang_runtime_newline, i64 1)
+  br label %done
+done:
+  ret void
+}
+define internal void @sollang_runtime_print_i32(i32 %value, i1 %newline) {
+entry:
+  %buffer = alloca [12 x i8], align 1
+  %end = getelementptr [12 x i8], ptr %buffer, i64 0, i64 12
+  %wide = sext i32 %value to i64
+  %negative = icmp slt i64 %wide, 0
+  %negated = sub i64 0, %wide
+  %magnitude = select i1 %negative, i64 %negated, i64 %wide
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sollang_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
+define internal void @sollang_runtime_print_i64(i64 %value, i1 %signed, i1 %newline) {
+entry:
+  %buffer = alloca [21 x i8], align 1
+  %end = getelementptr [21 x i8], ptr %buffer, i64 0, i64 21
+  %negative_value = icmp slt i64 %value, 0
+  %negative = and i1 %signed, %negative_value
+  %negated = sub i64 0, %value
+  %magnitude = select i1 %negative, i64 %negated, i64 %value
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sollang_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
+%sollang.enum.t26 = type { i32, [1 x i64] }
+declare void @llvm.trap()
+define ptr @sollang_m0_s3(ptr %arg) {
+entry:
+  ret ptr %arg
+}
+define i32 @sollang_m0_s4(ptr %arg) {
+entry:
+  %return_ref_value = load i32, ptr %arg, align 4
+  ret i32 %return_ref_value
+}
+define i32 @main() {
+entry:
+  %slot9 = alloca i32, align 4
+  store i32 40, ptr %slot9, align 4
+  %v14 = load i32, ptr %slot9, align 4
+  %v13 = call ptr @sollang_m0_s3(ptr %slot9)
+  %v12_enum_slot = alloca %sollang.enum.t26, align 8
+  store %sollang.enum.t26 zeroinitializer, ptr %v12_enum_slot, align 8
+  %v12_enum_tag = getelementptr inbounds %sollang.enum.t26, ptr %v12_enum_slot, i32 0, i32 0
+  store i32 1, ptr %v12_enum_tag, align 4
+  %v12_enum_payload = getelementptr inbounds %sollang.enum.t26, ptr %v12_enum_slot, i32 0, i32 1
+  store ptr %v13, ptr %v12_enum_payload, align 8
+  %v12 = load %sollang.enum.t26, ptr %v12_enum_slot, align 8
+  %v16 = freeze %sollang.enum.t26 %v12
+  %v17_tag = extractvalue %sollang.enum.t26 %v16, 0
+  %v17_subject_slot = alloca %sollang.enum.t26, align 8
+  store %sollang.enum.t26 %v16, ptr %v17_subject_slot, align 8
+  %v17_result = alloca i32, align 4
+  %v17_is_arm0 = icmp eq i32 %v17_tag, 0
+  br i1 %v17_is_arm0, label %match17_arm0, label %match17_next0
+match17_arm0:
+  store i32 0, ptr %v17_result, align 4
+  br label %match17_merge
+match17_next0:
+  %v17_is_arm1 = icmp eq i32 %v17_tag, 1
+  br i1 %v17_is_arm1, label %match17_arm1, label %match17_next1
+match17_arm1:
+  %v17_arm1_payload = getelementptr inbounds %sollang.enum.t26, ptr %v17_subject_slot, i32 0, i32 1
+  %v21 = load ptr, ptr %v17_arm1_payload, align 8
+  %v23 = freeze ptr %v21
+  %v22 = call i32 @sollang_m0_s4(ptr %v23)
+  store i32 %v22, ptr %v17_result, align 4
+  br label %match17_merge
+match17_next1:
+  call void @llvm.trap()
+  unreachable
+match17_merge:
+  %v17 = load i32, ptr %v17_result, align 4
+  call void @sollang_runtime_print_i32(i32 %v17, i1 true)
+  call void @sollang_runtime_flush_stdout()
+  ret i32 0
+}

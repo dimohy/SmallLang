@@ -39,6 +39,8 @@ $referenceOwnerMoveSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixt
 $referenceLoopContinueSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-loop-continue.slg"
 $referenceStoredStructSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-struct.slg"
 $referenceAggregateEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-aggregate-escape.slg"
+$referenceStoredEnumSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-enum.slg"
+$referenceEnumEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-enum-escape.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $expectedStage2Bytes = 11987197L
 
@@ -385,7 +387,8 @@ foreach ($referenceConflict in @(
     @($referenceLivenessSource, "mutation"),
     @($referenceOwnerMoveSource, "move"),
     @($referenceLoopContinueSource, "loop-continue"),
-    @($referenceStoredStructSource, "stored-struct")
+    @($referenceStoredStructSource, "stored-struct"),
+    @($referenceStoredEnumSource, "stored-enum")
 )) {
     $stage1ReferenceOutput = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceConflict[1])-stage1.txt"
     $stage1ReferenceError = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceConflict[1])-stage1.err"
@@ -412,27 +415,32 @@ foreach ($referenceConflict in @(
     }
 }
 
-$stage1AggregateEscapeOutput = Join-Path $artifactsDir "linux-stage2-check-reference-aggregate-escape-stage1.txt"
-$stage1AggregateEscapeError = Join-Path $artifactsDir "linux-stage2-check-reference-aggregate-escape-stage1.err"
-$stage1AggregateEscape = Invoke-ProcessToFile $stage1Path @("linux", $referenceAggregateEscapeSource) $stage1AggregateEscapeOutput $stage1AggregateEscapeError
-$stage2AggregateEscapeOutput = Join-Path $artifactsDir "linux-stage2-check-reference-aggregate-escape-stage2.txt"
-$stage2AggregateEscapeError = Join-Path $artifactsDir "linux-stage2-check-reference-aggregate-escape-stage2.err"
-$stage2AggregateEscape = Invoke-ProcessToFile "wsl.exe" @(
-    "-d", $Distribution, "--", (Convert-ToWslPath $stage2Path), "linux", (Convert-ToWslPath $referenceAggregateEscapeSource)
-) $stage2AggregateEscapeOutput $stage2AggregateEscapeError
-foreach ($candidate in @(
-    @($stage1AggregateEscape, $stage1AggregateEscapeOutput, $stage1AggregateEscapeError, "stage-1"),
-    @($stage2AggregateEscape, $stage2AggregateEscapeOutput, $stage2AggregateEscapeError, "stage-2")
+foreach ($referenceEscape in @(
+    @($referenceAggregateEscapeSource, "aggregate-escape"),
+    @($referenceEnumEscapeSource, "enum-escape")
 )) {
-    $candidate[0].WaitForExit()
-    $candidate[0].Refresh()
-    $diagnosticText = (Get-Content $candidate[1] -Raw) + (Get-Content $candidate[2] -Raw)
-    if ($candidate[0].ExitCode -eq 0) { throw "$($candidate[3]) accepted a returned aggregate containing a callee-owned readonly reference" }
-    if ($diagnosticText -notmatch 'error\[E22\]') {
-        throw "$($candidate[3]) did not emit ownership diagnostic E22 for a returned reference-bearing aggregate: '$diagnosticText'"
-    }
-    if ($diagnosticText -match 'target triple') {
-        throw "$($candidate[3]) began LLVM emission before rejecting reference-bearing aggregate escape diagnostic E22"
+    $stage1AggregateEscapeOutput = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage1.txt"
+    $stage1AggregateEscapeError = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage1.err"
+    $stage1AggregateEscape = Invoke-ProcessToFile $stage1Path @("linux", $referenceEscape[0]) $stage1AggregateEscapeOutput $stage1AggregateEscapeError
+    $stage2AggregateEscapeOutput = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage2.txt"
+    $stage2AggregateEscapeError = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage2.err"
+    $stage2AggregateEscape = Invoke-ProcessToFile "wsl.exe" @(
+        "-d", $Distribution, "--", (Convert-ToWslPath $stage2Path), "linux", (Convert-ToWslPath $referenceEscape[0])
+    ) $stage2AggregateEscapeOutput $stage2AggregateEscapeError
+    foreach ($candidate in @(
+        @($stage1AggregateEscape, $stage1AggregateEscapeOutput, $stage1AggregateEscapeError, "stage-1"),
+        @($stage2AggregateEscape, $stage2AggregateEscapeOutput, $stage2AggregateEscapeError, "stage-2")
+    )) {
+        $candidate[0].WaitForExit()
+        $candidate[0].Refresh()
+        $diagnosticText = (Get-Content $candidate[1] -Raw) + (Get-Content $candidate[2] -Raw)
+        if ($candidate[0].ExitCode -eq 0) { throw "$($candidate[3]) accepted returned $($referenceEscape[1]) containing a callee-owned readonly reference" }
+        if ($diagnosticText -notmatch 'error\[E22\]') {
+            throw "$($candidate[3]) did not emit ownership diagnostic E22 for $($referenceEscape[1]): '$diagnosticText'"
+        }
+        if ($diagnosticText -match 'target triple') {
+            throw "$($candidate[3]) began LLVM emission before rejecting $($referenceEscape[1]) diagnostic E22"
+        }
     }
 }
 Write-Host "[linux-stage2 6/6] PASS E17-E23 ownership violations block LLVM emission in stage-1 and stage-2."

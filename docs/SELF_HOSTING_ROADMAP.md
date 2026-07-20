@@ -2869,6 +2869,24 @@ Stage2 passes **7/7** at **12,292,062 LLVM bytes**, and Linux Stage2 passes
 partial, 3 missing: 53/60 (88.3%)** because enum payloads and container element
 storage remain open. Stage3 cadence advances to **1/10**, so Stage3 is not due.
 
+D224 extends inferred stored-reference origins to nominal enum payloads. C# and
+self-host analysis carry a constructor payload's origin into the enum carrier,
+reject a callee-local carrier escape with E22, preserve E23 through a later
+enum match, and project the carrier origin onto the selected arm's payload
+binding. The self-host typed-IR pass resolves each nominal variant payload from
+the declaration AST, while LLVM stores and reloads `ref T` as the payload
+pointer rather than the pointee.
+
+Examples 535-537, three diagnostics, and the Windows/Linux Stage2 enum fixtures
+cover safe last use, arm-local field mutation, local escape, self-host
+classification, and native LLVM execution. Release builds have zero warnings
+and errors. Windows and Linux full suites pass **722/722**. Windows Stage2 passes
+**7/7** at **12,369,268 LLVM bytes**, and Linux Stage2 passes **6/6** at
+**12,365,847 LLVM bytes**. Formal progress remains **49 complete, 8 partial, 3
+missing: 53/60 (88.3%)** because array and dictionary element storage still
+keep the general stored-reference gate partial. Stage3 cadence advances to
+**2/10**, so the periodic fixed-point run is not due.
+
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
    (implemented after example 52).

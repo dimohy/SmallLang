@@ -1,0 +1,31 @@
+# Rebinding an owner inside an enum arm conflicts with the extracted payload
+# reference.
+struct Owner {
+    value: Int
+}
+
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    Owner { value: 10 } => owner!
+    IntView.Ref(owner!.value -> same) => stored
+
+    stored -> when {
+        Empty => 0
+        Ref(value) {
+            20 => owner!.value
+            value -> read
+        }
+    } -> println
+}

@@ -4816,6 +4816,7 @@ internal sealed partial class SemanticCompiler
             }
 
             var armBindings = new Dictionary<string, BoundType>(bindings, StringComparer.Ordinal);
+            IReadOnlyList<string> patternReferenceBindings = [];
             if (variant.PayloadType is { } payloadType)
             {
                 if (pattern.BindingName is null)
@@ -4828,6 +4829,13 @@ internal sealed partial class SemanticCompiler
 
                 ValidateBindingName(pattern.BindingName, pattern.Line, pattern.Column);
                 armBindings[pattern.BindingName] = payloadType;
+                if (TypeContainsReadonlyReference(payloadType))
+                {
+                    patternReferenceBindings = InstallReadonlyReferenceEnumPatternOrigins(
+                        expression.Subject,
+                        variant,
+                        pattern.BindingName);
+                }
             }
             else if (pattern.BindingName is not null)
             {
@@ -4852,6 +4860,7 @@ internal sealed partial class SemanticCompiler
                     allowReadIntCall,
                     allowedOwnedOuterResultName,
                     mutableBindings);
+                RemoveReadonlyReferencePatternOrigins(patternReferenceBindings);
                 if (armReachesJoin)
                 {
                     branchExitBorrowedTextOrigins.Add(CaptureBorrowedTextOriginState());
@@ -4859,6 +4868,7 @@ internal sealed partial class SemanticCompiler
             }
             finally
             {
+                RemoveReadonlyReferencePatternOrigins(patternReferenceBindings);
                 _borrowedTextContinuationNames = previousContinuation;
             }
             resultType ??= armType;

@@ -9084,8 +9084,9 @@ Implementation checklist:
   sibling use.
 - [x] Emit and execute the struct's pointer field in C# and self-host LLVM.
 - [x] Verify stage-1/stage-2 parity on Windows and Linux.
-- [ ] Extend the same rule to enum payloads and array/dictionary element
-  storage before closing the general user-aggregate gate.
+- [x] Extend the same rule to enum payloads.
+- [ ] Extend the same rule to array/dictionary element storage before closing
+  the general user-aggregate gate.
 
 Examples 532-534 cover reference-compiler execution, checked self-host
 classification, direct-literal tracking, local escape rejection, and native
@@ -9106,4 +9107,50 @@ References:
 - [Swift non-escapable types](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0446-non-escapable.md)
 - [Swift safe C++ interop](https://www.swift.org/documentation/cxx-interop/safe-interop/)
 - [Swift 6.2 Span](https://www.swift.org/blog/swift-6.2-released/)
+- [Rust lifetime syntax for structs](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html)
+
+## D224 - Inferred Origins for References Stored in Enum Payloads
+
+Status: implemented enum vertical with cross-target Stage2 verification
+Date: 2026-07-21
+
+Sollang extends its implicit origin model from struct fields to nominal enum
+payloads. Constructing `Variant(refValue)` transfers the reference's symbolic
+origin into the enum carrier, returning a reference-bearing enum is legal only
+when that origin comes from a reference-bearing input, and extracting the
+payload in `when` keeps the owner protected until the payload alias's final
+reachable use. No lifetime parameter is added to source syntax.
+
+The C# compiler recursively collects enum payload leaf paths such as
+`stored[Ref]`, maps them to pattern bindings while an arm is checked, and
+applies E22/E23 to direct constructors, returned carriers, owner rebinding, and
+field mutation inside the selected arm. The self-host type and ownership passes
+recover nominal variant payload types from the declaration AST, carry the same
+reference-bearing classification into typed IR, connect pattern uses to their
+enum carrier, and emit the payload pointer unchanged. Mutable scalar slots are
+used at nested type-query call boundaries so the compiler's own LLVM IR keeps
+every `extractvalue` definition ahead of its use.
+
+Examples 535-537 and three diagnostics cover native execution, self-host
+classification, pattern-arm liveness, local escape rejection, and LLVM
+assembly. The Windows and Linux Stage2 fixtures enforce the new E22/E23 cases
+in both compiler generations. Release builds have zero warnings and errors;
+Windows and Linux full suites pass **722/722**. Windows Stage2 passes **7/7** at
+**12,369,268 LLVM bytes**, and Linux Stage2 passes **6/6** at **12,365,847 LLVM
+bytes**. The periodic Stage3 cadence advances to **2/10**, so Stage3 is not due.
+
+Formal progress remains **49 complete, 8 partial, 3 missing: 53/60 (88.3%)**.
+Enum storage closes the second user-aggregate vertical, but fixed/growable array
+and dictionary element storage still keep the general stored-reference gate
+partial.
+
+This follows Mojo's inferred symbolic origins and Swift's lifetime-dependent,
+non-escapable aggregate direction while preserving Rust's owner-outlives-borrow
+safety invariant without exposing lifetime punctuation.
+
+References:
+
+- [Mojo lifetimes and origins](https://docs.modular.com/mojo/manual/values/lifetimes)
+- [Swift non-escapable types](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0446-non-escapable.md)
+- [Swift safe C++ interop](https://www.swift.org/documentation/cxx-interop/safe-interop/)
 - [Rust lifetime syntax for structs](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html)

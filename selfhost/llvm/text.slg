@@ -11037,8 +11037,22 @@ usesIntInterpolation context: EmitContext -> Bool {
     0 => nodeIndex!
     nodeIndex! < (context.ir -> len) -> while {
         context.ir[nodeIndex!] => node
-        (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0 and context.ir[node.operand0].typeOrigin == 1 and context.ir[node.operand0].typeSymbol >= 2 and context.ir[node.operand0].typeSymbol <= 14) -> if {
-            true => usesInterpolation!
+        (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0) -> if {
+            context.ir[node.operand0] => outputArgument
+            (outputArgument.typeOrigin == 1 and outputArgument.typeSymbol >= 2 and outputArgument.typeSymbol <= 14) => outputArgumentIsInt!
+            (not outputArgumentIsInt! and outputArgument.typeId >= 0 and outputArgument.typeId < (context.types -> len)) -> if {
+                context.types[outputArgument.typeId] => outputArgumentType
+                (outputArgumentType.origin == 1 and outputArgumentType.symbol >= 2 and outputArgumentType.symbol <= 14) -> if { true => outputArgumentIsInt! }
+            }
+            (not outputArgumentIsInt! and node.operand1 >= 0 and node.operand1 < (context.ir -> len)) -> if {
+                context.ir[node.operand1] => outputFlowResult
+                (outputFlowResult.typeOrigin == 1 and outputFlowResult.typeSymbol >= 2 and outputFlowResult.typeSymbol <= 14) -> if { true => outputArgumentIsInt! }
+                (not outputArgumentIsInt! and outputFlowResult.typeId >= 0 and outputFlowResult.typeId < (context.types -> len)) -> if {
+                    context.types[outputFlowResult.typeId] => outputFlowResultType
+                    (outputFlowResultType.origin == 1 and outputFlowResultType.symbol >= 2 and outputFlowResultType.symbol <= 14) -> if { true => outputArgumentIsInt! }
+                }
+            }
+            outputArgumentIsInt! -> if { true => usesInterpolation! }
         }
         (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0 and context.ir[node.operand0].kind == 2) -> if {
             context.ir[node.operand0] => argument
@@ -11084,8 +11098,22 @@ usesBoolInterpolation context: EmitContext -> Bool {
     0 => nodeIndex!
     nodeIndex! < (context.ir -> len) -> while {
         context.ir[nodeIndex!] => node
-        (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0 and context.ir[node.operand0].typeOrigin == 1 and context.ir[node.operand0].typeSymbol == 23) -> if {
-            true => usesInterpolation!
+        (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0) -> if {
+            context.ir[node.operand0] => outputArgument
+            (outputArgument.typeOrigin == 1 and outputArgument.typeSymbol == 23) => outputArgumentIsBool!
+            (not outputArgumentIsBool! and outputArgument.typeId >= 0 and outputArgument.typeId < (context.types -> len)) -> if {
+                context.types[outputArgument.typeId] => outputArgumentType
+                (outputArgumentType.origin == 1 and outputArgumentType.symbol == 23) -> if { true => outputArgumentIsBool! }
+            }
+            (not outputArgumentIsBool! and node.operand1 >= 0 and node.operand1 < (context.ir -> len)) -> if {
+                context.ir[node.operand1] => outputFlowResult
+                (outputFlowResult.typeOrigin == 1 and outputFlowResult.typeSymbol == 23) -> if { true => outputArgumentIsBool! }
+                (not outputArgumentIsBool! and outputFlowResult.typeId >= 0 and outputFlowResult.typeId < (context.types -> len)) -> if {
+                    context.types[outputFlowResult.typeId] => outputFlowResultType
+                    (outputFlowResultType.origin == 1 and outputFlowResultType.symbol == 23) -> if { true => outputArgumentIsBool! }
+                }
+            }
+            outputArgumentIsBool! -> if { true => usesInterpolation! }
         }
         (node.kind == 6 and (node.symbol == -101 or node.symbol == -102) and node.operand0 >= 0 and context.ir[node.operand0].kind == 2) -> if {
             context.ir[node.operand0] => argument

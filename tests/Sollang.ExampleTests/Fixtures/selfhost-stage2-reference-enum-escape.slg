@@ -1,0 +1,18 @@
+# A returned enum cannot hide a readonly reference to callee-owned storage.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+escape: -> IntView {
+    10 => local
+    IntView.Ref(local -> same)
+}
+
+main {
+    escape => escaped
+}
