@@ -1,3 +1,4 @@
+# Verifies generic indexed replacement while preserving the array element type.
 struct Point {
     x: Int
     y: Int

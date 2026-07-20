@@ -1,3 +1,4 @@
+# Verifies self-host AST lowering for declarations and their payloads.
 import sollang.compiler.ast as ast
 
 main {

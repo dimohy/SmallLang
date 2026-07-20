@@ -1,3 +1,4 @@
+# Verifies construction of a green concrete-syntax tree in the self-host compiler.
 import sollang.compiler.cst as cst
 
 main {

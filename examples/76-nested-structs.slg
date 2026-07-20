@@ -1,3 +1,4 @@
+# Verifies that a struct may declare and use a nested struct type.
 struct Lexer {
     struct Cursor {
         offset: Int

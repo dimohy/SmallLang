@@ -1,3 +1,4 @@
+# Verifies importing a generated grammar table as a regular Sollang module.
 import syntax.generated.slg as grammar
 
 main {

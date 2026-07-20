@@ -1,3 +1,4 @@
+# Verifies typed byte-arena allocation with an explicitly mutable arena owner.
 reserveByte memory: mut Arena -> UIntSize {
     memory -> alloc(1, 1)
 }

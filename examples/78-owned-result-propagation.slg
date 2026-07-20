@@ -1,3 +1,4 @@
+# Verifies ownership transfer and cleanup for Result values containing boxed data.
 struct OwnedPayload {
     payload: box Int
 }

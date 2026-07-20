@@ -1,3 +1,4 @@
+# Verifies pointer-sized integer aliases used in a native span-like struct.
 struct NativeSpan {
     offset: Size
     length: UIntSize

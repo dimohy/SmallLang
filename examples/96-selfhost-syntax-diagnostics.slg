@@ -1,3 +1,4 @@
+# Verifies self-host syntax diagnostics for malformed source input.
 import sollang.compiler.diagnostics as diagnostics
 
 main {

@@ -1,3 +1,4 @@
+# Verifies Result construction, pattern matching, and propagated error values.
 validate value: Int -> Result<Int, Text> => when {
     value >= 0 => Result<Int, Text>.Ok(value)
     else => Result<Int, Text>.Err("negative")

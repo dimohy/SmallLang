@@ -1,3 +1,4 @@
+# Verifies generic binary reading, optional values, and Result-based diagnostics.
 import sys.file as file
 
 describeUInt16 result: Result<Option<UInt16>, Text> -> Text {

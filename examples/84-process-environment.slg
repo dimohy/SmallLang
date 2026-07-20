@@ -1,3 +1,4 @@
+# Verifies optional process-environment lookup and text formatting.
 import sys.process as process
 
 describe value: Option<Text> -> Text {

@@ -1,3 +1,4 @@
+# Verifies source-text byte spans and their conversion to syntax locations.
 import sollang.compiler.syntax as syntax
 
 main {

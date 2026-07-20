@@ -1,3 +1,4 @@
+# Verifies process-argument enumeration through the standard library.
 import sys.process as process
 
 main {

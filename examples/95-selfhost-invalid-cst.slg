@@ -1,3 +1,4 @@
+# Verifies invalid source is represented by an error node in the self-host CST.
 import sollang.compiler.lexer as lexer
 import sollang.compiler.parser as parser
 import sollang.compiler.cst as cst

@@ -1,3 +1,4 @@
+# Verifies mutable scalar bindings updated across a while loop.
 main {
     0 => index!
     0 => total!

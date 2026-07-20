@@ -1,3 +1,4 @@
+# Verifies structured child-process execution and exit-status handling.
 import sys.process as process
 
 exitText code: Int -> Text => code -> when {

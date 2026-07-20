@@ -1,3 +1,4 @@
+# Verifies generic binary writing with explicit integer and Boolean element types.
 import sys.file as file
 
 main {

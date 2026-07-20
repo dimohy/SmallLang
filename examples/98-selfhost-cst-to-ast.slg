@@ -1,3 +1,4 @@
+# Verifies conversion from the self-host green CST into an AST.
 import sollang.compiler.ast as ast
 
 main {

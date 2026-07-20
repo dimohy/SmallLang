@@ -1,3 +1,4 @@
+# Verifies compile-time range construction and compile-time collection mapping.
 main {
     [1..10] => numbers
     [1..10 -> each { it + 1 }] => incremented

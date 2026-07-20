@@ -4,6 +4,7 @@ checkLargeMapInference: -> UIntSize uses File {
     unused -> len
 }
 
+# Verifies memory-mapped byte access without loading the whole file eagerly.
 main {
     map write "artifacts/example-tests/82-memory-mapped-bytes.bin" size 8 => data!
     data![0] = UInt8(65)

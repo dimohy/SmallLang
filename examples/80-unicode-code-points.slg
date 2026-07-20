@@ -1,3 +1,4 @@
+# Verifies Unicode scalar iteration and code-point formatting.
 main {
     "A한é🐶" -> each scalar {
         "U+$(UInt32(scalar))" -> println
