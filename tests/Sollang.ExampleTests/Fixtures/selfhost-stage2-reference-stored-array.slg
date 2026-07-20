@@ -1,0 +1,26 @@
+# Verifies that Stage1 and Stage2 reject an array element owner mutation while
+# an enum payload reference extracted from that element remains live.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, ~] => owner!
+    [IntView.Ref(owner![0] -> same), ~] => stored
+    stored[0] -> when {
+        Empty => 0
+        Ref(value) {
+            30 => owner![0]
+            value -> read
+        }
+    } -> println
+}

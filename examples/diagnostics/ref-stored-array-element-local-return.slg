@@ -1,0 +1,19 @@
+# Returning an array that stores a reference to a local owner must be rejected.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+bad: -> [IntView; ~] {
+    10 => local
+    [IntView.Ref(local -> same), ~]
+}
+
+main {
+    bad => escaped
+    escaped -> println
+}

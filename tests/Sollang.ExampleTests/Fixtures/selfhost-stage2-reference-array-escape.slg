@@ -1,0 +1,19 @@
+# Verifies that Stage1 and Stage2 reject an array carrying a callee-local ref.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+escape: -> [IntView; ~] {
+    10 => local
+    [IntView.Ref(local -> same), ~]
+}
+
+main {
+    escape => escaped
+    escaped -> println
+}

@@ -1,0 +1,26 @@
+# Replacing an array element conflicts while an enum payload reference is live.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, ~] => owner!
+    [IntView.Ref(owner![0] -> same), ~] => stored
+
+    stored[0] -> when {
+        Empty => 0
+        Ref(value) {
+            30 => owner![0]
+            value -> read
+        }
+    } -> println
+}

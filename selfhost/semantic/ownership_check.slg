@@ -110,7 +110,7 @@ semanticTypeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot
                         }
                     }
                 } else {
-                    (currentType.kind == 3 or currentType.kind == 4 or currentType.kind == 6) -> if {
+                    (currentType.kind == 2 or currentType.kind == 3 or currentType.kind == 4 or currentType.kind == 6) -> if {
                         pending! -> push(currentType.first)
                     } else {
                         currentType.kind == 5 -> if {
@@ -180,6 +180,19 @@ typedNodeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot, t
                         }
                     }
                 }
+            }
+        }
+        # A collection literal may reach this check before its recursive
+        # collection type id is repaired. Inspect its direct element nodes as
+        # a fallback; enum constructors and reference-bearing calls already
+        # carry their concrete element type ids at this point.
+        (not contains! and (candidate.kind == 12 or candidate.kind == 14 or candidate.kind == 16)) -> if {
+            0 => aggregateChildIndex!
+            (not contains! and aggregateChildIndex! < (typed -> len)) -> while {
+                typed[aggregateChildIndex!].parent == nodeIndex -> if {
+                    prepared -> typedNodeContainsReadonlyReference(typed, aggregateChildIndex!) -> if { true => contains! }
+                }
+                aggregateChildIndex! + 1 => aggregateChildIndex!
             }
         }
     }
@@ -640,7 +653,10 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                     (patternAncestor! >= 0 and patternAncestor! < (borrowedTyped -> len) and borrowedTyped[patternAncestor!].kind != 27) -> while { borrowedTyped[patternAncestor!].parent => patternAncestor! }
                     (patternAncestor! >= 0 and patternAncestor! < (borrowedTyped -> len)) -> if {
                         borrowedTyped[patternAncestor!].operand0 => patternSubjectIr!
-                        (patternSubjectIr! >= 0 and patternSubjectIr! < (borrowedTyped -> len) and borrowedTyped[patternSubjectIr!].kind == 5 and borrowedTyped[patternSubjectIr!].operand0 == bindingIr) -> if { true => matchesCarrierUse! }
+                        (patternSubjectIr! >= 0 and patternSubjectIr! < (borrowedTyped -> len)) -> if {
+                            patternSubjectIr! -> placeRootBinding => patternSubjectBindingIr
+                            patternSubjectBindingIr == bindingIr -> if { true => matchesCarrierUse! }
+                        }
                     }
                 }
             }

@@ -1,0 +1,69 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies self-host origin tracking for an enum carrier stored in an array.
+main {
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, ~] => owner!
+            [IntView.Ref(owner![0] -> same), ~] => stored
+            stored[0] -> when {
+                Empty => 0
+                Ref(value) {
+                    # This must be rejected while the extracted ref is live.
+                    30 => owner![0]
+                    value -> read
+                }
+            } -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> ownershipCheck.analyze => diagnostics!
+    0 => conflicts!
+    diagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if { conflicts! + 1 => conflicts! }
+    }
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        escape: -> [IntView; ~] {
+            10 => local
+            [IntView.Ref(local -> same), ~]
+        }
+
+        main {
+            escape => escaped
+            escaped -> println
+        }
+        """,
+        ~
+    ] => escapeSources!
+    escapeSources! -> ownershipCheck.analyze => escapeDiagnostics!
+    0 => escapes!
+    escapeDiagnostics! -> each diagnostic {
+        diagnostic.code == 22 -> if { escapes! + 1 => escapes! }
+    }
+    "conflicts=$(conflicts!),escapes=$(escapes!)" -> println
+}

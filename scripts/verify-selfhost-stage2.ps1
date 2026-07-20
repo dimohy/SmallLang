@@ -35,7 +35,9 @@ $referenceLoopContinueSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\F
 $referenceStoredStructSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-struct.slg"
 $referenceAggregateEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-aggregate-escape.slg"
 $referenceStoredEnumSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-enum.slg"
+$referenceStoredArraySource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-array.slg"
 $referenceEnumEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-enum-escape.slg"
+$referenceArrayEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-array-escape.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $runtimeManifestPath = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-compiler-runtime.sources.txt"
 $fingerprintSources = @(
@@ -502,7 +504,8 @@ foreach ($compiler in @(
         @($referenceOwnerMoveSource, "move"),
         @($referenceLoopContinueSource, "loop-continue"),
         @($referenceStoredStructSource, "stored-struct"),
-        @($referenceStoredEnumSource, "stored-enum")
+        @($referenceStoredEnumSource, "stored-enum"),
+        @($referenceStoredArraySource, "stored-array")
     )) {
         $diagnosticOutput = Join-Path $artifactsDir "stage2-check-reference-$($referenceConflict[1])-$($compiler[1]).txt"
         $diagnosticError = Join-Path $artifactsDir "stage2-check-reference-$($referenceConflict[1])-$($compiler[1]).err"
@@ -521,7 +524,8 @@ foreach ($compiler in @(
 
     foreach ($referenceEscape in @(
         @($referenceAggregateEscapeSource, "aggregate-escape"),
-        @($referenceEnumEscapeSource, "enum-escape")
+        @($referenceEnumEscapeSource, "enum-escape"),
+        @($referenceArrayEscapeSource, "array-escape")
     )) {
         $aggregateEscapeOutput = Join-Path $artifactsDir "stage2-check-reference-$($referenceEscape[1])-$($compiler[1]).txt"
         $aggregateEscapeError = Join-Path $artifactsDir "stage2-check-reference-$($referenceEscape[1])-$($compiler[1]).err"

@@ -1,0 +1,28 @@
+# Verifies that a reference-bearing enum stored in an array keeps its origin
+# through indexed extraction and expires after the payload's final use.
+enum IntView {
+    Empty
+    Ref(ref Int)
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, ~] => owner!
+    [IntView.Ref(owner![0] -> same), ~] => stored
+    stored[0] -> when {
+        Empty => 0
+        Ref(value) {
+            value -> read
+        }
+    } => observed
+    # The payload's final use has ended, so replacing the owner element is safe.
+    30 => owner![0]
+    "observed=$observed" -> println
+}

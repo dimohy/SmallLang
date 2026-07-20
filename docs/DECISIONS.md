@@ -9154,3 +9154,41 @@ References:
 - [Swift non-escapable types](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0446-non-escapable.md)
 - [Swift safe C++ interop](https://www.swift.org/documentation/cxx-interop/safe-interop/)
 - [Rust lifetime syntax for structs](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html)
+
+## D225 - Inferred Origins for References Stored in Array Elements
+
+Status: implemented fixed/growable array vertical with self-host semantic verification
+Date: 2026-07-21
+
+Sollang now carries readonly-reference origins through fixed and growable array
+elements. An enum or aggregate stored in an array retains the symbolic union of
+the references it contains. Index extraction and contextual enum matching keep
+the corresponding owner live, while replacing the overlapping array element is
+rejected until the extracted reference has no reachable later use. Returning an
+array containing a callee-local reference remains E22.
+
+The reference compiler matches a precise indexed place against the stored
+`[*]` carrier path; constant indexes may be distinguished when the access is
+known, while dynamic indexes remain conservative. The self-host ownership pass
+mirrors the same rule, including a fallback scan for collection literals whose
+recursive collection type id is repaired after ownership analysis. No lifetime
+syntax is exposed.
+
+Examples 538-539, two diagnostics, and Windows/Linux Stage2 fixtures cover
+native array execution, self-host E22/E23 classification, indexed pattern
+extraction, and Stage1/Stage2 parity. Windows full tests pass **726/726**;
+Linux array-focused tests pass **4/4**. Windows Stage2 passes **7/7** at
+**12,371,921 LLVM bytes**, and Linux Stage2 passes **6/6** at
+**12,368,500 LLVM bytes**. The formal score remains 53/60 (88.3%) because
+dictionary element storage is still open. Dictionary values and keys will use
+a conservative wildcard path until the Swiss-table address and mutation rules
+are complete.
+
+This keeps Rust's owner-outlives-borrow invariant and Mojo's inferred origins,
+while retaining Sollang's compact array syntax and implicit lifetimes.
+
+References:
+
+- [Mojo lifetimes and origins](https://docs.modular.com/mojo/manual/values/lifetimes)
+- [Rust borrow splitting](https://doc.rust-lang.org/nomicon/borrow-splitting.html)
+- [Swift Collection](https://developer.apple.com/documentation/swift/collection)

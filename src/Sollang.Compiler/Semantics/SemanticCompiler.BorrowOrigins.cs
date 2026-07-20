@@ -1079,9 +1079,7 @@ internal sealed partial class SemanticCompiler
         var installed = new List<string>();
         foreach (var carrier in _activeReadonlyReferenceBindings.ToArray())
         {
-            if (!StringComparer.Ordinal.Equals(carrier, variantPlace)
-                && !carrier.StartsWith(variantPlace + ".", StringComparison.Ordinal)
-                && !carrier.StartsWith(variantPlace + "[", StringComparison.Ordinal))
+            if (!TryGetBorrowPlaceRelativeSuffix(variantPlace, carrier, out var suffix))
             {
                 continue;
             }
@@ -1090,7 +1088,7 @@ internal sealed partial class SemanticCompiler
                 continue;
             }
 
-            var projected = bindingName + carrier[variantPlace.Length..];
+            var projected = bindingName + suffix;
             _activeBorrowedTextOrigins[projected] = origins;
             _activeReadonlyReferenceBindings.Add(projected);
             installed.Add(projected);
@@ -1174,6 +1172,43 @@ internal sealed partial class SemanticCompiler
                 place = "";
                 return false;
         }
+    }
+
+    private static bool TryGetBorrowPlaceRelativeSuffix(
+        string prefix,
+        string candidate,
+        out string suffix)
+    {
+        var prefixParts = SplitBorrowPlace(prefix);
+        var candidateParts = SplitBorrowPlace(candidate);
+        if (candidateParts.Count < prefixParts.Count
+            || !StringComparer.Ordinal.Equals(candidateParts[0], prefixParts[0]))
+        {
+            suffix = "";
+            return false;
+        }
+
+        for (var index = 1; index < prefixParts.Count; index++)
+        {
+            var expected = prefixParts[index];
+            var actual = candidateParts[index];
+            if (StringComparer.Ordinal.Equals(expected, actual))
+            {
+                continue;
+            }
+            if (expected.Length > 1 && actual.Length > 1
+                && expected[0] == '[' && actual[0] == '['
+                && (expected == "[*]" || actual == "[*]"))
+            {
+                continue;
+            }
+
+            suffix = "";
+            return false;
+        }
+
+        suffix = string.Concat(candidateParts.Skip(prefixParts.Count));
+        return true;
     }
 
     private bool TryUnionReadonlyReferenceCallOrigins(

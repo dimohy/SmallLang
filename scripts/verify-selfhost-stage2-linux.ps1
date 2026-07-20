@@ -40,7 +40,9 @@ $referenceLoopContinueSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\F
 $referenceStoredStructSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-struct.slg"
 $referenceAggregateEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-aggregate-escape.slg"
 $referenceStoredEnumSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-enum.slg"
+$referenceStoredArraySource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-stored-array.slg"
 $referenceEnumEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-enum-escape.slg"
+$referenceArrayEscapeSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-reference-array-escape.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $expectedStage2Bytes = 11987197L
 
@@ -388,7 +390,8 @@ foreach ($referenceConflict in @(
     @($referenceOwnerMoveSource, "move"),
     @($referenceLoopContinueSource, "loop-continue"),
     @($referenceStoredStructSource, "stored-struct"),
-    @($referenceStoredEnumSource, "stored-enum")
+    @($referenceStoredEnumSource, "stored-enum"),
+    @($referenceStoredArraySource, "stored-array")
 )) {
     $stage1ReferenceOutput = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceConflict[1])-stage1.txt"
     $stage1ReferenceError = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceConflict[1])-stage1.err"
@@ -417,7 +420,8 @@ foreach ($referenceConflict in @(
 
 foreach ($referenceEscape in @(
     @($referenceAggregateEscapeSource, "aggregate-escape"),
-    @($referenceEnumEscapeSource, "enum-escape")
+    @($referenceEnumEscapeSource, "enum-escape"),
+    @($referenceArrayEscapeSource, "array-escape")
 )) {
     $stage1AggregateEscapeOutput = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage1.txt"
     $stage1AggregateEscapeError = Join-Path $artifactsDir "linux-stage2-check-reference-$($referenceEscape[1])-stage1.err"

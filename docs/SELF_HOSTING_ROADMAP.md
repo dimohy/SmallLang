@@ -1,7 +1,7 @@
 # Sollang Self-Hosting Roadmap
 
 Status: active
-Updated: 2026-07-20
+Updated: 2026-07-21
 
 The end state is an Sollang compiler written in Sollang that reads a multi-file Sollang
 program, performs lexical, syntactic, type, ownership, and module analysis,
@@ -2886,6 +2886,25 @@ and errors. Windows and Linux full suites pass **722/722**. Windows Stage2 passe
 missing: 53/60 (88.3%)** because array and dictionary element storage still
 keep the general stored-reference gate partial. Stage3 cadence advances to
 **2/10**, so the periodic fixed-point run is not due.
+
+D225 extends the same inferred-origin rule to fixed and growable array
+elements. The C# compiler projects an indexed carrier as `[*]`, preserving
+precision for known indexes and conservatively treating dynamic indexes as
+overlapping. The self-host ownership pass now recognizes collection elements,
+including enum payloads extracted through an indexed `when` subject, and its
+collection-literal fallback keeps analysis correct while recursive type IDs are
+repaired. E22 rejects an array returning a callee-local reference; E23 rejects
+replacement of an overlapping element while the extracted reference remains
+live.
+
+Examples 538-539, two diagnostics, and Windows/Linux Stage2 fixtures cover
+native array execution, self-host E22/E23 classification, indexed pattern
+extraction, and Stage1/Stage2 parity. Windows full tests pass **726/726** and
+the Linux array-focused slice passes **4/4**. Windows Stage2 passes **7/7** at
+**12,371,921 LLVM bytes**; Linux Stage2 passes **6/6** at **12,368,500 LLVM
+bytes**. The formal score remains **49 complete, 8 partial, 3 missing: 53/60
+(88.3%)** because dictionary element storage is still open. Stage3 cadence
+remains **2/10** until the next Stage2 checkpoint.
 
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
