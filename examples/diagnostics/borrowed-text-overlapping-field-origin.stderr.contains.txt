@@ -1,0 +1,1 @@
+cannot move or mutate origin 'sources.left' while borrowed Text view 'leftView' is live in this scope

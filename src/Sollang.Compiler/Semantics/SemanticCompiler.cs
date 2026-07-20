@@ -2494,11 +2494,17 @@ internal sealed partial class SemanticCompiler
 
                     break;
                 case IndexAssignmentStatement assignment:
-                    RejectBorrowedTextOriginMutation(assignment.Name, assignment.Line, assignment.Column);
+                    RejectBorrowedTextOriginMutation(
+                        BorrowOriginIndexedPlace(assignment.Name, assignment.Index),
+                        assignment.Line,
+                        assignment.Column);
                     BindIndexAssignment(assignment, functions, bindings, mutableBindings, yieldInputType);
                     break;
                 case FieldAssignmentStatement assignment:
-                    RejectBorrowedTextOriginMutation(assignment.Name, assignment.Line, assignment.Column);
+                    RejectBorrowedTextOriginMutation(
+                        $"{CanonicalBorrowOriginName(assignment.Name)}.{assignment.FieldName}",
+                        assignment.Line,
+                        assignment.Column);
                     BindFieldAssignment(assignment, functions, bindings, mutableBindings, yieldInputType);
                     break;
                 case BlockFunctionCallStatement blockFunctionCall:

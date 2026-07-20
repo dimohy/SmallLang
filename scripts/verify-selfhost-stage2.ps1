@@ -23,6 +23,7 @@ $borrowConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures
 $borrowUnionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-union-conflict.slg"
 $borrowAliasConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-alias-conflict.slg"
 $borrowAggregateConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-aggregate-conflict.slg"
+$borrowProjectionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-projection-conflict.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $runtimeManifestPath = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-compiler-runtime.sources.txt"
 $fingerprintSources = @(
@@ -338,7 +339,8 @@ foreach ($conflict in @(
     @($borrowConflictSource, "single"),
     @($borrowUnionConflictSource, "union"),
     @($borrowAliasConflictSource, "alias"),
-    @($borrowAggregateConflictSource, "aggregate")
+    @($borrowAggregateConflictSource, "aggregate"),
+    @($borrowProjectionConflictSource, "projection")
 )) {
     foreach ($compiler in @(
         @($stage1Path, "stage1"),
@@ -365,7 +367,7 @@ foreach ($conflict in @(
         }
     }
 }
-Write-Host "[stage2 6/7] PASS single, union, transferred, and aggregate-origin E21 block LLVM emission in stage-1 and stage-2."
+Write-Host "[stage2 6/7] PASS single, union, transferred, aggregate, and projected-origin E21 block LLVM emission in stage-1 and stage-2."
 
 Write-Host "[stage2 7/7] Compare C# reference and native Sollang compiler runtime behavior."
 & dotnet run --project $runnerProject -c Release --no-build -- `

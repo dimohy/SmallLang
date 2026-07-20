@@ -1,0 +1,19 @@
+import sys.file as file
+
+# Verifies that two unequal compile-time array indices identify disjoint places,
+# so replacing one owned element cannot invalidate a view borrowed from another.
+
+prefix source: file.SourceText -> Text {
+    source -> slice(UIntSize(0), UIntSize(3))
+}
+
+main {
+    "lexer" -> file.borrowText => left!
+    "parser" -> file.borrowText => right!
+    [left!, right!, ~] => sources!
+    sources![0] -> prefix => leftView
+    "semantic" -> file.borrowText => replacement!
+    replacement! => sources![1]
+    leftView -> println
+    sources![1] -> prefix -> println
+}

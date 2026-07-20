@@ -4308,8 +4308,8 @@ public movesFrom ir: [TypedIrNode; ~] -> [MoveEvent; ~] {
         movedValueIr! >= 0 -> if {
             movedValueIr! => moveRootIr!
             -1 => moveMemberIr!
-            ir[moveRootIr!].kind == 13 -> if { moveRootIr! => moveMemberIr! }
-            (moveRootIr! >= 0 and ir[moveRootIr!].kind == 13) -> while { ir[moveRootIr!].operand0 => moveRootIr! }
+            (ir[moveRootIr!].kind == 13 or ir[moveRootIr!].kind == 15) -> if { moveRootIr! => moveMemberIr! }
+            (moveRootIr! >= 0 and (ir[moveRootIr!].kind == 13 or ir[moveRootIr!].kind == 15)) -> while { ir[moveRootIr!].operand0 => moveRootIr! }
             (moveRootIr! >= 0 and ir[moveRootIr!].kind == 5 and ir[moveRootIr!].symbol >= 0) -> if {
                 site.parent => moveRegion!
                 (moveRegion! >= 0 and ir[moveRegion!].kind != 1 and ir[moveRegion!].kind != 11 and ir[moveRegion!].kind != 19 and ir[moveRegion!].kind != 20) -> while {

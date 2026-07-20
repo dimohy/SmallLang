@@ -1,0 +1,118 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies self-host E21 analysis for nested index-and-field places: unequal
+# constant indices are disjoint, while equal and dynamic indices may overlap.
+
+main {
+    """
+    namespace sys.file
+
+    public struct SourceText {
+        token: UInt64
+    }
+
+    borrowText text: Text -> SourceText = intrinsic
+    """ => fileSource
+
+    # A view from element 0 remains valid when element 1 is extracted.
+    [
+        """
+        import sys.file as file
+
+        struct Entry {
+            source: file.SourceText
+        }
+
+        prefix source: file.SourceText -> Text {
+            source -> slice(UIntSize(0), UIntSize(3))
+        }
+
+        main {
+            Entry { source: "lexer" -> file.borrowText } => left!
+            Entry { source: "parser" -> file.borrowText } => right!
+            [left!, right!, ~] => sources!
+            sources![0].source -> prefix => view
+            sources! -> take(1) => moved!
+            view -> len -> println
+        }
+        """,
+        fileSource,
+        ~
+    ] => validSources!
+    validSources! -> ownershipCheck.analyze => validErrors!
+    0 => validConflicts!
+    validErrors! -> each error {
+        error.code == 21 -> if {
+            validConflicts! + 1 => validConflicts!
+        }
+    }
+
+    # Extracting the exact element that owns the live view must report E21.
+    [
+        """
+        import sys.file as file
+
+        struct Entry {
+            source: file.SourceText
+        }
+
+        prefix source: file.SourceText -> Text {
+            source -> slice(UIntSize(0), UIntSize(3))
+        }
+
+        main {
+            Entry { source: "lexer" -> file.borrowText } => left!
+            Entry { source: "parser" -> file.borrowText } => right!
+            [left!, right!, ~] => sources!
+            sources![0].source -> prefix => view
+            sources! -> take(0) => moved!
+            view -> len -> println
+        }
+        """,
+        fileSource,
+        ~
+    ] => invalidSources!
+    invalidSources! -> ownershipCheck.analyze => invalidErrors!
+    0 => invalidConflicts!
+    invalidErrors! -> each error {
+        error.code == 21 -> if {
+            invalidConflicts! + 1 => invalidConflicts!
+        }
+    }
+
+    # A runtime index cannot prove disjointness and must report E21.
+    [
+        """
+        import sys.file as file
+
+        struct Entry {
+            source: file.SourceText
+        }
+
+        prefix source: file.SourceText -> Text {
+            source -> slice(UIntSize(0), UIntSize(3))
+        }
+
+        main {
+            Entry { source: "lexer" -> file.borrowText } => left!
+            Entry { source: "parser" -> file.borrowText } => right!
+            [left!, right!, ~] => sources!
+            sources![0].source -> prefix => view
+            1 => index
+            sources! -> take(index) => moved!
+            view -> len -> println
+        }
+        """,
+        fileSource,
+        ~
+    ] => dynamicSources!
+    dynamicSources! -> ownershipCheck.analyze => dynamicErrors!
+    0 => dynamicConflicts!
+    dynamicErrors! -> each error {
+        error.code == 21 -> if {
+            dynamicConflicts! + 1 => dynamicConflicts!
+        }
+    }
+
+    "disjoint conflicts=$(validConflicts!), overlapping conflicts=$(invalidConflicts!), dynamic conflicts=$(dynamicConflicts!)" -> println
+}

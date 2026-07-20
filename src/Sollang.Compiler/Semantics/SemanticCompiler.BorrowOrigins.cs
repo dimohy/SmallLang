@@ -580,10 +580,20 @@ internal sealed partial class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         out IReadOnlySet<string> origins)
     {
+        return TryGetConcreteBorrowOrigins(expression, bindings, out origins, out _);
+    }
+
+    private bool TryGetConcreteBorrowOrigins(
+        Expression expression,
+        IReadOnlyDictionary<string, BoundType> bindings,
+        out IReadOnlySet<string> origins,
+        out bool isOwnedPlace)
+    {
         if (expression is NameExpression name)
         {
             if (_activeBorrowedTextOrigins.TryGetValue(name.Name, out origins!))
             {
+                isOwnedPlace = false;
                 return true;
             }
             if (bindings.ContainsKey(name.Name))
@@ -591,12 +601,39 @@ internal sealed partial class SemanticCompiler
                 origins = new HashSet<string>(
                     [CanonicalBorrowOriginName(name.Name)],
                     StringComparer.Ordinal);
+                isOwnedPlace = true;
                 return true;
             }
         }
+
+        if (expression is FieldAccessExpression field
+            && TryGetConcreteBorrowOrigins(field.Source, bindings, out var fieldOrigins, out isOwnedPlace))
+        {
+            origins = isOwnedPlace
+                ? AppendBorrowProjection(fieldOrigins, $".{field.FieldName}")
+                : fieldOrigins;
+            return true;
+        }
+
+        if (expression is IndexExpression index
+            && TryGetConcreteBorrowOrigins(index.Source, bindings, out var indexOrigins, out isOwnedPlace))
+        {
+            origins = isOwnedPlace
+                ? AppendBorrowProjection(indexOrigins, BorrowOriginIndexProjection(index.Index))
+                : indexOrigins;
+            return true;
+        }
+
         origins = EmptyBorrowOrigins();
+        isOwnedPlace = false;
         return false;
     }
+
+    private static IReadOnlySet<string> AppendBorrowProjection(
+        IReadOnlySet<string> origins,
+        string projection) => origins
+        .Select(origin => origin + projection)
+        .ToHashSet(StringComparer.Ordinal);
 
     private void RejectBorrowedTextOriginInvalidation(
         string? first,
@@ -728,17 +765,104 @@ internal sealed partial class SemanticCompiler
     {
         name = CanonicalBorrowOriginName(name);
         var borrowed = _activeBorrowedTextOrigins
-            .FirstOrDefault(pair => pair.Value.Contains(name));
+            .FirstOrDefault(pair => pair.Value.Any(origin => BorrowPlacesConflict(origin, name)));
         if (borrowed.Value is null)
         {
             return;
         }
 
+        var origin = borrowed.Value.First(candidate => BorrowPlacesConflict(candidate, name));
+
         throw Error(
             line,
             column,
-            $"cannot move or mutate origin '{name}' while borrowed Text view '{borrowed.Key}' is live in this scope");
+            $"cannot move or mutate origin '{origin}' while borrowed Text view '{borrowed.Key}' is live in this scope");
     }
+
+    private static bool BorrowPlacesConflict(string left, string right)
+    {
+        var leftParts = SplitBorrowPlace(left);
+        var rightParts = SplitBorrowPlace(right);
+        if (!StringComparer.Ordinal.Equals(leftParts[0], rightParts[0]))
+        {
+            return false;
+        }
+
+        var shared = Math.Min(leftParts.Count, rightParts.Count);
+        for (var index = 1; index < shared; index++)
+        {
+            if (StringComparer.Ordinal.Equals(leftParts[index], rightParts[index]))
+            {
+                continue;
+            }
+
+            if (leftParts[index][0] == '.' && rightParts[index][0] == '.')
+            {
+                return false;
+            }
+
+            if (leftParts[index][0] == '['
+                && rightParts[index][0] == '['
+                && leftParts[index] != "[*]"
+                && rightParts[index] != "[*]")
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        return true;
+    }
+
+    private static List<string> SplitBorrowPlace(string place)
+    {
+        var parts = new List<string>();
+        var projectionStart = place.IndexOfAny(['.', '[']);
+        if (projectionStart < 0)
+        {
+            parts.Add(place);
+            return parts;
+        }
+
+        parts.Add(place[..projectionStart]);
+        var index = projectionStart;
+        while (index < place.Length)
+        {
+            var next = index + 1;
+            if (place[index] == '[')
+            {
+                next = place.IndexOf(']', next);
+                if (next < 0)
+                {
+                    next = place.Length - 1;
+                }
+                next++;
+            }
+            else
+            {
+                while (next < place.Length && place[next] is not ('.' or '['))
+                {
+                    next++;
+                }
+            }
+            parts.Add(place[index..next]);
+            index = next;
+        }
+        return parts;
+    }
+
+    private static string BorrowOriginIndexedPlace(string name, Expression index) =>
+        CanonicalBorrowOriginName(name) + BorrowOriginIndexProjection(index);
+
+    private static string BorrowOriginIndexProjection(Expression index) => index switch
+    {
+        NumberExpression number when IsIntegerLiteralExpression(number) =>
+            $"[{number.Text.Replace("_", string.Empty, StringComparison.Ordinal)}]",
+        NegateExpression { Value: NumberExpression number } when IsIntegerLiteralExpression(index) =>
+            $"[-{number.Text.Replace("_", string.Empty, StringComparison.Ordinal)}]",
+        _ => "[*]"
+    };
 
     private static IReadOnlySet<string> EmptyBorrowOrigins() =>
         new HashSet<string>(StringComparer.Ordinal);

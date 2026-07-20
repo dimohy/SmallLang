@@ -376,6 +376,11 @@ build outputs, and generated executables are intentionally ignored by Git.
 Example stdout tests compile and run the samples listed under
 `examples/expected`:
 
+Each new `.slg` example begins with a short English `#` comment explaining the
+language behavior or compiler invariant it verifies. Multi-scenario examples
+also label the intent of each scenario so the source remains useful as
+executable documentation, not only as a regression input.
+
 ```powershell
 dotnet run --project tests\Sollang.ExampleTests\Sollang.ExampleTests.csproj --no-build
 ```

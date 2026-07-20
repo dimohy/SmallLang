@@ -1,0 +1,19 @@
+import sys.file as file
+
+# Verifies that a runtime index is conservatively treated as overlapping a live
+# constant-index Text origin because equality cannot be proven at compile time.
+
+prefix source: file.SourceText -> Text {
+    source -> slice(UIntSize(0), UIntSize(3))
+}
+
+main {
+    "lexer" -> file.borrowText => left!
+    "parser" -> file.borrowText => right!
+    [left!, right!, ~] => sources!
+    sources![0] -> prefix => leftView
+    1 => index
+    "semantic" -> file.borrowText => replacement!
+    replacement! => sources![index]
+    leftView -> println
+}

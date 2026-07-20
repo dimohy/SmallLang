@@ -2456,6 +2456,44 @@ Research basis:
 - [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes/)
 - [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 
+## Disjoint Projected Borrow Origins (D213J)
+
+D213J makes the borrow-origin model path-sensitive. A canonical place consists
+of its root binding plus field and index projections. Equal paths, a whole
+owner and any descendant, and prefix-related projections overlap. Different
+stored fields and unequal compile-time numeric indices are provably disjoint;
+dynamic indices remain conservative.
+
+The reference compiler constructs and invalidates exact projected places. The
+self-host analyzer reconstructs the same paths from typed IR, carries them
+through borrowed aliases, and recovers `take(index)` from the source binding AST
+where the current typed IR has flattened the move. This requires no new syntax,
+runtime lifetime token, or ABI change.
+
+Examples 491-494 and two diagnostics cover reference execution, self-host E21,
+self-host LLVM, equal projections, and dynamic indices. The Stage2 nested-place
+fixture proves production rejection before LLVM emission. Each new example now
+states its verification purpose in an English `#` comment, with scenario-level
+comments where one source exercises multiple outcomes.
+
+Windows/Linux full suites pass **662/662**. Windows Stage2 passes **7/7** at
+**11,795,808 LLVM bytes**, **3,483,932 bitcode bytes**, and a **1,645,056-byte
+executable**. Linux Stage2 passes **6/6** at **11,792,387 LLVM bytes**,
+**3,482,144 bitcode bytes**, and a **3,318,912-byte executable**. Both Stage1
+and Stage2 reject the projected-origin E21 fixture before LLVM emission.
+
+The Stage3 cadence advances to **8/10**. Formal progress remains **49 complete,
+8 partial, 3 missing: 53/60 (88.3%)** because production E17-E20 precision is
+still open inside the broader ownership/storage gate.
+
+Research basis:
+
+- [Rust field expressions](https://doc.rust-lang.org/reference/expressions/field-expr.html)
+- [Rust borrow splitting](https://doc.rust-lang.org/nomicon/borrow-splitting.html)
+- [rustc place-conflict analysis](https://doc.rust-lang.org/stable/nightly-rustc/rustc_borrowck/places_conflict/index.html)
+- [Mojo lifetimes and origins](https://docs.modular.com/mojo/manual/values/lifetimes/)
+- [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).

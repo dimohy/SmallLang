@@ -30,6 +30,7 @@ struct BorrowedTextReturn {
 struct BorrowedTextBinding {
     bindingIr: Int
     ownerBindingIr: Int
+    ownerPlaceIr: Int
 }
 
 # Code 17 identifies whole-owner or overlapping-field use after a partial move.
@@ -88,6 +89,135 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
             }
         }
         same!
+    }
+    placeRootBinding placeIr: Int -> Int {
+        placeIr => root!
+        (root! >= 0 and (typed[root!].kind == 13 or typed[root!].kind == 15)) -> while {
+            typed[root!].operand0 => root!
+        }
+        (root! >= 0 and typed[root!].kind == 5 and typed[root!].operand0 >= 0) -> if {
+            typed[root!].operand0
+        } else { -1 }
+    }
+    placeProjectionDepth placeIr: Int -> Int {
+        placeIr => projected!
+        0 => depth!
+        (projected! >= 0 and (typed[projected!].kind == 13 or typed[projected!].kind == 15)) -> while {
+            depth! + 1 => depth!
+            typed[projected!].operand0 => projected!
+        }
+        depth!
+    }
+    placeProjectionAt placeIr: Int, ordinal: Int -> Int {
+        placeIr -> placeProjectionDepth => depth
+        placeIr => projected!
+        depth - 1 => currentOrdinal!
+        (projected! >= 0 and currentOrdinal! > ordinal) -> while {
+            typed[projected!].operand0 => projected!
+            currentOrdinal! - 1 => currentOrdinal!
+        }
+        projected!
+    }
+    tokenTextEquals leftModule: Int, leftToken: Int, rightModule: Int, rightToken: Int -> Bool {
+        false => same!
+        (leftModule >= 0 and rightModule >= 0 and leftToken >= 0 and rightToken >= 0) -> if {
+            prepared.package.ranges[leftModule] => leftRange
+            prepared.package.ranges[rightModule] => rightRange
+            prepared.package.tokens[leftRange.tokenStart + leftToken] => left
+            prepared.package.tokens[rightRange.tokenStart + rightToken] => right
+            left.span.length == right.span.length => same!
+            UIntSize(0) => byteIndex!
+            (same! and byteIndex! < left.span.length) -> while {
+                (prepared.package.sources[leftModule] -> byte(left.span.start + byteIndex!)) != (prepared.package.sources[rightModule] -> byte(right.span.start + byteIndex!)) -> if {
+                    false => same!
+                }
+                byteIndex! + UIntSize(1) => byteIndex!
+            }
+        }
+        same!
+    }
+    placesOverlap leftPlaceIr: Int, rightPlaceIr: Int -> Bool {
+        leftPlaceIr -> placeProjectionDepth => leftDepth
+        rightPlaceIr -> placeProjectionDepth => rightDepth
+        rightDepth => sharedDepth!
+        leftDepth < rightDepth -> if { leftDepth => sharedDepth! }
+        true => overlap!
+        0 => ordinal!
+        (overlap! and ordinal! < sharedDepth!) -> while {
+            leftPlaceIr -> placeProjectionAt(ordinal!) => leftProjectionIr
+            rightPlaceIr -> placeProjectionAt(ordinal!) => rightProjectionIr
+            typed[leftProjectionIr] => leftProjection
+            typed[rightProjectionIr] => rightProjection
+            leftProjection.kind != rightProjection.kind -> if {
+                # A field and an index cannot prove separate storage.
+            } else {
+                leftProjection.kind == 13 -> if {
+                    leftProjection.sourceModule -> tokenTextEquals(leftProjection.payloadToken, rightProjection.sourceModule, rightProjection.payloadToken) => sameField
+                    not sameField -> if { false => overlap! }
+                } else {
+                    leftProjection.kind == 15 -> if {
+                        (leftProjection.operand1 >= 0 and rightProjection.operand1 >= 0 and typed[leftProjection.operand1].kind == 3 and typed[rightProjection.operand1].kind == 3) -> if {
+                            typed[leftProjection.operand1] => leftIndex
+                            typed[rightProjection.operand1] => rightIndex
+                            leftIndex.sourceModule -> tokenTextEquals(leftIndex.payloadToken, rightIndex.sourceModule, rightIndex.payloadToken) => sameIndex
+                            not sameIndex -> if { false => overlap! }
+                        }
+                    }
+                }
+            }
+            ordinal! + 1 => ordinal!
+        }
+        overlap!
+    }
+    placeOverlapsIndexedProjection placeIr: Int, indexIr: Int -> Bool {
+        placeIr -> placeProjectionDepth => depth
+        true => overlap!
+        depth > 0 -> if {
+            placeIr -> placeProjectionAt(0) => projectionIr
+            typed[projectionIr] => projection
+            (projection.kind == 15 and projection.operand1 >= 0 and indexIr >= 0 and typed[projection.operand1].kind == 3 and typed[indexIr].kind == 3) -> if {
+                typed[projection.operand1] => borrowedIndex
+                typed[indexIr] => accessedIndex
+                borrowedIndex.sourceModule -> tokenTextEquals(borrowedIndex.payloadToken, accessedIndex.sourceModule, accessedIndex.payloadToken) => sameIndex
+                not sameIndex -> if { false => overlap! }
+            }
+        }
+        overlap!
+    }
+    nodeHasTakeOperation nodeIndex: Int -> Bool {
+        false => hasTake!
+        typed[nodeIndex] => candidate
+        (candidate.sourceModule >= 0 and candidate.astNode >= 0) -> if {
+            prepared.package.ranges[candidate.sourceModule] => candidateRange
+            prepared.package.nodes[candidateRange.astStart + candidate.astNode] => candidateAst
+            candidateAst.firstToken => tokenIndex!
+            (not hasTake! and tokenIndex! < candidateAst.firstToken + candidateAst.tokenCount) -> while {
+                prepared.package.tokens[candidateRange.tokenStart + tokenIndex!] => token
+                (token.kind == grammar.tokenIdIdentifier and token.span.length == UIntSize(4)) -> if {
+                    ((prepared.package.sources[candidate.sourceModule] -> byte(token.span.start)) == UInt8(116) and (prepared.package.sources[candidate.sourceModule] -> byte(token.span.start + UIntSize(1))) == UInt8(97) and (prepared.package.sources[candidate.sourceModule] -> byte(token.span.start + UIntSize(2))) == UInt8(107) and (prepared.package.sources[candidate.sourceModule] -> byte(token.span.start + UIntSize(3))) == UInt8(101)) -> if {
+                        true => hasTake!
+                    }
+                }
+                tokenIndex! + 1 => tokenIndex!
+            }
+        }
+        hasTake!
+    }
+    borrowedBindingUsedAfterSite bindingIr: Int, siteIr: Int -> Bool {
+        false => used!
+        prepared.package.ranges[typed[siteIr].sourceModule] => useRange
+        prepared.package.nodes[useRange.astStart + typed[siteIr].astNode].start => siteStart
+        0 => useIndex!
+        (not used! and useIndex! < (typed -> len)) -> while {
+            typed[useIndex!] => use
+            (use.kind == 5 and use.sourceModule == typed[siteIr].sourceModule and use.astNode >= 0 and use.operand0 == bindingIr) -> if {
+                prepared.package.nodes[useRange.astStart + use.astNode].start > siteStart -> if {
+                    true => used!
+                }
+            }
+            useIndex! + 1 => useIndex!
+        }
+        used!
     }
     enclosingLoopFor nodeIndex: Int -> Int {
         nodeIndex => ancestor!
@@ -374,17 +504,18 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                         }
                         borrowedCallArgumentIr! >= 0 -> if {
                             typed[borrowedCallArgumentIr!] => borrowedCallSource
-                            (borrowedCallSource.kind == 5 and borrowedCallSource.operand0 >= 0) -> if {
+                            borrowedCallArgumentIr! -> placeRootBinding => borrowedCallRootBinding
+                            borrowedCallRootBinding >= 0 -> if {
                                 false => propagatedBorrowedOwner!
                                 0 => inheritedBorrowedOwnerSearch!
                                 inheritedBorrowedOwnerSearch! < (borrowedBindings! -> len) -> while {
                                     borrowedBindings![inheritedBorrowedOwnerSearch!] => inheritedBorrowedOwner
-                                    inheritedBorrowedOwner.bindingIr == borrowedCallSource.operand0 -> if {
+                                    inheritedBorrowedOwner.bindingIr == borrowedCallRootBinding -> if {
                                         false => duplicateInheritedBorrowedOwner!
                                         0 => inheritedBorrowedOwnerDuplicateSearch!
                                         inheritedBorrowedOwnerDuplicateSearch! < (borrowedBindings! -> len) -> while {
                                             borrowedBindings![inheritedBorrowedOwnerDuplicateSearch!] => existingInheritedBorrowedOwner
-                                            (existingInheritedBorrowedOwner.bindingIr == borrowedBindingSearch! and existingInheritedBorrowedOwner.ownerBindingIr == inheritedBorrowedOwner.ownerBindingIr) -> if {
+                                            (existingInheritedBorrowedOwner.bindingIr == borrowedBindingSearch! and existingInheritedBorrowedOwner.ownerBindingIr == inheritedBorrowedOwner.ownerBindingIr and existingInheritedBorrowedOwner.ownerPlaceIr == inheritedBorrowedOwner.ownerPlaceIr) -> if {
                                                 true => duplicateInheritedBorrowedOwner!
                                             }
                                             inheritedBorrowedOwnerDuplicateSearch! + 1 => inheritedBorrowedOwnerDuplicateSearch!
@@ -393,6 +524,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                             borrowedBindings! -> push(BorrowedTextBinding {
                                                 bindingIr: borrowedBindingSearch!
                                                 ownerBindingIr: inheritedBorrowedOwner.ownerBindingIr
+                                                ownerPlaceIr: inheritedBorrowedOwner.ownerPlaceIr
                                             })
                                         }
                                         true => propagatedBorrowedOwner!
@@ -404,7 +536,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                     0 => borrowedOwnerSearch!
                                     borrowedOwnerSearch! < (borrowedBindings! -> len) -> while {
                                         borrowedBindings![borrowedOwnerSearch!] => existingBorrowedOwner
-                                        (existingBorrowedOwner.bindingIr == borrowedBindingSearch! and existingBorrowedOwner.ownerBindingIr == borrowedCallSource.operand0) -> if {
+                                        (existingBorrowedOwner.bindingIr == borrowedBindingSearch! and existingBorrowedOwner.ownerBindingIr == borrowedCallRootBinding and existingBorrowedOwner.ownerPlaceIr == borrowedCallArgumentIr!) -> if {
                                             true => duplicateBorrowedOwner!
                                         }
                                         borrowedOwnerSearch! + 1 => borrowedOwnerSearch!
@@ -412,7 +544,8 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                     not duplicateBorrowedOwner! -> if {
                                         borrowedBindings! -> push(BorrowedTextBinding {
                                             bindingIr: borrowedBindingSearch!
-                                            ownerBindingIr: borrowedCallSource.operand0
+                                            ownerBindingIr: borrowedCallRootBinding
+                                            ownerPlaceIr: borrowedCallArgumentIr!
                                         })
                                     }
                                 }
@@ -447,7 +580,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                             0 => borrowedAliasDuplicateSearch!
                             borrowedAliasDuplicateSearch! < (borrowedBindings! -> len) -> while {
                                 borrowedBindings![borrowedAliasDuplicateSearch!] => existingBorrowedAlias
-                                (existingBorrowedAlias.bindingIr == borrowedAliasBindingSearch! and existingBorrowedAlias.ownerBindingIr == borrowedAliasOrigin.ownerBindingIr) -> if {
+                                (existingBorrowedAlias.bindingIr == borrowedAliasBindingSearch! and existingBorrowedAlias.ownerBindingIr == borrowedAliasOrigin.ownerBindingIr and existingBorrowedAlias.ownerPlaceIr == borrowedAliasOrigin.ownerPlaceIr) -> if {
                                     true => duplicateBorrowedAlias!
                                 }
                                 borrowedAliasDuplicateSearch! + 1 => borrowedAliasDuplicateSearch!
@@ -456,6 +589,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                 borrowedBindings! -> push(BorrowedTextBinding {
                                     bindingIr: borrowedAliasBindingSearch!
                                     ownerBindingIr: borrowedAliasOrigin.ownerBindingIr
+                                    ownerPlaceIr: borrowedAliasOrigin.ownerPlaceIr
                                 })
                                 true => borrowedAliasChanged!
                             }
@@ -473,16 +607,16 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
         moves![borrowedMoveIndex!] => borrowedMove
         (borrowedMove.siteIr >= 0 and borrowedMove.siteIr < (typed -> len)) -> if {
             typed[borrowedMove.siteIr] => borrowedMoveCall
-            borrowedMoveCall.operand0 >= 0 -> if {
-                typed[borrowedMoveCall.operand0] => borrowedMoveSource
-                (borrowedMoveSource.kind == 5 and borrowedMoveSource.operand0 >= 0) -> if {
-                    borrowedMoveSource.operand0 => movedOwnerBinding
+            borrowedMove.memberIr >= 0 -> if { borrowedMove.memberIr } else { borrowedMoveCall.operand0 } => borrowedMovePlaceIr
+            borrowedMovePlaceIr >= 0 -> if {
+                borrowedMovePlaceIr -> placeRootBinding => movedOwnerBinding
+                movedOwnerBinding >= 0 -> if {
                     0 => activeBorrowIndex!
                     activeBorrowIndex! < (borrowedBindings! -> len) -> while {
                         borrowedBindings![activeBorrowIndex!] => activeBorrow
                         activeBorrow.bindingIr => activeBorrowBindingIr
                         activeBorrow.ownerBindingIr => activeBorrowOwnerBindingIr
-                        (activeBorrowOwnerBindingIr == movedOwnerBinding and activeBorrowBindingIr < borrowedMove.siteIr) -> if {
+                        (activeBorrowOwnerBindingIr == movedOwnerBinding and (activeBorrow.ownerPlaceIr -> placesOverlap(borrowedMovePlaceIr)) and activeBorrowBindingIr < borrowedMove.siteIr) -> if {
                             prepared.package.ranges[borrowedMove.sourceModule] => borrowedMoveRange
                             typed[borrowedMove.siteIr] => borrowedMoveSite
                             prepared.package.nodes[borrowedMoveRange.astStart + borrowedMoveSite.astNode].start => borrowedMoveStart
@@ -572,6 +706,52 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
             }
         }
         borrowedMoveIndex! + 1 => borrowedMoveIndex!
+    }
+
+    # `take(index)` transfers one owned array slot but canonical typed IR keeps
+    # the owner and index as binding children instead of an ordinary call. Rebuild
+    # that place here so different constant indices can be proven disjoint while
+    # equal or dynamic indices remain conservatively overlapping.
+    0 => borrowedTakeIndex!
+    borrowedTakeIndex! < (typed -> len) -> while {
+        typed[borrowedTakeIndex!] => borrowedTake
+        (borrowedTake.kind == 17 and borrowedTake.operand0 >= 0 and (borrowedTakeIndex! -> nodeHasTakeOperation)) -> if {
+            typed[borrowedTake.operand0] => borrowedTakeSource
+            borrowedTake.operand0 -> placeRootBinding => borrowedTakeOwnerBinding
+            -1 => borrowedTakeElementIndex!
+            0 => borrowedTakeChildSearch!
+            borrowedTakeChildSearch! < (typed -> len) -> while {
+                (borrowedTakeChildSearch! != borrowedTake.operand0 and typed[borrowedTakeChildSearch!].parent == borrowedTakeIndex! and (typed[borrowedTakeChildSearch!].kind == 3 or typed[borrowedTakeChildSearch!].kind == 5 or typed[borrowedTakeChildSearch!].kind == 7)) -> if {
+                    borrowedTakeChildSearch! => borrowedTakeElementIndex!
+                }
+                borrowedTakeChildSearch! + 1 => borrowedTakeChildSearch!
+            }
+            (borrowedTakeSource.kind == 5 and borrowedTakeOwnerBinding >= 0 and borrowedTakeElementIndex! >= 0) -> if {
+                0 => borrowedTakeOriginSearch!
+                borrowedTakeOriginSearch! < (borrowedBindings! -> len) -> while {
+                    borrowedBindings![borrowedTakeOriginSearch!] => borrowedTakeOrigin
+                    (borrowedTakeOrigin.ownerBindingIr == borrowedTakeOwnerBinding and (borrowedTakeOrigin.ownerPlaceIr -> placeOverlapsIndexedProjection(borrowedTakeElementIndex!)) and borrowedTakeOrigin.bindingIr < borrowedTakeIndex! and (borrowedTakeOrigin.bindingIr -> borrowedBindingUsedAfterSite(borrowedTakeIndex!))) -> if {
+                        prepared.package.ranges[borrowedTake.sourceModule] => borrowedTakeRange
+                        prepared.package.nodes[borrowedTakeRange.astStart + borrowedTake.astNode] => borrowedTakeAst
+                        diagnostics! -> push(OwnershipDiagnostic {
+                            code: 21
+                            sourceModule: borrowedTake.sourceModule
+                            functionSymbol: -1
+                            expectedOrigin: -1
+                            expectedModule: -1
+                            expectedSymbol: borrowedTakeOwnerBinding
+                            actualOrigin: -1
+                            actualModule: -1
+                            actualSymbol: borrowedTakeOrigin.bindingIr
+                            actualBuiltin: -1
+                            span: syntax.SourceSpan { fileId: borrowedTake.sourceModule, start: borrowedTakeAst.start, length: borrowedTakeAst.length }
+                        })
+                    }
+                    borrowedTakeOriginSearch! + 1 => borrowedTakeOriginSearch!
+                }
+            }
+        }
+        borrowedTakeIndex! + 1 => borrowedTakeIndex!
     }
 
     0 => partialMoveIndex!

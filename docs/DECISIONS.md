@@ -8018,6 +8018,54 @@ References:
 - [Mojo lifetimes, origins, and references](https://mojolang.org/docs/manual/values/lifetimes/)
 - [Swift memory safety and overlapping access](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 
+## D213J - Borrow Conflicts Use Canonical Projected Places
+
+Status: implemented and cross-target Stage2 verified
+Date: 2026-07-20
+
+Sollang now distinguishes borrowed origins by canonical place path rather than
+collapsing every projection to its root owner. Whole-owner access, equal paths,
+and prefix-related paths overlap. Different stored struct fields and unequal
+compile-time numeric array indices are disjoint at their first difference.
+Runtime indices and other unproven projection pairs remain conservatively
+overlapping. This permits useful code such as retaining a view from
+`sources![0]` while extracting `sources![1]`, without weakening rejection of an
+equal or dynamic index.
+
+The C# semantic compiler recursively constructs places from name, field, and
+index expressions and invalidates the exact assigned projection. The self-host
+analyzer reconstructs the same path from typed IR, retains it across borrowed
+aliases, and recognizes `take(index)` from the binding AST because that move is
+flattened by the current typed IR. The comparison is allocation-free and adds
+no source syntax, runtime metadata, or ABI field.
+
+Examples 491-494 cover disjoint stored fields, unequal constant indices,
+self-host E21 analysis, and self-host LLVM execution. The two diagnostics cover
+an equal field and a dynamic index, and the Stage2 fixture covers a nested
+index-and-field place. These examples include English `#` comments that state
+the invariant each source verifies; new examples follow that executable-
+documentation convention by default.
+
+Release builds have zero warnings and errors; Windows/Linux full suites pass
+**662/662**. Windows Stage2 passes **7/7** with **11,795,808 LLVM bytes**,
+**3,483,932 bitcode bytes**, and a **1,645,056-byte executable**. Linux Stage2
+passes **6/6** with **11,792,387 LLVM bytes**, **3,482,144 bitcode bytes**, and
+a **3,318,912-byte executable**. Stage1 and Stage2 both reject single, union,
+transferred, aggregate, and projected-origin E21 before LLVM emission.
+
+The periodic Stage3 cadence advances to **8/10**; no Stage3 run is due at this
+checkpoint. Formal progress remains **49 complete, 8 partial, 3 missing:
+53/60 (88.3%)** because production precision for E17-E20 still leaves the
+broader ownership/storage gate partial.
+
+References:
+
+- [Rust field expressions](https://doc.rust-lang.org/reference/expressions/field-expr.html)
+- [Rust borrow splitting](https://doc.rust-lang.org/nomicon/borrow-splitting.html)
+- [rustc place-conflict analysis](https://doc.rust-lang.org/stable/nightly-rustc/rustc_borrowck/places_conflict/index.html)
+- [Mojo lifetimes and origins](https://docs.modular.com/mojo/manual/values/lifetimes/)
+- [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
+
 ## D213I - Aggregate Values Carry Inferred Borrow-Origin Unions
 
 Status: implemented and cross-target Stage2 verified

@@ -1,0 +1,36 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies that the self-host LLVM path executes a disjoint indexed extraction
+# while a Text projection from another element remains live.
+
+main {
+    [
+        """
+        struct Entry {
+            value: Text
+        }
+
+        prefix entry: Entry -> Text {
+            entry.value -> slice(UIntSize(0), UIntSize(3))
+        }
+
+        makeEntries: -> [Entry; ~] {
+            [
+                Entry { value: "lexer" },
+                Entry { value: "parser" },
+                ~
+            ]
+        }
+
+        main {
+            makeEntries => sources!
+            sources![0] -> prefix => view
+            sources! -> take(1) => moved!
+            view -> println
+            moved! -> prefix -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinux
+}

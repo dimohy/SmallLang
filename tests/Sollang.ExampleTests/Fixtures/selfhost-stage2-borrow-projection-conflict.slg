@@ -1,0 +1,21 @@
+import sys.file as file
+
+# Verifies that both Stage1 and Stage2 stop before LLVM emission when take(0)
+# invalidates the owner of a still-live nested Text projection.
+
+struct Entry {
+    source: file.SourceText
+}
+
+prefix source: file.SourceText -> Text {
+    source -> slice(UIntSize(0), UIntSize(3))
+}
+
+main {
+    Entry { source: "lexer" -> file.borrowText } => left!
+    Entry { source: "parser" -> file.borrowText } => right!
+    [left!, right!, ~] => sources!
+    sources![0].source -> prefix => view
+    sources! -> take(0) => moved!
+    view -> println
+}

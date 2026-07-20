@@ -28,6 +28,7 @@ $borrowConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures
 $borrowUnionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-union-conflict.slg"
 $borrowAliasConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-alias-conflict.slg"
 $borrowAggregateConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-aggregate-conflict.slg"
+$borrowProjectionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-projection-conflict.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $expectedStage2Bytes = 11724053L
 
@@ -223,7 +224,8 @@ foreach ($conflict in @(
     @($borrowConflictSource, "single"),
     @($borrowUnionConflictSource, "union"),
     @($borrowAliasConflictSource, "alias"),
-    @($borrowAggregateConflictSource, "aggregate")
+    @($borrowAggregateConflictSource, "aggregate"),
+    @($borrowProjectionConflictSource, "projection")
 )) {
     $stage1DiagnosticOutput = Join-Path $artifactsDir "linux-stage2-check-borrow-$($conflict[1])-stage1.txt"
     $stage1DiagnosticError = Join-Path $artifactsDir "linux-stage2-check-borrow-$($conflict[1])-stage1.err"
@@ -250,4 +252,4 @@ foreach ($conflict in @(
         }
     }
 }
-Write-Host "[linux-stage2 6/6] PASS single, union, transferred, and aggregate-origin E21 block LLVM emission in stage-1 and stage-2."
+Write-Host "[linux-stage2 6/6] PASS single, union, transferred, aggregate, and projected-origin E21 block LLVM emission in stage-1 and stage-2."

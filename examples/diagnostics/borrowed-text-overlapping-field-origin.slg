@@ -1,0 +1,23 @@
+import sys.file as file
+
+# Verifies that replacing the exact field behind a live Text view is rejected.
+
+struct Sources {
+    left: file.SourceText
+    right: file.SourceText
+}
+
+prefix source: file.SourceText -> Text {
+    source -> slice(UIntSize(0), UIntSize(3))
+}
+
+main {
+    Sources {
+        left: "lexer" -> file.borrowText
+        right: "parser" -> file.borrowText
+    } => sources!
+    sources!.left -> prefix => leftView
+    "semantic" -> file.borrowText => replacement!
+    replacement! => sources!.left
+    leftView -> println
+}

@@ -1089,8 +1089,12 @@ Container rules in the current slice:
   compile-time error. CFG last-use analysis ends the borrow after the final
   reachable aggregate or projection use, so the origin may be moved later.
   Origin metadata is compile-time-only and does not alter struct or container
-  ABI. Simultaneous mutable borrows of provably disjoint projections remain a
-  conservative follow-up.
+  ABI. Borrow conflicts are compared by canonical place path. The whole owner
+  overlaps every projection, equal paths overlap, and a path overlaps each of
+  its descendants. Different stored struct fields and unequal compile-time
+  numeric array indices are disjoint at their first difference. A runtime
+  index, or projections whose disjointness cannot otherwise be proven, remain
+  conservatively overlapping.
 - `push`, `put`, and indexed assignment require a named mutable owner binding
   created with `=> name!`.
 - `array -> each item { ... }` binds `item` to the concrete element type for
