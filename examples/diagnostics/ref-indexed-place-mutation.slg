@@ -1,0 +1,15 @@
+# Replacing the borrowed array element conflicts while its ref is live.
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, 30] => values!
+    values![0] -> same => borrowed
+    11 => values![0]
+    borrowed -> read -> println
+}

@@ -1,0 +1,19 @@
+# Verifies a runtime-indexed ref into a growable array and last-use release.
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, 30, ~] => values!
+    1 => index!
+    values![index!] -> same => borrowed
+    borrowed -> read => observed
+
+    # The wildcard loan ends above, so any element may change afterward.
+    21 => values![1]
+    "observed=$observed" -> println
+}

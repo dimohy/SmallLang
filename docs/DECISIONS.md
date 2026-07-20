@@ -8906,3 +8906,57 @@ References:
 - [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 - [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes)
 - [Polonius loan rules](https://rust-lang.github.io/polonius/rules/loans.html)
+
+## D220 - Indexed Readonly-Reference Places
+
+Status: implemented constant, dynamic, and nested indexed-place vertical with cross-target Stage2 verification
+Date: 2026-07-21
+
+A readonly-reference place may now include an array index. An integer literal is
+recorded as a precise projection such as `[0]`; two different literal indices
+are disjoint. Every non-literal index is recorded as `[*]` and conservatively
+overlaps every element. Field projections continue after the index, so the
+compiler treats `items![0].value` as one composed place rather than losing the
+owner at the array boundary. Dictionary keys are not covered by this rule.
+
+The C# LLVM backend emits addressable reference arguments for fixed and growable
+Int, Text, and inline aggregate arrays plus `IntSlice`. It converts the index to
+the target size, emits an unsigned bounds check, and forms the element GEP before
+any member GEP. The self-host backend performs the equivalent integer widening,
+trap edge, element GEP, and nested field GEP while preserving the existing
+pointer-only `ref T` ABI. Production E23 compares literal indices precisely,
+treats runtime indices as wildcards, unwraps a member chain to its indexed base,
+and releases the loan at the returned reference's last use.
+
+The Stage2 fixed-point gate exposed two self-host-only emission defects that
+focused examples could not reveal: a direct parameter-to-mutable-local initializer
+could name an unemitted SSA value, and interpolating later parameters of a
+five-argument local function could emit an empty operand. D220 avoids both by
+materializing explicit arithmetic SSA aliases before mutable traversal and text
+interpolation. The rebuilt compiler then assembles and reaches the same normalized
+LLVM fixed point on Windows and Linux.
+
+Examples 517-525 cover constant and dynamic element references, disjoint and
+conflicting E23 cases, bounds checks, index widening, and nested index-to-field
+GEP execution. `ref-indexed-place-mutation` and
+`ref-dynamic-index-mutation` cover reference-compiler diagnostics. The Stage2
+E23 fixture combines a D218 branch-selected origin union with
+`items![0].value`, and both Stage1 and Stage2 reject replacement of the live
+borrowed element before LLVM emission.
+
+The Release build has zero warnings and errors. Windows and Linux full suites
+pass 702/702. Windows Stage2 passes 7/7 at 12,155,615 LLVM bytes; Linux Stage2
+passes 6/6 at 12,152,194 LLVM bytes. Formal progress remains 53/60 (88.3%)
+until the general returned/stored-reference boundary closes. The periodic Stage3
+cadence advances to 8/10, so Stage3 is not due.
+
+The design follows Rust's rule that fixed array indices are not generally split
+by the borrow checker unless proved separately, Mojo's inferred origin model,
+and Polonius's loan invalidation relations. Sollang deliberately adds the safe
+compile-time-literal distinction while keeping runtime indices conservative.
+
+References:
+
+- [Rust borrow splitting](https://doc.rust-lang.org/nomicon/borrow-splitting.html)
+- [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes)
+- [Polonius loan rules](https://rust-lang.github.io/polonius/rules/loans.html)

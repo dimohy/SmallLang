@@ -1,0 +1,26 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies self-host array-element ref GEPs and disjoint mutation execution.
+main {
+    [
+        """
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, 30, ~] => values!
+            values![0] -> same => borrowed
+            21 => values![1]
+            borrowed -> read => observed
+            "$(observed)" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinuxChecked => diagnosticCount
+}

@@ -1,0 +1,21 @@
+# Verifies direct array-element refs and disjoint constant-index mutation.
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, 30] => values!
+    values![0] -> same => borrowed
+
+    # A different constant index is a disjoint place.
+    21 => values![1]
+    borrowed -> read => observed
+
+    # The loan ends above, so the borrowed element may now change.
+    11 => values![0]
+    "observed=$observed" -> println
+}

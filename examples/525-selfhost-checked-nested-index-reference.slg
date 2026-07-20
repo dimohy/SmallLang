@@ -1,0 +1,42 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies E23 precision through an index-to-field readonly-reference path.
+main {
+    [
+        """
+        struct Item {
+            value: Int
+            other: Int
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [Item { value: 10, other: 11 }, Item { value: 20, other: 21 }, ~] => items!
+            items![0].value -> same => borrowed
+
+            # A different constant index is disjoint from the borrowed field.
+            Item { value: 30, other: 31 } => items![1]
+
+            # Replacing the borrowed element conflicts while the ref is live.
+            Item { value: 12, other: 13 } => items![0]
+            borrowed -> read -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> ownershipCheck.analyze => diagnostics!
+    0 => conflicts!
+    diagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if {
+            conflicts! + 1 => conflicts!
+        }
+    }
+    "blocked=$(conflicts!)" -> println
+}

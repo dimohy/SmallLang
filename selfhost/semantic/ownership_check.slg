@@ -46,6 +46,81 @@ struct ReadonlyReferenceReturn {
 # Code 21 identifies an origin moved while a returned borrowed Text is live.
 # Code 22 identifies a readonly-reference argument without stable storage.
 # The view region ends at its last typed-IR use rather than at lexical scope end.
+indexAssignmentTargetsBinding prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~], assignmentIr: Int, bindingIr: Int -> Bool {
+    false => same!
+    (assignmentIr >= 0 and assignmentIr < (typed -> len) and bindingIr >= 0 and bindingIr < (typed -> len)) -> if {
+        typed[assignmentIr] => assignment
+        typed[bindingIr] => binding
+        (assignment.kind == 24 and assignment.sourceModule == binding.sourceModule and assignment.astNode >= 0 and assignment.sourceModule >= 0 and assignment.sourceModule < (prepared.package.ranges -> len)) -> if {
+            prepared.package.ranges[assignment.sourceModule] => sourceRange
+            (assignment.astNode < sourceRange.astCount and binding.payloadToken >= 0) -> if {
+                prepared.package.nodes[sourceRange.astStart + assignment.astNode] => assignmentAst
+                (assignmentAst.kind == 53 and assignmentAst.payloadToken >= 0) -> if {
+                    prepared.package.tokens[sourceRange.tokenStart + assignmentAst.payloadToken] => assignmentName
+                    prepared.package.tokens[sourceRange.tokenStart + binding.payloadToken] => bindingName
+                    assignmentName.span.length == bindingName.span.length => same!
+                    UIntSize(0) => nameByte!
+                    (same! and nameByte! < assignmentName.span.length) -> while {
+                        (prepared.package.sources[assignment.sourceModule] -> byte(assignmentName.span.start + nameByte!)) != (prepared.package.sources[binding.sourceModule] -> byte(bindingName.span.start + nameByte!)) -> if { false => same! }
+                        nameByte! + UIntSize(1) => nameByte!
+                    }
+                }
+            }
+        }
+    }
+    same!
+}
+
+indexedReferenceOverlapsAssignment prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~], placeIr: Int, indexIr: Int -> Bool {
+    true => overlap!
+    (placeIr >= 0 and placeIr < (typed -> len) and indexIr >= 0 and indexIr < (typed -> len)) -> if {
+        placeIr + 0 => indexedPlaceIr!
+        (indexedPlaceIr! >= 0 and indexedPlaceIr! < (typed -> len) and typed[indexedPlaceIr!].kind == 13) -> while {
+            typed[indexedPlaceIr!].operand0 => indexedPlaceIr!
+        }
+        typed[indexedPlaceIr!] => place
+        (place.kind == 15 and place.operand1 >= 0 and place.operand1 < (typed -> len)) -> if {
+            typed[place.operand1] => borrowedIndex
+            typed[indexIr] => assignedIndex
+            (borrowedIndex.kind == 3 and assignedIndex.kind == 3 and borrowedIndex.payloadToken >= 0 and assignedIndex.payloadToken >= 0) -> if {
+                prepared.package.ranges[borrowedIndex.sourceModule] => borrowedRange
+                prepared.package.ranges[assignedIndex.sourceModule] => assignedRange
+                prepared.package.tokens[borrowedRange.tokenStart + borrowedIndex.payloadToken] => borrowedToken
+                prepared.package.tokens[assignedRange.tokenStart + assignedIndex.payloadToken] => assignedToken
+                borrowedToken.span.length == assignedToken.span.length => overlap!
+                UIntSize(0) => indexByte!
+                (overlap! and indexByte! < borrowedToken.span.length) -> while {
+                    (prepared.package.sources[borrowedIndex.sourceModule] -> byte(borrowedToken.span.start + indexByte!)) != (prepared.package.sources[assignedIndex.sourceModule] -> byte(assignedToken.span.start + indexByte!)) -> if { false => overlap! }
+                    indexByte! + UIntSize(1) => indexByte!
+                }
+            }
+        }
+    }
+    overlap!
+}
+
+referenceBindingUsedAfterIndexSite prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~], bindingIr: Int, siteIr: Int -> Bool {
+    false => used!
+    (bindingIr >= 0 and siteIr >= 0 and siteIr < (typed -> len)) -> if {
+        typed[siteIr] => site
+        (site.sourceModule >= 0 and site.sourceModule < (prepared.package.ranges -> len) and site.astNode >= 0) -> if {
+            prepared.package.ranges[site.sourceModule] => useRange
+            site.astNode < useRange.astCount -> if {
+                prepared.package.nodes[useRange.astStart + site.astNode].start => siteStart
+                0 => useIndex!
+                (not used! and useIndex! < (typed -> len)) -> while {
+                    typed[useIndex!] => use
+                    (use.kind == 5 and use.sourceModule == site.sourceModule and use.astNode >= 0 and use.astNode < useRange.astCount and use.operand0 == bindingIr) -> if {
+                        prepared.package.nodes[useRange.astStart + use.astNode].start > siteStart -> if { true => used! }
+                    }
+                    useIndex! + 1 => useIndex!
+                }
+            }
+        }
+    }
+    used!
+}
+
 public analyze sources: [Text; ~] -> [OwnershipDiagnostic; ~] {
     sources -> semanticContext.prepare => prepared
     prepared -> analyzeContext
@@ -641,7 +716,17 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                             (referenceOwnerBinding >= 0 and referenceMutation.kind == 25 and referenceMutation.sourceModule == typed[referenceOwnerBinding].sourceModule and referenceMutation.symbol == typed[referenceOwnerBinding].symbol and (referenceArgumentIr! -> referencePlaceOverlapsMemberAssignment(referenceMutationIndex!))) -> if {
                                 true => mutatesReferenceOwner!
                             }
-                            (mutatesReferenceOwner! and referenceBindingIndex! < referenceMutationIndex! and (referenceBindingIndex! -> borrowedBindingUsedAfterSite(referenceMutationIndex!))) -> if {
+                            (referenceOwnerBinding >= 0 and referenceMutation.kind == 24 and (prepared -> indexAssignmentTargetsBinding(typed, referenceMutationIndex!, referenceOwnerBinding)) and (prepared -> indexedReferenceOverlapsAssignment(typed, referenceArgumentIr!, referenceMutation.operand1))) -> if {
+                                true => mutatesReferenceOwner!
+                            }
+                            (mutatesReferenceOwner! and referenceBindingIndex! < referenceMutationIndex!) -> if {
+                            false => referenceBorrowUsedAfterMutation!
+                            referenceMutation.kind == 24 -> if {
+                                prepared -> referenceBindingUsedAfterIndexSite(typed, referenceBindingIndex!, referenceMutationIndex!) => referenceBorrowUsedAfterMutation!
+                            } else {
+                                referenceBindingIndex! -> borrowedBindingUsedAfterSite(referenceMutationIndex!) => referenceBorrowUsedAfterMutation!
+                            }
+                            referenceBorrowUsedAfterMutation! -> if {
                             prepared.package.ranges[referenceMutation.sourceModule] => referenceMutationRange
                             prepared.package.nodes[referenceMutationRange.astStart + referenceMutation.astNode] => referenceMutationAst
                             diagnostics! -> push(OwnershipDiagnostic {
@@ -658,6 +743,7 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
                                 span: syntax.SourceSpan { fileId: referenceMutation.sourceModule, start: referenceMutationAst.start, length: referenceMutationAst.length }
                             })
                                 true => referenceMutationReported!
+                            }
                             }
                         }
                         referenceOriginIndex! + 1 => referenceOriginIndex!

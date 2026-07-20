@@ -1,0 +1,16 @@
+# A dynamic index remains a conservative wildcard while its ref is live.
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [10, 20, 30] => values!
+    0 => index
+    values![index] -> same => borrowed
+    21 => values![1]
+    borrowed -> read -> println
+}

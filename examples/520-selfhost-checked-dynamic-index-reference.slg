@@ -1,0 +1,33 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies that a runtime ref index conservatively overlaps every element.
+main {
+    [
+        """
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [40, 50, 60, ~] => values!
+            0 => index!
+            values![index!] -> same => borrowed
+            51 => values![1]
+            borrowed -> read -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> ownershipCheck.analyze => diagnostics!
+    0 => conflicts!
+    diagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if {
+            conflicts! + 1 => conflicts!
+        }
+    }
+    "blocked=$(conflicts!)" -> println
+}

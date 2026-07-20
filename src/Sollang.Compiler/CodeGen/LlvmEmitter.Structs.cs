@@ -294,8 +294,106 @@ internal sealed partial class LlvmEmitter
             return new RuntimeReference(memberReferenceType, member.Type, pointer);
         }
 
+        if (expression is IndexExpression index)
+        {
+            return EmitReferenceIndexPlace(index);
+        }
+
         throw new SollangException(
-            "reference returns currently require a named reference input or one of its fields");
+            "reference returns currently require a named reference input, field, or array element");
+    }
+
+    private RuntimeReference EmitReferenceIndexPlace(IndexExpression expression)
+    {
+        var source = EmitExpression(expression.Source);
+        var index = EmitIntExpression(expression.Index);
+        var indexSize = EmitIntAsSize(index, "ref_index_size");
+
+        BoundType elementType;
+        string pointer;
+        switch (source)
+        {
+            case RuntimeIntSlice slice:
+                elementType = BoundType.Int;
+                pointer = EmitReferenceElementPointer(
+                    slice.PointerName,
+                    slice.LengthName,
+                    "i32",
+                    indexSize,
+                    "ref_slice");
+                break;
+            case RuntimeStaticIntArray array:
+                elementType = BoundType.Int;
+                pointer = EmitReferenceStaticIntElementPointer(array, indexSize);
+                break;
+            case RuntimeStaticTextArray array:
+                elementType = BoundType.Text;
+                pointer = EmitReferenceElementPointer(
+                    array.PointerName,
+                    array.LengthName,
+                    "%sollang.text",
+                    indexSize,
+                    "ref_text_array");
+                break;
+            case RuntimeStaticInlineArray array:
+                elementType = array.ElementType;
+                pointer = EmitReferenceElementPointer(
+                    array.PointerName,
+                    array.LengthName,
+                    LlvmType(array.ElementType),
+                    indexSize,
+                    "ref_inline_array");
+                break;
+            case RuntimeDynamicIntArray array:
+                elementType = BoundType.Int;
+                pointer = EmitReferenceElementPointer(
+                    array.PointerName,
+                    array.LengthName,
+                    "i32",
+                    indexSize,
+                    "ref_dynamic_array");
+                break;
+            case RuntimeDynamicInlineArray array:
+                elementType = array.ElementType;
+                pointer = EmitReferenceElementPointer(
+                    array.PointerName,
+                    array.LengthName,
+                    LlvmType(array.ElementType),
+                    indexSize,
+                    "ref_dynamic_inline_array");
+                break;
+            default:
+                throw new SollangException("reference indexing currently requires an array or IntSlice place");
+        }
+
+        return new RuntimeReference(_program.Types.GetOrAddReference(elementType), elementType, pointer);
+    }
+
+    private string EmitReferenceStaticIntElementPointer(RuntimeStaticIntArray array, string index)
+    {
+        var inBounds = NextTemp("ref_array_in_bounds");
+        EmitCompare(inBounds, "ult", "i64", index, array.LengthName);
+        EmitTrapUnless(inBounds, "ref_array_bounds");
+        var pointer = NextTemp("ref_array_place");
+        EmitAssign(
+            pointer,
+            $"getelementptr inbounds [{array.AllocatedLength.ToString(CultureInfo.InvariantCulture)} x i32], ptr {array.PointerName}, i64 0, i64 {index}");
+        return pointer;
+    }
+
+    private string EmitReferenceElementPointer(
+        string sourcePointer,
+        string length,
+        string llvmElementType,
+        string index,
+        string prefix)
+    {
+        var inBounds = NextTemp(prefix + "_in_bounds");
+        EmitCompare(inBounds, "ult", "i64", index, length);
+        EmitTrapUnless(inBounds, prefix + "_bounds");
+        var pointer = NextTemp(prefix + "_place");
+        EmitAssign(pointer, $"getelementptr {llvmElementType}, ptr {sourcePointer}, i64 {index}");
+        return pointer;
     }
 
     private (string TypeName, string ValueName) MaterializeAggregateValue(RuntimeValue value)

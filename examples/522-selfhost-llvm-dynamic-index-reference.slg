@@ -1,0 +1,26 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies self-host runtime-index widening, bounds checking, and element GEP.
+main {
+    [
+        """
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, 30, ~] => values!
+            1 => index!
+            values![index!] -> same => borrowed
+            borrowed -> read => observed
+            "$(observed)" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinuxChecked => diagnosticCount
+}

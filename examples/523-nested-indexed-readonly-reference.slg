@@ -1,0 +1,21 @@
+# Verifies a runtime-indexed struct-field ref and nested address formation.
+struct Item {
+    value: Int
+    other: Int
+}
+
+same value: ref Int -> ref Int {
+    value
+}
+
+read value: ref Int -> Int {
+    value
+}
+
+main {
+    [Item { value: 10, other: 11 }, Item { value: 20, other: 21 }, ~] => items!
+    1 => index!
+    items![index!].value -> same => borrowed
+    borrowed -> read => observed
+    "observed=$observed" -> println
+}

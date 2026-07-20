@@ -1189,7 +1189,7 @@ emitCore context: EmitContext -> Unit uses Console {
                         context.ir[referenceRootBinding].flags == 1 -> if { true => referenceUsesMutableSlot! }
                     }
                     referenceUsesMutableSlot! -> if {
-                        referenceArgumentIndex -> emitMutableReferenceMemberPlace(referenceRootBinding, callIndex, ordinal) => emittedReferenceProjectionDepth
+                        referenceArgumentIndex -> emitMutableReferencePlace(referenceRootBinding, callIndex, ordinal, ownerIndex) => emittedReferenceProjectionDepth
                     } else {
                     "  %callref" -> print
                     callIndex -> writeDecimal
@@ -1582,7 +1582,72 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         depth!
     }
-    emitMutableReferenceMemberPlace placeIndex: Int, rootBinding: Int, callIndex: Int, ordinal: Int -> Int uses Console {
+    referencePlaceAddressDepth placeIndex: Int -> Int {
+        context.ir[placeIndex].kind == 15 -> if { 1 } else {
+            placeIndex -> referenceMemberPathDepth => addressDepth!
+            placeIndex + 0 => addressBase!
+            (addressBase! >= 0 and context.ir[addressBase!].kind == 13) -> while {
+                context.ir[addressBase!].operand0 => addressBase!
+            }
+            (addressBase! >= 0 and context.ir[addressBase!].kind == 15) -> if { addressDepth! + 1 => addressDepth! }
+            addressDepth!
+        }
+    }
+    emitMutableReferencePlace placeIndex: Int, rootBinding: Int, callIndex: Int, ordinal: Int, ownerIndex: Int -> Int uses Console {
+        context.ir[placeIndex].kind == 15 -> if {
+            placeIndex -> emitMutableReferenceIndexPlace(rootBinding, callIndex, ordinal, ownerIndex)
+        } else {
+            placeIndex -> emitMutableReferenceMemberPlace(rootBinding, callIndex, ordinal, ownerIndex)
+        }
+    }
+    emitMutableReferenceIndexPlace placeIndex: Int, rootBinding: Int, callIndex: Int, ordinal: Int, ownerIndex: Int -> Int uses Console {
+        context.ir[placeIndex] => indexedPlace
+        context.ir[indexedPlace.operand1] => referenceIndex
+        rootBinding -> mutableBindingRoot => referenceMutableRoot
+        callIndex + 0 => referenceCallIndex
+        ordinal + 0 => referenceArgumentOrdinal
+        ownerIndex + 0 => referenceOwnerIndex
+        "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_array = load %sollang.array.i32, ptr %slot$(referenceMutableRoot), align 8" -> println
+        "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_data = extractvalue %sollang.array.i32 %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_array, 0" -> println
+        "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_length = extractvalue %sollang.array.i32 %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_array, 1" -> println
+        referenceIndex -> integerNodeWidth => referenceIndexWidth
+        (referenceIndex.kind != 3 and referenceIndexWidth > 0 and referenceIndexWidth < 64) -> if {
+            "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index = " -> print
+            referenceIndex -> integerNodeSigned -> if { "sext " -> print } else { "zext " -> print }
+            referenceIndex -> writeIrType
+            " " -> print
+            (referenceOwnerIndex >= 0 and context.ir[referenceOwnerIndex].kind == 0 and context.ir[referenceOwnerIndex].operand1 >= 0 and referenceIndex.kind == 5 and referenceIndex.symbol == context.ir[context.ir[referenceOwnerIndex].operand1].symbol) -> if { "%arg" -> print } else { "%v$(indexedPlace.operand1)" -> print }
+            " to i64" -> println
+        }
+        "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_in_bounds = icmp ult i64 " -> print
+        referenceIndex.kind == 3 -> if {
+            referenceIndex -> sourceToken => referenceIndexToken
+            context.sources[referenceIndex.sourceModule] -> slice(referenceIndexToken.span.start, referenceIndexToken.span.length) -> print
+        } else {
+            (referenceIndexWidth > 0 and referenceIndexWidth < 64) -> if { "%callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index" -> print } else {
+                (referenceOwnerIndex >= 0 and context.ir[referenceOwnerIndex].kind == 0 and context.ir[referenceOwnerIndex].operand1 >= 0 and referenceIndex.kind == 5 and referenceIndex.symbol == context.ir[context.ir[referenceOwnerIndex].operand1].symbol) -> if { "%arg" -> print } else { "%v$(indexedPlace.operand1)" -> print }
+            }
+        }
+        ", %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_length" -> println
+        "  br i1 %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_in_bounds, label %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index_ok, label %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index_fail" -> println
+        "callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index_fail:" -> println
+        "  call void @llvm.trap()" -> println
+        "  unreachable" -> println
+        "callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index_ok:" -> println
+        "  %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_place0 = getelementptr " -> print
+        indexedPlace -> writeIrType
+        ", ptr %callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_data, i64 " -> print
+        referenceIndex.kind == 3 -> if {
+            referenceIndex -> sourceToken => referencePlaceIndexToken
+            context.sources[referenceIndex.sourceModule] -> slice(referencePlaceIndexToken.span.start, referencePlaceIndexToken.span.length) -> println
+        } else {
+            (referenceIndexWidth > 0 and referenceIndexWidth < 64) -> if { "%callref$(referenceCallIndex)_arg$(referenceArgumentOrdinal)_index" -> println } else {
+                (referenceOwnerIndex >= 0 and context.ir[referenceOwnerIndex].kind == 0 and context.ir[referenceOwnerIndex].operand1 >= 0 and referenceIndex.kind == 5 and referenceIndex.symbol == context.ir[context.ir[referenceOwnerIndex].operand1].symbol) -> if { "%arg" -> println } else { "%v$(indexedPlace.operand1)" -> println }
+            }
+        }
+        1
+    }
+    emitMutableReferenceMemberPlace placeIndex: Int, rootBinding: Int, callIndex: Int, ordinal: Int, ownerIndex: Int -> Int uses Console {
         context.ir[placeIndex] => memberPlace
         placeIndex -> referenceMemberPathDepth => memberDepth
         memberDepth == 0 -> if { 0 } else {
@@ -1593,8 +1658,12 @@ emitCore context: EmitContext -> Unit uses Console {
             memberPlace -> sourceNode => memberPlaceAst
             context.ir[memberBaseIndex!] -> sourceNode => memberBaseAst
             memberBaseAst.start + memberBaseAst.length => memberBaseEnd
-            context.ir[rootBinding].typeId => memberOwnerType!
             0 => memberProjectionOrdinal!
+            context.ir[rootBinding].typeId => memberOwnerType!
+            (memberBaseIndex! >= 0 and context.ir[memberBaseIndex!].kind == 15) -> if {
+                memberBaseIndex! -> emitMutableReferenceIndexPlace(rootBinding, callIndex, ordinal, ownerIndex) => memberProjectionOrdinal!
+                context.ir[memberBaseIndex!].typeId => memberOwnerType!
+            }
             memberPlaceAst.firstToken => memberTokenIndex!
             memberTokenIndex! < memberPlaceAst.firstToken + memberPlaceAst.tokenCount -> while {
                 context.tokens[context.ranges[memberPlace.sourceModule].tokenStart + memberTokenIndex!] => memberToken
@@ -1698,7 +1767,7 @@ emitCore context: EmitContext -> Unit uses Console {
             }
             referenceValueUsesMutableSlot! -> if {
                 referenceValueRoot -> mutableBindingRoot => referenceMutableRoot
-                referenceValueIndex -> referenceMemberPathDepth => referenceValueProjectionDepth
+                referenceValueIndex -> referencePlaceAddressDepth => referenceValueProjectionDepth
                 referenceValueProjectionDepth > 0 -> if {
                     "ptr %callref" -> print
                     callIndex -> writeDecimal

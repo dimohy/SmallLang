@@ -2779,6 +2779,31 @@ stored in user aggregates remain open, so formal progress remains **49
 complete, 8 partial, 3 missing: 53/60 (88.3%)**. Stage3 cadence advances to
 **7/10**, so Stage3 is not due.
 
+D220 extends readonly-reference places with array-index projections. Compile-time
+integer literal indices are distinct places, while a runtime-computed index is a
+conservative wildcard that may overlap every element. A following stored-field
+projection remains part of the same place, so `items![0].value` overlaps
+replacement of `items![0]` but not `items![1]`. The rule is internal and adds no
+lifetime syntax.
+
+The C# backend now accepts fixed and growable array elements plus `IntSlice`
+elements as reference arguments, emits an unsigned bounds check, and passes the
+element address. The self-host backend widens runtime indices to `i64`, traps on
+out-of-bounds access, composes the element GEP with subsequent field GEPs, and
+passes the deepest pointer. Production E23 mirrors constant-index disjointness,
+dynamic-index conservatism, nested paths, and last-use release. Examples 517-525
+and the two indexed-reference diagnostics cover execution, checked self-host
+analysis, LLVM validation, and nested address composition. The Stage2 E23 fixture
+combines the D218 origin union with a nested indexed place.
+
+Release builds have zero warnings and errors. Windows and Linux full suites pass
+**702/702**. Windows Stage2 passes **7/7** at **12,155,615 LLVM bytes**, and Linux
+Stage2 passes **6/6** at **12,152,194 LLVM bytes**. Formal progress remains **49
+complete, 8 partial, 3 missing: 53/60 (88.3%)** because owner move/rebind/drop
+conflicts, branch-local and loop-sensitive loan liveness, and references stored
+in user aggregates remain open. Stage3 cadence advances to **8/10**, so Stage3 is
+not due.
+
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
    (implemented after example 52).

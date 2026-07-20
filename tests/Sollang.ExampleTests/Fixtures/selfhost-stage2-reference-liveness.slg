@@ -1,10 +1,13 @@
-# A branch-selected projected ref locks every overlapping owner place.
+# A branch-selected nested indexed ref locks every overlapping owner place.
 struct Inner {
     first: Int
 }
 
+struct Item {
+    value: Int
+}
+
 struct Outer {
-    left: Inner
     right: Inner
     tail: Int
 }
@@ -22,12 +25,12 @@ read value: ref Int -> Int {
 
 main {
     Outer {
-        left: Inner { first: 41 }
         right: Inner { first: 51 }
         tail: 61
     } => outer!
-    choose(true, outer!.left.first, outer!.right.first) => borrowed
-    Inner { first: 42 } => outer!.left
+    [Item { value: 41 }, Item { value: 42 }, ~] => items!
+    choose(true, items![0].value, outer!.right.first) => borrowed
+    Item { value: 43 } => items![0]
     borrowed -> read => observed
     "$(observed)" -> println
 }

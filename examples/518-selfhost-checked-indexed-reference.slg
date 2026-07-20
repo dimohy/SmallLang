@@ -1,0 +1,33 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+# Verifies self-host E23 precision for constant array indices.
+main {
+    [
+        """
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, 30, ~] => values!
+            values![0] -> same => borrowed
+            21 => values![1]
+            11 => values![0]
+            borrowed -> read -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> ownershipCheck.analyze => diagnostics!
+    0 => conflicts!
+    diagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if {
+            conflicts! + 1 => conflicts!
+        }
+    }
+    "blocked=$(conflicts!)" -> println
+}
