@@ -7552,3 +7552,49 @@ Validation: Release build has zero warnings and errors; Windows and Linux each
 pass 594/594. Windows Stage2 passes 6/6 at 10,772,923 LLVM text bytes; Linux
 Stage2 passes 5/5 at 10,769,526 bytes. This advances the periodic Stage3 cadence
 to 9/10, so Stage3 remains deferred until the next Stage2 checkpoint.
+
+## D208D - Sparse Static Registry With Lock-Preserved Resolution
+
+Status: implemented; Windows/Linux full suites, Stage2, and Stage3 verified
+Date: 2026-07-20
+
+Sollang uses an explicit `{ registry, version }` source rather than a global
+ambient default. Version discovery reads only `v1/<package>/index.slg`; package
+bytes come from `v1/<package>/<version>.zip`. This keeps the server implementable
+as static HTTPS storage and lets the Sollang-written compiler parse the same
+language-shaped index without adding a second JSON grammar.
+
+The resolver selects the highest compatible non-yanked version, excluding
+prereleases unless the requirement names one. A normal build reuses a compatible
+lock pin and can work from its verified cache without querying the index.
+`sollang resolve` is the sole update operation and intentionally ignores old
+registry pins. `--locked` requires an exact compatible registry source, version,
+and checksum.
+
+The index-provided SHA-256 authenticates exact ZIP bytes before extraction.
+Extraction rejects traversal, absolute/backslash paths, symbolic links,
+case-insensitive collisions, excessive entries, and archive/expanded byte-limit
+violations. Materialized trees are independently hashed so cache mutation is an
+error. Nested path packages remain inside the archive and inherit its registry
+identity.
+
+This combines Cargo's sparse per-package index and yanked/checksum fields with
+Go's static proxy/cache and deterministic content verification. SwiftPM's
+fingerprint model reinforces the rule that a previously resolved package cannot
+silently change. The read protocol is normative in `docs/PACKAGE_REGISTRY.md`;
+publishing, credentials, signing, and transparency are explicitly separate
+server/tooling work.
+
+References:
+
+- [Cargo registry index](https://doc.rust-lang.org/cargo/reference/registry-index.html)
+- [Cargo registries](https://doc.rust-lang.org/cargo/reference/registries.html)
+- [Go module proxy and authentication](https://go.dev/ref/mod)
+- [Swift package security](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/packagesecurity/)
+
+Validation: Release build has zero warnings and errors; Windows and Linux each
+pass 600/600. Windows Stage2 passes 6/6 at 10,851,049 LLVM text bytes; Linux
+Stage2 passes 5/5 at 10,847,652 bytes. The scheduled Stage3 gate regenerates
+10,851,049 bytes and matches Stage2 at normalized SHA-256
+`0A8E471CCCC2A97895537FB6279DC84579D052AD4AFECBAA03BDFBA4794FE0DD`.
+The ten-checkpoint cadence resets to 0/10.

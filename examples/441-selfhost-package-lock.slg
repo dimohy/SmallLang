@@ -40,8 +40,19 @@ main {
             }]
         }
         """ -> locks.parse => gitPinned
+    """lock {
+            format: 2
+            packages: [{
+                id: "registry_package@1.2.3"
+                source: "registry:https://packages.sollang.dev#1.2.3"
+                checksum: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                dependencies: []
+            }]
+        }
+        """ -> locks.parse => registryPinned
     "lock = $(resolved.status),$(resolved.packages),$(resolved.dependencies)" -> println
     "invalid version = $(invalidVersion.status)" -> println
     "duplicate = $(duplicate.status)" -> println
     "git pin = $(gitPinned.status),$(gitPinned.packages)" -> println
+    "registry pin = $(registryPinned.status),$(registryPinned.packages)" -> println
 }

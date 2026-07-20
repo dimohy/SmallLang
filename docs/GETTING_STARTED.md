@@ -562,7 +562,22 @@ dependencies: {
 that exact commit without a working-tree `.git` directory, rejects symbolic
 links, hashes sorted paths, lengths, and bytes with SHA-256, and writes the
 revision plus checksum to lock format 2. Cached bytes whose digest changes are
-rejected. Package registries remain the later distribution layer.
+rejected. Registry packages use the same source record with a static HTTPS
+index:
+
+```sollang
+dependencies: {
+    text: {
+        registry: "https://packages.example.com"
+        version: "^1.0.0"
+    }
+}
+```
+
+Normal builds retain the version and SHA-256 already recorded in
+`sollang.lock`; `sollang resolve` is the explicit update operation. The complete
+index, archive, cache, and security contract is in
+[PACKAGE_REGISTRY.md](PACKAGE_REGISTRY.md).
 
 When only the root file is supplied, each non-`sys` import is mapped from its
 dotted module path to a `.slg` file relative to the root directory. For example,

@@ -8,27 +8,33 @@ internal sealed record ProjectBuild(
     IReadOnlyList<ProjectPackage> Packages,
     WorkspaceManifest? Workspace)
 {
-    public static ProjectBuild LoadProject(string pathOrDirectory, string? productName)
+    public static ProjectBuild LoadProject(string pathOrDirectory, string? productName, bool locked = false)
     {
         var rootManifest = ProjectManifest.Load(pathOrDirectory);
-        return Load(rootManifest, productName, workspace: null);
+        return Load(rootManifest, productName, workspace: null, locked: locked);
     }
 
     public static ProjectBuild LoadWorkspace(
         string pathOrDirectory,
         string? packageName,
-        string? productName)
+        string? productName,
+        bool locked = false)
     {
         var workspace = WorkspaceManifest.Load(pathOrDirectory);
         var rootManifest = workspace.SelectMember(packageName);
-        return Load(rootManifest, productName, workspace, includeAllWorkspaceMembers: true);
+        return Load(rootManifest, productName, workspace, includeAllWorkspaceMembers: true, locked: locked);
     }
 
     public static ProjectBuild LoadWorkspaceForResolution(string pathOrDirectory)
     {
         var workspace = WorkspaceManifest.Load(pathOrDirectory);
         var rootManifest = workspace.Members[0];
-        return Load(rootManifest, rootManifest.Name, workspace, includeAllWorkspaceMembers: true);
+        return Load(
+            rootManifest,
+            rootManifest.Name,
+            workspace,
+            includeAllWorkspaceMembers: true,
+            useExistingLock: false);
     }
 
     public static ProjectBuild LoadProjectForResolution(string pathOrDirectory)
@@ -37,14 +43,16 @@ internal sealed record ProjectBuild(
         var product = manifest.Products.ContainsKey(manifest.Name)
             ? manifest.Name
             : manifest.Products.Keys.Order(StringComparer.Ordinal).First();
-        return Load(manifest, product, workspace: null);
+        return Load(manifest, product, workspace: null, useExistingLock: false);
     }
 
     private static ProjectBuild Load(
         ProjectManifest rootManifest,
         string? productName,
         WorkspaceManifest? workspace,
-        bool includeAllWorkspaceMembers = false)
+        bool includeAllWorkspaceMembers = false,
+        bool locked = false,
+        bool useExistingLock = true)
     {
         var manifestsByPath = new Dictionary<string, ProjectPackage>(StringComparer.OrdinalIgnoreCase);
         var manifestsByName = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -56,6 +64,12 @@ internal sealed record ProjectBuild(
             workspace?.Directory ?? rootManifest.Directory,
             ".sollang",
             "dependencies");
+        var lockPath = Path.Combine(
+            workspace?.Directory ?? rootManifest.Directory,
+            PackageLock.FileName);
+        var lockSnapshot = useExistingLock
+            ? PackageLockSnapshot.Load(lockPath, required: locked)
+            : null;
         var root = LoadPackage(
             rootManifest,
             rootManifest.SelectProduct(productName),
@@ -64,6 +78,8 @@ internal sealed record ProjectBuild(
             states,
             workspaceMembers,
             cacheRoot,
+            lockSnapshot,
+            locked,
             new PathPackageSource(rootManifest.Directory),
             []);
         if (includeAllWorkspaceMembers)
@@ -87,6 +103,8 @@ internal sealed record ProjectBuild(
                     states,
                     workspaceMembers,
                     cacheRoot,
+                    lockSnapshot,
+                    locked,
                     new PathPackageSource(member.Directory),
                     []);
             }
@@ -108,6 +126,8 @@ internal sealed record ProjectBuild(
         IDictionary<string, VisitState> states,
         IReadOnlyDictionary<string, ProjectManifest>? workspaceMembers,
         string cacheRoot,
+        PackageLockSnapshot? lockSnapshot,
+        bool locked,
         PackageSource source,
         IReadOnlyList<string> chain)
     {
@@ -138,6 +158,13 @@ internal sealed record ProjectBuild(
             {
                 PathProjectDependencySource path => ResolvePathDependency(path, source),
                 GitProjectDependencySource git => GitPackageCache.Materialize(git, cacheRoot),
+                RegistryProjectDependencySource registry => RegistryPackageCache.Materialize(
+                    dependency.Key,
+                    dependency.Value.Version,
+                    registry,
+                    cacheRoot,
+                    lockSnapshot?.Find(dependency.Key, registry.Location, dependency.Value.Version, locked),
+                    locked),
                 _ => throw new InvalidOperationException("unknown project dependency source")
             };
             var dependencyManifest = resolved.Manifest;
@@ -170,6 +197,8 @@ internal sealed record ProjectBuild(
                     states,
                     workspaceMembers,
                     cacheRoot,
+                    lockSnapshot,
+                    locked,
                     resolved.Source,
                     nextChain));
         }
@@ -196,9 +225,17 @@ internal sealed record ProjectBuild(
             throw new SollangException(
                 $"path dependency escapes git source tree '{git.Location}#{git.Revision}': {dependency.Path}");
         }
+        if (parentSource is RegistryPackageSource registry
+            && !IsWithin(registry.ContentRoot, dependency.Path))
+        {
+            throw new SollangException(
+                $"path dependency escapes registry package '{registry.Location}#{registry.Version}': {dependency.Path}");
+        }
         return new ResolvedDependency(
             ProjectManifest.Load(dependency.Path),
-            parentSource is GitPackageSource ? parentSource : new PathPackageSource(dependency.Path));
+            parentSource is GitPackageSource or RegistryPackageSource
+                ? parentSource
+                : new PathPackageSource(dependency.Path));
     }
 
     private static bool IsWithin(string root, string path)
@@ -232,5 +269,11 @@ internal sealed record PathPackageSource(string Path) : PackageSource;
 internal sealed record GitPackageSource(
     string Location,
     string Revision,
+    string Checksum,
+    string ContentRoot) : PackageSource;
+
+internal sealed record RegistryPackageSource(
+    string Location,
+    SemanticVersion Version,
     string Checksum,
     string ContentRoot) : PackageSource;

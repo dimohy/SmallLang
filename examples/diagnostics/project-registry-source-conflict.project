@@ -1,0 +1,12 @@
+project {
+    name: "registry_source_conflict"
+    version: "0.1.0"
+    root: "projects/undeclared-transitive/main.slg"
+    dependencies: {
+        remote: {
+            path: "projects/undeclared-transitive"
+            registry: "https://packages.example.com"
+            version: "^1.0.0"
+        }
+    }
+}

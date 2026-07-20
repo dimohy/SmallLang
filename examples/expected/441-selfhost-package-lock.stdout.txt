@@ -2,3 +2,4 @@ lock = 0,2,1
 invalid version = 9
 duplicate = 10
 git pin = 0,1
+registry pin = 0,1

@@ -297,6 +297,10 @@ project {
             rev: "0123456789abcdef0123456789abcdef01234567"
             version: "^2.0.0"
         }
+        text: {
+            registry: "https://packages.example.com"
+            version: "^1.0.0"
+        }
     }
 }
 ```
@@ -337,22 +341,26 @@ Git dependencies require a full 40- or 64-digit commit hash—branches, tags,
 and abbreviated hashes are deliberately rejected. Sollang checks out only
 that commit into `.sollang/dependencies`, hashes the canonical source tree with
 SHA-256, and records both revision and checksum in lock format 2.
+Registry dependencies use a static language-shaped index and checksummed ZIP
+archive. Normal builds preserve the locked version; only `sollang resolve`
+selects the newest compatible non-yanked release. See the
+[registry protocol](docs/PACKAGE_REGISTRY.md).
 
 ## Self-Hosting Progress
 
-The measured roadmap is currently **52.5/60 gates (87.5%)**:
+The measured roadmap is currently **53/60 gates (88.3%)**:
 
-- **48 complete**
-- **9 partial**
+- **49 complete**
+- **8 partial**
 - **3 missing**
-- **7.5 equivalent gates remaining**
+- **7 equivalent gates remaining**
 
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2
 compiler and passes Windows and Linux differential gates. Local package
 identities, SemVer requirements, content-pinned Git dependencies, shared
 deterministic workspace locks, and self-host parsers for both versions and
-lock manifests are implemented; package registries remain unfinished. Exact
+lock manifests and registry-index selection are implemented. Exact
 counts and the evidence behind every gate live in the
 [self-hosting roadmap](docs/SELF_HOSTING_ROADMAP.md).
 

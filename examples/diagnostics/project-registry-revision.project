@@ -1,0 +1,12 @@
+project {
+    name: "registry_revision"
+    version: "0.1.0"
+    root: "projects/undeclared-transitive/main.slg"
+    dependencies: {
+        remote: {
+            registry: "https://packages.example.com"
+            rev: "0123456789abcdef0123456789abcdef01234567"
+            version: "^1.0.0"
+        }
+    }
+}

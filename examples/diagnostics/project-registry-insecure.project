@@ -1,0 +1,8 @@
+project {
+    name: "registry_insecure"
+    version: "0.1.0"
+    root: "projects/undeclared-transitive/main.slg"
+    dependencies: {
+        remote: { registry: "http://packages.example.com", version: "^1.0.0" }
+    }
+}

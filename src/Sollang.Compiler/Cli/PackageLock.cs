@@ -107,6 +107,14 @@ internal static class PackageLock
                         .AppendLine("\"");
                     builder.Append("            checksum: \"").Append(git.Checksum).AppendLine("\"");
                     break;
+                case RegistryPackageSource registry:
+                    builder.Append("            source: \"registry:")
+                        .Append(Escape(registry.Location))
+                        .Append('#')
+                        .Append(registry.Version)
+                        .AppendLine("\"");
+                    builder.Append("            checksum: \"").Append(registry.Checksum).AppendLine("\"");
+                    break;
                 default:
                     throw new InvalidOperationException("unknown package source");
             }

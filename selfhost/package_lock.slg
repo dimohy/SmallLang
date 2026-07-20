@@ -105,6 +105,26 @@ validChecksum source: Text, value: TextSpan -> Bool {
     valid!
 }
 
+validRegistrySource source: Text, value: TextSpan -> Bool {
+    value.length > UIntSize(17) => valid!
+    value.start + value.length => end
+    value.start + UIntSize(9) => index!
+    value.start => marker!
+    valid! -> if {
+        (source -> byte(value.start)) == UInt8(114) and (source -> byte(value.start + UIntSize(1))) == UInt8(101) and (source -> byte(value.start + UIntSize(2))) == UInt8(103) and (source -> byte(value.start + UIntSize(3))) == UInt8(105) and (source -> byte(value.start + UIntSize(4))) == UInt8(115) and (source -> byte(value.start + UIntSize(5))) == UInt8(116) and (source -> byte(value.start + UIntSize(6))) == UInt8(114) and (source -> byte(value.start + UIntSize(7))) == UInt8(121) and (source -> byte(value.start + UIntSize(8))) == UInt8(58) => valid!
+    }
+    (valid! and index! < end) -> while {
+        (source -> byte(index!)) == UInt8(35) -> if { index! => marker! }
+        index! + UIntSize(1) => index!
+    }
+    (valid! and marker! > value.start + UIntSize(9) and marker! + UIntSize(1) < end) -> if {
+        source -> slice(marker! + UIntSize(1), end - marker! - UIntSize(1)) => versionText
+        versionText -> versions.parse => version
+        version.status == 0 => valid!
+    } else { false => valid! }
+    valid!
+}
+
 # Status: 0 valid, 1 lock keyword, 2 opening brace, 3 format field,
 # 4 format value, 5 packages field, 6 opening package array,
 # 7 package object, 8 id field, 9 invalid package id, 10 duplicate id,
@@ -150,7 +170,7 @@ public parse source: Text -> PackageLock {
     status! == 0 -> if {
         index! -> skipSeparators(tokens!) => index!
         (status! == 0 and tokens![index!].kind != grammar.tokenIdRightBracket) -> while {
-            false => gitSource!
+            false => remoteSource!
             tokens![index!].kind == grammar.tokenIdLeftBrace -> if { index! + 1 => index! } else { 7 => status! }
             status! == 0 -> if {
                 index! -> skipSeparators(tokens!) => index!
@@ -185,15 +205,20 @@ public parse source: Text -> PackageLock {
                         index! + 1 => index!
                     } else {
                         source -> validGitSource(sourceValue) -> if {
-                            true => gitSource!
+                            true => remoteSource!
                             index! + 1 => index!
-                        } else { 12 => status! }
+                        } else {
+                            source -> validRegistrySource(sourceValue) -> if {
+                                true => remoteSource!
+                                index! + 1 => index!
+                            } else { 12 => status! }
+                        }
                     }
                 } else { 11 => status! }
             }
             status! == 0 -> if {
                 index! -> skipSeparators(tokens!) => index!
-                gitSource! -> if {
+                remoteSource! -> if {
                     (tokens![index!].kind == grammar.tokenIdIdentifier and (source -> textIs(tokens![index!], "checksum"))) -> if { index! + 1 => index! } else { 12 => status! }
                     index! -> skipSeparators(tokens!) => index!
                     tokens![index!].kind == grammar.tokenIdColon -> if { index! + 1 => index! } else { 12 => status! }

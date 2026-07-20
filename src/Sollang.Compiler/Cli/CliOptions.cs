@@ -122,7 +122,7 @@ internal sealed record CliOptions(
             }
             if (workspacePath is not null)
             {
-                project = ProjectBuild.LoadWorkspace(workspacePath, packageName, productName);
+                project = ProjectBuild.LoadWorkspace(workspacePath, packageName, productName, locked);
             }
             else if (projectPath is not null)
             {
@@ -130,7 +130,7 @@ internal sealed record CliOptions(
                 {
                     throw new SollangException("--package requires a workspace build");
                 }
-                project = ProjectBuild.LoadProject(projectPath, productName);
+                project = ProjectBuild.LoadProject(projectPath, productName, locked);
             }
             else
             {
@@ -138,7 +138,13 @@ internal sealed record CliOptions(
                     $"no source file, {ProjectManifest.FileName}, or {WorkspaceManifest.FileName} was found; {Usage}");
             }
             sources.Add(project.Product.RootSource);
-            if (project.Workspace is not null || locked)
+            if (project.Workspace is not null
+                || locked
+                || (string.Equals(
+                        Path.GetFileName(project.RootPackage.Manifest.Path),
+                        ProjectManifest.FileName,
+                        StringComparison.OrdinalIgnoreCase)
+                    && File.Exists(PackageLock.PathFor(project))))
             {
                 PackageLock.Ensure(project, locked);
             }

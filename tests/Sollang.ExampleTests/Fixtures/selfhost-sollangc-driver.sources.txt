@@ -3,6 +3,7 @@ selfhost/source_root.slg
 selfhost/workspace.slg
 selfhost/package_versions.slg
 selfhost/package_lock.slg
+selfhost/registry_index.slg
 selfhost/llvm/text.slg
 selfhost/llvm/source_root.slg
 selfhost/llvm/runtime.slg

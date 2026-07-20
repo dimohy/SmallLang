@@ -74,9 +74,12 @@ internal readonly partial record struct SemanticVersion(
     private static partial Regex VersionPattern();
 }
 
-internal sealed record VersionRequirement(string Text, Func<SemanticVersion, bool> Accepts)
+internal sealed record VersionRequirement(
+    string Text,
+    Func<SemanticVersion, bool> Accepts,
+    bool AllowsPreRelease)
 {
-    public static VersionRequirement Any { get; } = new("*", static _ => true);
+    public static VersionRequirement Any { get; } = new("*", static _ => true, AllowsPreRelease: false);
 
     public static VersionRequirement Parse(string text, string context)
     {
@@ -89,7 +92,10 @@ internal sealed record VersionRequirement(string Text, Func<SemanticVersion, boo
 
         var terms = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var predicates = terms.Select(term => ParseTerm(term, context)).ToArray();
-        return new VersionRequirement(text, version => predicates.All(predicate => predicate(version)));
+        return new VersionRequirement(
+            text,
+            version => predicates.All(predicate => predicate(version)),
+            terms.Any(static term => term.Contains('-', StringComparison.Ordinal)));
     }
 
     private static Func<SemanticVersion, bool> ParseTerm(string term, string context)

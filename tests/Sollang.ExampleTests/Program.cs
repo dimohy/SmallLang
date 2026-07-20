@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -282,6 +284,11 @@ if (expectedFiles.Any(file => string.Equals(
         StringComparison.Ordinal)))
 {
     PrepareGitDependencyFixture(baseArtifactsDir);
+}
+if (expectedFiles.Any(file => Path.GetFileName(file) is
+        "443-registry-dependency.stdout.txt" or "444-registry-lock-pin.stdout.txt"))
+{
+    PrepareRegistryDependencyFixture(baseArtifactsDir, compilerDll, repoRoot);
 }
 
 var failures = 0;
@@ -1131,6 +1138,144 @@ static void PrepareGitDependencyFixture(string artifactsDir)
         Path.Combine(app, "src", "main.slg"),
         "import remote\n\nmain { 40 -> remote.addTwo => value\n    \"$value\" -> println }\n",
         new UTF8Encoding(false));
+}
+
+static void PrepareRegistryDependencyFixture(
+    string artifactsDir,
+    string compilerDll,
+    string repoRoot)
+{
+    var root = Path.Combine(artifactsDir, "443-registry-dependency");
+    if (Directory.Exists(root))
+    {
+        foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+        Directory.Delete(root, recursive: true);
+    }
+    var registry = Path.Combine(root, "registry");
+    var packageDirectory = Path.Combine(registry, "v1", "remote");
+    Directory.CreateDirectory(packageDirectory);
+    var versions = new[]
+    {
+        (Version: "1.1.0", Value: 41, Yanked: false),
+        (Version: "1.2.3", Value: 42, Yanked: false),
+        (Version: "1.3.0", Value: 99, Yanked: true),
+        (Version: "1.4.0-beta.1", Value: 100, Yanked: false)
+    };
+    var checksums = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (var version in versions)
+    {
+        var source = Path.Combine(root, "package-" + version.Version);
+        Directory.CreateDirectory(Path.Combine(source, "src"));
+        File.WriteAllText(
+            Path.Combine(source, "sollang.project"),
+            $"project {{\n    name: \"remote\"\n    version: \"{version.Version}\"\n    root: \"src/remote.slg\"\n}}\n",
+            new UTF8Encoding(false));
+        File.WriteAllText(
+            Path.Combine(source, "src", "remote.slg"),
+            $"namespace remote\n\npublic answer: -> Int => {version.Value}\n",
+            new UTF8Encoding(false));
+        var archive = Path.Combine(packageDirectory, version.Version + ".zip");
+        ZipFile.CreateFromDirectory(source, archive, CompressionLevel.NoCompression, includeBaseDirectory: false);
+        checksums[version.Version] = "sha256:"
+            + Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(archive))).ToLowerInvariant();
+    }
+    var index = new StringBuilder("registry {\n    package: \"remote\"\n    versions: [\n");
+    foreach (var version in versions)
+    {
+        index.Append("        { version: \"")
+            .Append(version.Version)
+            .Append("\", checksum: \"")
+            .Append(checksums[version.Version])
+            .Append("\", yanked: ")
+            .Append(version.Yanked ? "true" : "false")
+            .AppendLine(" }");
+    }
+    index.Append("    ]\n}\n");
+    File.WriteAllText(Path.Combine(packageDirectory, "index.slg"), index.ToString(), new UTF8Encoding(false));
+
+    var registryLocation = new Uri(registry).AbsoluteUri.TrimEnd('/');
+    var appLatest = Path.Combine(root, "app-latest");
+    var appPinned = Path.Combine(root, "app-pinned");
+    var appUpdate = Path.Combine(root, "app-update");
+    var appBadChecksum = Path.Combine(root, "app-bad-checksum");
+    WriteRegistryApp(appLatest, registryLocation);
+    WriteRegistryApp(appPinned, registryLocation);
+    WriteRegistryApp(appUpdate, registryLocation);
+    WriteRegistryApp(appBadChecksum, registryLocation);
+
+    var resolve = Run(
+        "dotnet",
+        [compilerDll, "resolve", "--project", appLatest],
+        input: null,
+        repoRoot);
+    if (resolve.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"failed to resolve registry fixture: {resolve.Stderr}");
+    }
+    var latestLock = File.ReadAllText(Path.Combine(appLatest, "sollang.lock"));
+    if (!latestLock.Contains("remote@1.2.3", StringComparison.Ordinal)
+        || latestLock.Contains("remote@1.3.0", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("registry fixture did not select the highest non-yanked compatible version");
+    }
+
+    WriteRegistryLock(appPinned, registryLocation, "1.1.0", checksums["1.1.0"]);
+    WriteRegistryLock(appUpdate, registryLocation, "1.1.0", checksums["1.1.0"]);
+    var update = Run(
+        "dotnet",
+        [compilerDll, "resolve", "--project", appUpdate],
+        input: null,
+        repoRoot);
+    if (update.ExitCode != 0
+        || !File.ReadAllText(Path.Combine(appUpdate, "sollang.lock"))
+            .Contains("remote@1.2.3", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("explicit registry resolve did not update the pinned version");
+    }
+
+    WriteRegistryLock(
+        appBadChecksum,
+        registryLocation,
+        "1.1.0",
+        "sha256:" + new string('0', 64));
+    var badChecksum = Run(
+        "dotnet",
+        [compilerDll, "build", "--project", appBadChecksum, "--locked"],
+        input: null,
+        repoRoot);
+    if (badChecksum.ExitCode == 0
+        || !badChecksum.Stderr.Contains("registry archive checksum mismatch", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("registry fixture did not reject a lock checksum mismatch");
+    }
+
+    static void WriteRegistryApp(string app, string registryLocation)
+    {
+        Directory.CreateDirectory(Path.Combine(app, "src"));
+        File.WriteAllText(
+            Path.Combine(app, "sollang.project"),
+            $"project {{\n    name: \"registry_app\"\n    version: \"0.1.0\"\n    root: \"src/main.slg\"\n    dependencies: {{\n        remote: {{ registry: \"{registryLocation}\", version: \"^1.0.0\" }}\n    }}\n}}\n",
+            new UTF8Encoding(false));
+        File.WriteAllText(
+            Path.Combine(app, "src", "main.slg"),
+            "import remote\n\nmain { remote.answer => value\n    \"$value\" -> println }\n",
+            new UTF8Encoding(false));
+    }
+
+    static void WriteRegistryLock(
+        string app,
+        string registryLocation,
+        string version,
+        string checksum)
+    {
+        File.WriteAllText(
+            Path.Combine(app, "sollang.lock"),
+            $"lock {{\n    format: 2\n    packages: [\n        {{\n            id: \"registry_app@0.1.0\"\n            source: \"path:.\"\n            dependencies: [\n                \"remote@{version}\"\n            ]\n        }}\n        {{\n            id: \"remote@{version}\"\n            source: \"registry:{registryLocation}#{version}\"\n            checksum: \"{checksum}\"\n            dependencies: []\n        }}\n    ]\n}}\n",
+            new UTF8Encoding(false));
+    }
 }
 
 static ProcessResult Run(

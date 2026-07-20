@@ -49,8 +49,9 @@ The design deliberately combines a small set of compatible ideas:
 - Cargo workspaces use an explicit member set, ancestor discovery, shared output,
   and one dependency-resolution boundary; SwiftPM keeps packages, products, and
   local path dependencies distinct; Zig models builds as a deterministic DAG.
-  Sollang combines those boundaries in a confined path-only workspace manifest,
-  while deferring remote resolution until a lock-file contract exists. See
+  Sollang combines those boundaries in a confined workspace, exact Git pins,
+  and a sparse static registry whose remote bytes are authenticated by the
+  workspace lock. See
   Cargo [workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html),
   SwiftPM [adding dependencies](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/addingdependencies/),
   and the Zig [build system](https://ziglang.org/learn/build-system/).
@@ -133,12 +134,12 @@ not lines of code.
 | Core syntax and control flow | 10 | 10 | 0 | 0 | 10.0 |
 | Types, traits, and generics | 12 | 11 | 0 | 1 | 11.0 |
 | Ownership and storage | 10 | 7 | 2 | 1 | 8.0 |
-| Modules, visibility, and builds | 8 | 7 | 1 | 0 | 7.5 |
+| Modules, visibility, and builds | 8 | 8 | 0 | 0 | 8.0 |
 | Compiler-construction primitives | 12 | 11 | 1 | 0 | 11.5 |
 | Standard library and tooling | 8 | 2 | 5 | 1 | 4.5 |
-| **Total** | **60** | **48** | **9** | **3** | **52.5 / 60** |
+| **Total** | **60** | **49** | **8** | **3** | **53.0 / 60** |
 
-Current count-based progress: **87.5% (52.5 of 60 equivalent gates)**.
+Current count-based progress: **88.3% (53 of 60 equivalent gates)**.
 
 The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
@@ -149,7 +150,7 @@ reject mutable or structurally non-sendable captures. The submitting parent now
 helps drain its task group before the structured join. Exact cancellation and
 partial-result destruction plus full Windows/Linux suite parity are proven.
 This completed feature-local subproject does not promote a roadmap gate.
-There are **7.5 equivalent gates remaining**. Because the remaining compiler
+There are **7 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -1757,6 +1758,39 @@ are: zero-warning Release build, Windows/Linux full suites at **594/594**,
 Windows Stage2 **6/6** at **10,772,923 bytes**, and Linux Stage2 **5/5** at
 **10,769,526 bytes**. The periodic Stage3 cadence is now **9/10**, so Stage3 is
 still deferred.
+
+## Static Checksummed Package Registry (D208D)
+
+D208D completes the package-distribution gate with a read-only, static HTTPS
+registry protocol. `{ registry, version }` dependencies read one language-shaped
+`v1/<package>/index.slg`, select the highest compatible non-yanked stable release,
+and verify the exact bytes of `v1/<package>/<version>.zip` with SHA-256 before
+safe bounded extraction. Prereleases require an explicitly prerelease-shaped
+constraint.
+
+Normal builds preserve compatible registry pins from lock format 2, `--locked`
+rejects missing or incompatible pins, and only `sollang resolve` searches the
+index for a newer compatible release. The content-addressed cache verifies both
+the archive and extracted tree, while path confinement, symbolic-link rejection,
+portable path collision checks, entry and byte limits, and atomic materialization
+protect the compiler boundary. The self-hosted registry parser independently
+performs SemVer selection and validates registry lock sources.
+
+Examples 443 and 444 prove newest-compatible resolution, yanked/prerelease
+exclusion, explicit update, checksum rejection, and a lock-preserved older
+version. Example 445 proves self-host selection; example 441 covers registry
+lock parsing. The normative protocol and tracked limitations are in
+`docs/PACKAGE_REGISTRY.md`.
+
+D208 distribution work is **5/5 (100%)**. This promotes the modules/builds gate
+from partial to complete, moving the formal roadmap to **49 complete, 8 partial,
+3 missing: 53/60 (88.3%)**, with **7 equivalent gates remaining**. Validation
+is zero-warning Release build, Windows/Linux full suites at **600/600**,
+Windows Stage2 **6/6** at **10,851,049 bytes**, and Linux Stage2 **5/5** at
+**10,847,652 bytes**. The required Stage3 compiler emits **10,851,049 bytes**
+and matches Stage2 at normalized SHA-256
+`0A8E471CCCC2A97895537FB6279DC84579D052AD4AFECBAA03BDFBA4794FE0DD`.
+The periodic cadence therefore resets from **10/10** to **0/10**.
 
 ## Immediate Implementation Order
 

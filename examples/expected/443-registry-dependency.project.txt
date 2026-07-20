@@ -1,0 +1,2 @@
+artifacts/example-tests/443-registry-dependency/app-latest
+--locked

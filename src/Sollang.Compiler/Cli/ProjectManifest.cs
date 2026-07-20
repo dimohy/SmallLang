@@ -96,9 +96,12 @@ internal sealed record ProjectManifest(
                     pair.Value.Path is not null
                         ? new PathProjectDependencySource(
                             ResolveDependencyPath(pair.Value.Path, projectDirectory, manifestPath))
-                        : new GitProjectDependencySource(
-                            ValidateGitLocation(pair.Value.Git!, projectDirectory, manifestPath),
-                            ValidateGitRevision(pair.Value.Revision!, manifestPath)),
+                        : pair.Value.Git is not null
+                            ? new GitProjectDependencySource(
+                                ValidateGitLocation(pair.Value.Git, projectDirectory, manifestPath),
+                                ValidateGitRevision(pair.Value.Revision!, manifestPath))
+                            : new RegistryProjectDependencySource(
+                                ValidateRegistryLocation(pair.Value.Registry!, projectDirectory, manifestPath)),
                     pair.Value.Version is null
                         ? VersionRequirement.Any
                         : VersionRequirement.Parse(
@@ -189,6 +192,34 @@ internal sealed record ProjectManifest(
                 $"dependency git revision must be a full 40- or 64-digit commit hash in {manifestPath}: {revision}");
         }
         return revision.ToLowerInvariant();
+    }
+
+    private static string ValidateRegistryLocation(string location, string projectDirectory, string manifestPath)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            throw new SollangException($"dependency registry location must not be empty in {manifestPath}");
+        }
+        Uri uri;
+        if (Uri.TryCreate(location, UriKind.Absolute, out var absolute))
+        {
+            uri = absolute;
+        }
+        else
+        {
+            uri = new Uri(System.IO.Path.GetFullPath(location, projectDirectory));
+        }
+        if (uri.Scheme is not ("https" or "file"))
+        {
+            throw new SollangException(
+                $"dependency registry URL must use https or file in {manifestPath}: {location}");
+        }
+        if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            throw new SollangException(
+                $"dependency registry URL must not contain credentials, a query, or a fragment in {manifestPath}");
+        }
+        return uri.AbsoluteUri.TrimEnd('/');
     }
 
     private static void ValidateProjectName(string name, string manifestPath)
@@ -298,13 +329,14 @@ internal sealed record ProjectManifest(
                 ParsedDependency value;
                 if (Check(TokenKind.String))
                 {
-                    value = new ParsedDependency(Expect(TokenKind.String, "string literal").Text, null, null, null);
+                    value = new ParsedDependency(Expect(TokenKind.String, "string literal").Text, null, null, null, null);
                 }
                 else
                 {
                     Expect(TokenKind.LeftBrace, "'{' or path string");
                     string? dependencyPath = null;
                     string? dependencyGit = null;
+                    string? dependencyRegistry = null;
                     string? dependencyRevision = null;
                     string? dependencyVersion = null;
                     SkipSeparators();
@@ -320,13 +352,16 @@ internal sealed record ProjectManifest(
                             case "git" when dependencyGit is null:
                                 dependencyGit = Expect(TokenKind.String, "string literal").Text;
                                 break;
+                            case "registry" when dependencyRegistry is null:
+                                dependencyRegistry = Expect(TokenKind.String, "string literal").Text;
+                                break;
                             case "rev" when dependencyRevision is null:
                                 dependencyRevision = Expect(TokenKind.String, "string literal").Text;
                                 break;
                             case "version" when dependencyVersion is null:
                                 dependencyVersion = Expect(TokenKind.String, "string literal").Text;
                                 break;
-                            case "path" or "git" or "rev" or "version":
+                            case "path" or "git" or "registry" or "rev" or "version":
                                 throw Error(field, $"duplicate dependency field '{field.Text}'");
                             default:
                                 throw Error(field, $"unknown dependency field '{field.Text}'");
@@ -335,21 +370,25 @@ internal sealed record ProjectManifest(
                         SkipSeparators();
                     }
                     Expect(TokenKind.RightBrace, "'}'");
-                    if ((dependencyPath is null) == (dependencyGit is null))
+                    var sourceCount = (dependencyPath is null ? 0 : 1)
+                        + (dependencyGit is null ? 0 : 1)
+                        + (dependencyRegistry is null ? 0 : 1);
+                    if (sourceCount != 1)
                     {
-                        throw Error(key, $"dependency '{key.Text}' must declare exactly one of 'path' or 'git'");
+                        throw Error(key, $"dependency '{key.Text}' must declare exactly one of 'path', 'git', or 'registry'");
                     }
                     if (dependencyGit is not null && dependencyRevision is null)
                     {
                         throw Error(key, $"git dependency '{key.Text}' is missing required field 'rev'");
                     }
-                    if (dependencyPath is not null && dependencyRevision is not null)
+                    if (dependencyGit is null && dependencyRevision is not null)
                     {
-                        throw Error(key, $"path dependency '{key.Text}' cannot declare 'rev'");
+                        throw Error(key, $"non-git dependency '{key.Text}' cannot declare 'rev'");
                     }
                     value = new ParsedDependency(
                         dependencyPath,
                         dependencyGit,
+                        dependencyRegistry,
                         dependencyRevision,
                         dependencyVersion);
                 }
@@ -437,7 +476,12 @@ internal sealed record ProjectManifest(
         Dictionary<string, string>? Products,
         Dictionary<string, ParsedDependency>? Dependencies);
 
-    private sealed record ParsedDependency(string? Path, string? Git, string? Revision, string? Version);
+    private sealed record ParsedDependency(
+        string? Path,
+        string? Git,
+        string? Registry,
+        string? Revision,
+        string? Version);
 }
 
 internal sealed record ProjectProduct(string Name, string RootSource);
@@ -449,3 +493,5 @@ internal abstract record ProjectDependencySource;
 internal sealed record PathProjectDependencySource(string Path) : ProjectDependencySource;
 
 internal sealed record GitProjectDependencySource(string Location, string Revision) : ProjectDependencySource;
+
+internal sealed record RegistryProjectDependencySource(string Location) : ProjectDependencySource;

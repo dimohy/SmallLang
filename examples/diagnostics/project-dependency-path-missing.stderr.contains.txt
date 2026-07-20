@@ -1,1 +1,1 @@
-dependency 'math' must declare exactly one of 'path' or 'git'
+dependency 'math' must declare exactly one of 'path', 'git', or 'registry'
