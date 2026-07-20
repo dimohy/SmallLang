@@ -2069,6 +2069,44 @@ spelling and postfix `?` propagation.
 - [Rust field expressions](https://doc.rust-lang.org/reference/expressions/field-expr.html)
 - [Rust array and slice indexing](https://doc.rust-lang.org/reference/expressions/array-expr.html)
 
+## Concrete Index Operand Dependencies (D212A)
+
+D212A closes the general self-host failure exposed while finishing D211C. An
+index such as `values![(values! -> len) - 1] -> last` lowered its computed index
+under a transparent flow wrapper. The index node referred to that wrapper even
+though wrappers emit no runtime value, so LLVM could contain a GEP using an
+undefined `%vN` while the real subtraction appeared later.
+
+The self-host typed-IR finalization pass now resolves both source and index
+operands of every index node through any transparent value wrappers. It selects
+the concrete non-Unit value child, repeats through nested wrappers, and stores
+that relocatable IR index as the dependency. The existing scheduler then emits
+the subtraction before the GEP naturally; the LLVM text emitter needs no
+source-specific ordering exception. The reference compiler already recursively
+evaluated the same expression in the required order and remains the differential
+contract.
+
+Examples 462-464 cover reference execution, self-host LLVM assembly/execution,
+and the typed-IR edge itself: the index operand changes from the undefined
+wrapper node to the concrete binary node. Validation is a zero-warning Release
+build, Windows/Linux full suites at **625/625**, Windows Stage2 **6/6** at
+**11,325,985 LLVM text bytes** with a **1,570,816-byte native executable**, and
+Linux Stage2 **5/5** at **11,322,588 LLVM text bytes** with a **3,120,488-byte
+native executable**. The periodic Stage3 cadence advances to **8/10**. Formal
+progress remains **49 complete, 8 partial, 3 missing: 53/60 (88.3%)** because
+this strengthens the existing self-host compiler gate rather than completing a
+remaining top-level ownership or tooling gate.
+
+Research basis: LLVM requires an SSA definition to dominate every use. Rust
+specifies recursive operand evaluation from inner expressions outward and
+left-to-right order for siblings. Kotlin likewise evaluates a call receiver and
+then explicit arguments left to right. Sollang records those source semantics
+in concrete typed-IR dependency edges before emitting LLVM.
+
+- [LLVM language reference: well-formed SSA](https://llvm.org/docs/LangRef.html#well-formedness)
+- [Rust operand evaluation order](https://doc.rust-lang.org/stable/reference/expressions.html#evaluation-order-of-operands)
+- [Kotlin function-call evaluation](https://kotlinlang.org/spec/expressions.html#function-calls-and-property-access)
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).

@@ -7924,3 +7924,40 @@ References:
 - [Rust expression precedence and order](https://doc.rust-lang.org/stable/reference/expressions.html)
 - [Rust field expressions](https://doc.rust-lang.org/reference/expressions/field-expr.html)
 - [Rust array and slice indexing](https://doc.rust-lang.org/reference/expressions/array-expr.html)
+
+## D212A - Concrete Index Operand Dependencies
+
+Status: implemented and cross-target Stage2 verified
+Date: 2026-07-20
+
+An index expression must depend on the node that actually computes its source
+and index values. A transparent flow wrapper is useful for syntax and type
+grouping but has no LLVM result of its own. Pointing an index operand at such a
+wrapper can therefore produce an undefined SSA value even when the underlying
+binary expression is present later in typed IR.
+
+Self-host typed-IR finalization now unwraps both operands of every index node to
+their concrete non-Unit value child, including recursively nested wrappers.
+This is done before global index type recovery and LLVM scheduling, making the
+dependency graph authoritative. The emitter and scheduler remain generic: the
+real subtraction is ready and emitted before the consuming GEP because the IR
+edge says so, not because text emission recognizes one source spelling.
+
+Examples 462-464 fix the failure-first contract at three levels: reference
+execution returns the last element, self-host LLVM assembles and executes, and
+the typed-IR snapshot proves that the index operand names the binary node rather
+than its wrapper. Windows/Linux full suites pass 625/625. Windows Stage2 passes
+6/6 at 11,325,985 LLVM text bytes and a 1,570,816-byte executable; Linux Stage2
+passes 5/5 at 11,322,588 LLVM text bytes and a 3,120,488-byte executable. Stage3
+cadence advances to 8/10. Formal progress remains 49 complete, 8 partial, and 3
+missing: 53/60 (88.3%).
+
+The invariant follows LLVM's SSA dominance requirement, Rust's recursive and
+left-to-right operand evaluation rule, and Kotlin's receiver-then-left-to-right
+call argument order.
+
+References:
+
+- [LLVM language reference: well-formed SSA](https://llvm.org/docs/LangRef.html#well-formedness)
+- [Rust operand evaluation order](https://doc.rust-lang.org/stable/reference/expressions.html#evaluation-order-of-operands)
+- [Kotlin function-call evaluation](https://kotlinlang.org/spec/expressions.html#function-calls-and-property-access)

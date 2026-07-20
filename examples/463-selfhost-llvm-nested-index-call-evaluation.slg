@@ -1,0 +1,19 @@
+import sollang.compiler.llvm.text as llvm
+
+main {
+    [
+        """
+        last value: Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, ~] => values!
+            values![(values! -> len) - 1] -> last => result
+            "last=$result" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinux
+}

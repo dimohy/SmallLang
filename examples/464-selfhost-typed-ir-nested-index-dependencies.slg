@@ -1,0 +1,27 @@
+import sollang.compiler.ir.typed as typedIr
+import sollang.compiler.semantic.context as semanticContext
+
+main {
+    [
+        """
+        last value: Int -> Int {
+            value
+        }
+
+        main {
+            [10, 20, ~] => values!
+            values![(values! -> len) - 1] -> last => result
+            "last=$result" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> semanticContext.prepare => snapshot!
+    snapshot! -> typedIr.lowerContext => ir!
+    0 => index!
+    index! < (ir! -> len) -> while {
+        ir![index!] => node
+        "$(index!):$(node.kind),$(node.parent),$(node.opcode),$(node.operand0),$(node.operand1),$(node.typeOrigin),$(node.typeSymbol)" -> println
+        index! + 1 => index!
+    }
+}

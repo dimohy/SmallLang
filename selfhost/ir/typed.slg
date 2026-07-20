@@ -3665,6 +3665,50 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
         }
         recoveredControlIndex! + 1 => recoveredControlIndex!
     }
+    # A nested index operand can retain a transparent flow wrapper after the
+    # function/entry operand passes. The wrapper has no runtime definition;
+    # point the index at the wrapper's concrete value child so LLVM scheduling
+    # observes the real dependency and every SSA use is dominated by it.
+    0 => canonicalIndexOperandIr!
+    canonicalIndexOperandIr! < (results! -> len) -> while {
+        results![canonicalIndexOperandIr!] => canonicalIndexOperand!
+        canonicalIndexOperand!.kind == 15 -> if {
+            0 => canonicalIndexOperandSlot!
+            canonicalIndexOperandSlot! < 2 -> while {
+                canonicalIndexOperand!.operand0 => canonicalIndexOperandValue!
+                canonicalIndexOperandSlot! == 1 -> if { canonicalIndexOperand!.operand1 => canonicalIndexOperandValue! }
+                true => canonicalIndexOperandResolve!
+                canonicalIndexOperandResolve! -> while {
+                    false => canonicalIndexOperandResolve!
+                    (canonicalIndexOperandValue! >= 0 and results![canonicalIndexOperandValue!].kind == 9 and results![canonicalIndexOperandValue!].opcode == -1) -> if {
+                        -1 => canonicalIndexConcreteValue!
+                        UIntSize(0) => canonicalIndexConcreteLength!
+                        0 => canonicalIndexConcreteSearch!
+                        canonicalIndexConcreteSearch! < (results! -> len) -> while {
+                            results![canonicalIndexConcreteSearch!] => canonicalIndexConcreteCandidate
+                            (canonicalIndexConcreteCandidate.parent == canonicalIndexOperandValue! and canonicalIndexConcreteCandidate.kind != 17 and not (canonicalIndexConcreteCandidate.typeOrigin == 1 and canonicalIndexConcreteCandidate.typeSymbol == 0)) -> if {
+                                prepared.package.ranges[canonicalIndexConcreteCandidate.sourceModule] => canonicalIndexConcreteRange
+                                prepared.package.nodes[canonicalIndexConcreteRange.astStart + canonicalIndexConcreteCandidate.astNode].length => canonicalIndexConcreteLength
+                                (canonicalIndexConcreteValue! < 0 or canonicalIndexConcreteLength > canonicalIndexConcreteLength!) -> if {
+                                    canonicalIndexConcreteSearch! => canonicalIndexConcreteValue!
+                                    canonicalIndexConcreteLength => canonicalIndexConcreteLength!
+                                }
+                            }
+                            canonicalIndexConcreteSearch! + 1 => canonicalIndexConcreteSearch!
+                        }
+                        canonicalIndexConcreteValue! >= 0 -> if {
+                            canonicalIndexConcreteValue! => canonicalIndexOperandValue!
+                            true => canonicalIndexOperandResolve!
+                        }
+                    }
+                }
+                canonicalIndexOperandSlot! == 0 -> if { canonicalIndexOperandValue! => canonicalIndexOperand!.operand0 } else { canonicalIndexOperandValue! => canonicalIndexOperand!.operand1 }
+                canonicalIndexOperandSlot! + 1 => canonicalIndexOperandSlot!
+            }
+            canonicalIndexOperand! => results![canonicalIndexOperandIr!]
+        }
+        canonicalIndexOperandIr! + 1 => canonicalIndexOperandIr!
+    }
     # Indexing is canonical across region and expression boundaries. A loop
     # body commonly indexes a binding declared in its enclosing function, so
     # restricting element recovery to one expression slice leaves the result

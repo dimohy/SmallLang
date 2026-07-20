@@ -431,6 +431,11 @@ Notes:
   postfix chain and associate from left to right. Dot and index suffixes may be
   freely interleaved, so `symbols![1].payload![0]` means
   `((symbols![1]).payload)![0]` without requiring grouping parentheses.
+- Expression operands are evaluated recursively from inner to outer, and
+  sibling operands and call inputs are evaluated from left to right as written.
+  Typed IR consumers must reference the concrete value-producing node rather
+  than a transparent syntax wrapper; generated LLVM definitions therefore
+  dominate every use without changing source evaluation order.
 - If `main { ... }` is omitted, remaining top-level statements after function
   declarations are treated as the executable main body.
 - A function whose body is a single expression should use `=> expression`

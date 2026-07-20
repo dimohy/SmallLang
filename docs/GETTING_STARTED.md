@@ -893,6 +893,11 @@ approved syntax.
   `examples/461-selfhost-llvm-mixed-postfix-chain.slg`: left-associated mixed
   index/field chains such as `symbols![1].payload![0]` in the reference and
   self-host LLVM paths
+- `examples/462-nested-index-call-evaluation.slg`,
+  `examples/463-selfhost-llvm-nested-index-call-evaluation.slg`, and
+  `examples/464-selfhost-typed-ir-nested-index-dependencies.slg`: recursive
+  evaluation of a computed index before its consuming call, including the
+  self-host typed-IR dependency and LLVM dominance contracts
 - `examples/88-grammar-table-module.slg`: compiles the generated grammar-table
   module as a separate source file and reads its public metadata
 - `examples/browser`: static HTML/JS runner for the WebAssembly sample
