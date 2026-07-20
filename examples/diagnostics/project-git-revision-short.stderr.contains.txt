@@ -1,0 +1,1 @@
+dependency git revision must be a full 40- or 64-digit commit hash

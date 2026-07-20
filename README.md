@@ -292,6 +292,11 @@ project {
             path: "../syntax"
             version: "^1.2.0"
         }
+        formatter_core: {
+            git: "https://github.com/example/formatter-core.git"
+            rev: "0123456789abcdef0123456789abcdef01234567"
+            version: "^2.0.0"
+        }
     }
 }
 ```
@@ -328,6 +333,10 @@ Workspace outputs are separated as
 `sollang.lock` for all workspace members. Normal workspace builds refresh a
 stale lock; `sollang build --locked` instead rejects a missing or stale lock,
 which is the reproducible CI mode. Commit `sollang.lock` with the workspace.
+Git dependencies require a full 40- or 64-digit commit hash—branches, tags,
+and abbreviated hashes are deliberately rejected. Sollang checks out only
+that commit into `.sollang/dependencies`, hashes the canonical source tree with
+SHA-256, and records both revision and checksum in lock format 2.
 
 ## Self-Hosting Progress
 
@@ -341,9 +350,9 @@ The measured roadmap is currently **52.5/60 gates (87.5%)**:
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2
 compiler and passes Windows and Linux differential gates. Local package
-identities, SemVer requirements, shared deterministic workspace locks, and
-self-host parsers for both versions and lock manifests are implemented;
-registries and content-pinned Git dependencies remain unfinished. Exact
+identities, SemVer requirements, content-pinned Git dependencies, shared
+deterministic workspace locks, and self-host parsers for both versions and
+lock manifests are implemented; package registries remain unfinished. Exact
 counts and the evidence behind every gate live in the
 [self-hosting roadmap](docs/SELF_HOSTING_ROADMAP.md).
 

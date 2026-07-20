@@ -546,8 +546,23 @@ the persistent frontend-cache identity. Run
 canonical, sorted `sollang.lock`. Normal workspace builds update a stale lock;
 `sollang build --locked` rejects a missing or stale lock for reproducible CI.
 The lock records exact `name@version` dependency identities and normalized
-local `path:` sources. Registries, Git sources, and content hashes remain later
-distribution layers.
+local `path:` sources. A remote dependency uses a content-pinned Git record:
+
+```sollang
+dependencies: {
+    syntax: {
+        git: "https://github.com/example/syntax.git"
+        rev: "0123456789abcdef0123456789abcdef01234567"
+        version: "^1.2.0"
+    }
+}
+```
+
+`rev` must be a complete 40- or 64-digit commit hash. The compiler materializes
+that exact commit without a working-tree `.git` directory, rejects symbolic
+links, hashes sorted paths, lengths, and bytes with SHA-256, and writes the
+revision plus checksum to lock format 2. Cached bytes whose digest changes are
+rejected. Package registries remain the later distribution layer.
 
 When only the root file is supplied, each non-`sys` import is mapped from its
 dotted module path to a `.slg` file relative to the root directory. For example,

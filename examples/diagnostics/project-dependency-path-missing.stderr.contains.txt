@@ -1,1 +1,1 @@
-dependency 'math' is missing required field 'path'
+dependency 'math' must declare exactly one of 'path' or 'git'

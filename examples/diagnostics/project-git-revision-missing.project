@@ -1,0 +1,8 @@
+project {
+    name: "git_revision_missing"
+    version: "0.1.0"
+    root: "projects/undeclared-transitive/main.slg"
+    dependencies: {
+        remote: { git: "https://example.com/remote.git" }
+    }
+}

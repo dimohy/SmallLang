@@ -1,0 +1,1 @@
+artifacts/example-tests/442-git-dependency/app

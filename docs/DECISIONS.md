@@ -7516,3 +7516,39 @@ pass 590/590; Windows Stage2 passes 6/6 at 10,752,017 LLVM text bytes; Linux
 Stage2 passes 5/5 at 10,748,620 LLVM text bytes. The Windows native Stage2
 executable is approximately 1.4 MiB; the 10.8 MB measurement is generated LLVM
 text, not executable size. This is Stage3 cadence checkpoint 8/10.
+
+## D208C - Full-Revision Git Dependencies With Source-Tree Digests
+
+Status: implemented; Windows/Linux full suites and Stage2 verified
+Date: 2026-07-20
+
+Git dependencies use `{ git, rev, version }`. `rev` is mandatory and must be a
+full 40- or 64-hex-digit commit ID; mutable branch/tag names and abbreviated
+IDs are rejected. The declared version remains an independent compatibility
+check against the fetched package manifest.
+
+The compiler keeps bare repositories and immutable materializations under the
+project or workspace `.sollang/dependencies` directory. It fetches the exact
+revision, verifies the resolved commit identity, checks out source bytes without
+embedding `.git`, rejects symbolic links, and computes SHA-256 over sorted
+relative paths, encoded path lengths, file lengths, and file bytes. Lock format
+2 records `git:<location>#<revision>` plus `sha256:<digest>`; a mutated cache is
+an error instead of an implicit repair. Relative path dependencies inside the
+Git tree are confined to that materialized root and inherit the same revision
+and checksum identity.
+
+This combines Cargo's explicit Git revision and lock semantics with Go's
+content verification and SwiftPM's revision fingerprint principle. Sollang is
+stricter at the manifest boundary: only immutable full commit identities are
+accepted. Registries, signed indexes, and archive distribution remain D208D.
+
+References:
+
+- [Cargo Git dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#specifying-dependencies-from-git-repositories)
+- [Go module authentication](https://go.dev/ref/mod#authenticating)
+- [Swift package security](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/packagesecurity/)
+
+Validation: Release build has zero warnings and errors; Windows and Linux each
+pass 594/594. Windows Stage2 passes 6/6 at 10,772,923 LLVM text bytes; Linux
+Stage2 passes 5/5 at 10,769,526 bytes. This advances the periodic Stage3 cadence
+to 9/10, so Stage3 remains deferred until the next Stage2 checkpoint.

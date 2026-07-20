@@ -63,6 +63,48 @@ validPackageId source: Text, value: TextSpan -> Bool {
     valid!
 }
 
+hexByte value: UInt8 -> Bool {
+    (value >= UInt8(48) and value <= UInt8(57)) or (value >= UInt8(97) and value <= UInt8(102))
+}
+
+validGitSource source: Text, value: TextSpan -> Bool {
+    value.length > UIntSize(45) => valid!
+    value.start => marker!
+    valid! -> if {
+        value.start + value.length - UIntSize(41) => shortMarker
+        (source -> byte(shortMarker)) == UInt8(35) -> if {
+            shortMarker => marker!
+        } else {
+            value.length > UIntSize(69) -> if {
+                value.start + value.length - UIntSize(65) => longMarker
+                (source -> byte(longMarker)) == UInt8(35) -> if { longMarker => marker! } else { false => valid! }
+            } else { false => valid! }
+        }
+    }
+    valid! -> if {
+        (source -> byte(value.start)) == UInt8(103) and (source -> byte(value.start + UIntSize(1))) == UInt8(105) and (source -> byte(value.start + UIntSize(2))) == UInt8(116) and (source -> byte(value.start + UIntSize(3))) == UInt8(58) => valid!
+    }
+    marker! + UIntSize(1) => index!
+    (valid! and index! < value.start + value.length) -> while {
+        not ((source -> byte(index!)) -> hexByte) -> if { false => valid! }
+        index! + UIntSize(1) => index!
+    }
+    valid!
+}
+
+validChecksum source: Text, value: TextSpan -> Bool {
+    value.length == UIntSize(71) => valid!
+    valid! -> if {
+        (source -> byte(value.start)) == UInt8(115) and (source -> byte(value.start + UIntSize(1))) == UInt8(104) and (source -> byte(value.start + UIntSize(2))) == UInt8(97) and (source -> byte(value.start + UIntSize(3))) == UInt8(50) and (source -> byte(value.start + UIntSize(4))) == UInt8(53) and (source -> byte(value.start + UIntSize(5))) == UInt8(54) and (source -> byte(value.start + UIntSize(6))) == UInt8(58) => valid!
+    }
+    value.start + UIntSize(7) => index!
+    (valid! and index! < value.start + value.length) -> while {
+        not ((source -> byte(index!)) -> hexByte) -> if { false => valid! }
+        index! + UIntSize(1) => index!
+    }
+    valid!
+}
+
 # Status: 0 valid, 1 lock keyword, 2 opening brace, 3 format field,
 # 4 format value, 5 packages field, 6 opening package array,
 # 7 package object, 8 id field, 9 invalid package id, 10 duplicate id,
@@ -93,7 +135,7 @@ public parse source: Text -> PackageLock {
         index! -> skipSeparators(tokens!) => index!
         tokens![index!].kind == grammar.tokenIdColon -> if { index! + 1 => index! } else { 3 => status! }
         index! -> skipSeparators(tokens!) => index!
-        (tokens![index!].kind == grammar.tokenIdNumber and (source -> textIs(tokens![index!], "1"))) -> if { index! + 1 => index! } else { 4 => status! }
+        (tokens![index!].kind == grammar.tokenIdNumber and (source -> textIs(tokens![index!], "2"))) -> if { index! + 1 => index! } else { 4 => status! }
     }
     status! == 0 -> if {
         index! -> skipSeparators(tokens!) => index!
@@ -108,6 +150,7 @@ public parse source: Text -> PackageLock {
     status! == 0 -> if {
         index! -> skipSeparators(tokens!) => index!
         (status! == 0 and tokens![index!].kind != grammar.tokenIdRightBracket) -> while {
+            false => gitSource!
             tokens![index!].kind == grammar.tokenIdLeftBrace -> if { index! + 1 => index! } else { 7 => status! }
             status! == 0 -> if {
                 index! -> skipSeparators(tokens!) => index!
@@ -137,11 +180,31 @@ public parse source: Text -> PackageLock {
                 index! -> skipSeparators(tokens!) => index!
                 tokens![index!].kind == grammar.tokenIdString -> if {
                     tokens![index!] => sourceToken
-                    (sourceToken.span.length >= UIntSize(7) and (source -> byte(sourceToken.span.start + UIntSize(1))) == UInt8(112) and (source -> byte(sourceToken.span.start + UIntSize(2))) == UInt8(97) and (source -> byte(sourceToken.span.start + UIntSize(3))) == UInt8(116) and (source -> byte(sourceToken.span.start + UIntSize(4))) == UInt8(104) and (source -> byte(sourceToken.span.start + UIntSize(5))) == UInt8(58)) -> if { index! + 1 => index! } else { 12 => status! }
+                    TextSpan { start: sourceToken.span.start + UIntSize(1), length: sourceToken.span.length - UIntSize(2) } => sourceValue
+                    (sourceValue.length >= UIntSize(6) and (source -> byte(sourceValue.start)) == UInt8(112) and (source -> byte(sourceValue.start + UIntSize(1))) == UInt8(97) and (source -> byte(sourceValue.start + UIntSize(2))) == UInt8(116) and (source -> byte(sourceValue.start + UIntSize(3))) == UInt8(104) and (source -> byte(sourceValue.start + UIntSize(4))) == UInt8(58)) -> if {
+                        index! + 1 => index!
+                    } else {
+                        source -> validGitSource(sourceValue) -> if {
+                            true => gitSource!
+                            index! + 1 => index!
+                        } else { 12 => status! }
+                    }
                 } else { 11 => status! }
             }
             status! == 0 -> if {
                 index! -> skipSeparators(tokens!) => index!
+                gitSource! -> if {
+                    (tokens![index!].kind == grammar.tokenIdIdentifier and (source -> textIs(tokens![index!], "checksum"))) -> if { index! + 1 => index! } else { 12 => status! }
+                    index! -> skipSeparators(tokens!) => index!
+                    tokens![index!].kind == grammar.tokenIdColon -> if { index! + 1 => index! } else { 12 => status! }
+                    index! -> skipSeparators(tokens!) => index!
+                    tokens![index!].kind == grammar.tokenIdString -> if {
+                        tokens![index!] => checksumToken
+                        TextSpan { start: checksumToken.span.start + UIntSize(1), length: checksumToken.span.length - UIntSize(2) } => checksumValue
+                        source -> validChecksum(checksumValue) -> if { index! + 1 => index! } else { 12 => status! }
+                    } else { 12 => status! }
+                    index! -> skipSeparators(tokens!) => index!
+                }
                 (tokens![index!].kind == grammar.tokenIdIdentifier and (source -> textIs(tokens![index!], "dependencies"))) -> if { index! + 1 => index! } else { 13 => status! }
                 index! -> skipSeparators(tokens!) => index!
                 tokens![index!].kind == grammar.tokenIdColon -> if { index! + 1 => index! } else { 13 => status! }

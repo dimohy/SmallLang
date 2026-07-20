@@ -52,6 +52,10 @@ internal sealed record ProjectBuild(
         var workspaceMembers = workspace?.Members.ToDictionary(
             static member => member.Path,
             StringComparer.OrdinalIgnoreCase);
+        var cacheRoot = Path.Combine(
+            workspace?.Directory ?? rootManifest.Directory,
+            ".sollang",
+            "dependencies");
         var root = LoadPackage(
             rootManifest,
             rootManifest.SelectProduct(productName),
@@ -59,6 +63,8 @@ internal sealed record ProjectBuild(
             manifestsByName,
             states,
             workspaceMembers,
+            cacheRoot,
+            new PathPackageSource(rootManifest.Directory),
             []);
         if (includeAllWorkspaceMembers)
         {
@@ -80,6 +86,8 @@ internal sealed record ProjectBuild(
                     manifestsByName,
                     states,
                     workspaceMembers,
+                    cacheRoot,
+                    new PathPackageSource(member.Directory),
                     []);
             }
         }
@@ -99,6 +107,8 @@ internal sealed record ProjectBuild(
         IDictionary<string, string> pathsByName,
         IDictionary<string, VisitState> states,
         IReadOnlyDictionary<string, ProjectManifest>? workspaceMembers,
+        string cacheRoot,
+        PackageSource source,
         IReadOnlyList<string> chain)
     {
         if (states.TryGetValue(manifest.Path, out var state))
@@ -124,8 +134,15 @@ internal sealed record ProjectBuild(
         var nextChain = chain.Append(manifest.Name).ToArray();
         foreach (var dependency in manifest.Dependencies.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
         {
-            var dependencyManifest = ProjectManifest.Load(dependency.Value.Path);
+            var resolved = dependency.Value.Source switch
+            {
+                PathProjectDependencySource path => ResolvePathDependency(path, source),
+                GitProjectDependencySource git => GitPackageCache.Materialize(git, cacheRoot),
+                _ => throw new InvalidOperationException("unknown project dependency source")
+            };
+            var dependencyManifest = resolved.Manifest;
             if (workspaceMembers is not null
+                && resolved.Source is PathPackageSource
                 && !workspaceMembers.ContainsKey(dependencyManifest.Path))
             {
                 throw new SollangException(
@@ -152,10 +169,12 @@ internal sealed record ProjectBuild(
                     pathsByName,
                     states,
                     workspaceMembers,
+                    cacheRoot,
+                    resolved.Source,
                     nextChain));
         }
 
-        var package = new ProjectPackage(manifest, product, dependencies);
+        var package = new ProjectPackage(manifest, product, dependencies, source);
         packagesByPath[manifest.Path] = package;
         states[manifest.Path] = VisitState.Visited;
         return package;
@@ -166,15 +185,52 @@ internal sealed record ProjectBuild(
         Visiting,
         Visited
     }
+
+    private static ResolvedDependency ResolvePathDependency(
+        PathProjectDependencySource dependency,
+        PackageSource parentSource)
+    {
+        if (parentSource is GitPackageSource git
+            && !IsWithin(git.ContentRoot, dependency.Path))
+        {
+            throw new SollangException(
+                $"path dependency escapes git source tree '{git.Location}#{git.Revision}': {dependency.Path}");
+        }
+        return new ResolvedDependency(
+            ProjectManifest.Load(dependency.Path),
+            parentSource is GitPackageSource ? parentSource : new PathPackageSource(dependency.Path));
+    }
+
+    private static bool IsWithin(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, Path.GetFullPath(path));
+        return !Path.IsPathRooted(relative)
+            && relative != ".."
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+    }
 }
 
 internal sealed record ProjectPackage(
     ProjectManifest Manifest,
     ProjectProduct Product,
-    IReadOnlyDictionary<string, ProjectPackage> Dependencies)
+    IReadOnlyDictionary<string, ProjectPackage> Dependencies,
+    PackageSource Source)
 {
     public string Identity => $"{Manifest.Name}@{Manifest.Version}";
 
     public string SourceRoot => Path.GetDirectoryName(Product.RootSource)
         ?? System.IO.Directory.GetCurrentDirectory();
 }
+
+internal sealed record ResolvedDependency(ProjectManifest Manifest, PackageSource Source);
+
+internal abstract record PackageSource;
+
+internal sealed record PathPackageSource(string Path) : PackageSource;
+
+internal sealed record GitPackageSource(
+    string Location,
+    string Revision,
+    string Checksum,
+    string ContentRoot) : PackageSource;

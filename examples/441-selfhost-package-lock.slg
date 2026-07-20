@@ -2,7 +2,7 @@ import sollang.compiler.package_lock as locks
 
 main {
     """lock {
-            format: 1
+            format: 2
             packages: [
                 {
                     id: "app@0.1.0"
@@ -18,19 +18,30 @@ main {
         }
         """ -> locks.parse => resolved
     """lock {
-            format: 1
+            format: 2
             packages: [{ id: "app@bad" source: "path:app" dependencies: [] }]
         }
         """ -> locks.parse => invalidVersion
     """lock {
-            format: 1
+            format: 2
             packages: [
                 { id: "app@1.0.0" source: "path:first" dependencies: [] }
                 { id: "app@1.0.0" source: "path:second" dependencies: [] }
             ]
         }
         """ -> locks.parse => duplicate
+    """lock {
+            format: 2
+            packages: [{
+                id: "remote@1.0.0"
+                source: "git:https://example.com/remote.git#0123456789abcdef0123456789abcdef01234567"
+                checksum: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                dependencies: []
+            }]
+        }
+        """ -> locks.parse => gitPinned
     "lock = $(resolved.status),$(resolved.packages),$(resolved.dependencies)" -> println
     "invalid version = $(invalidVersion.status)" -> println
     "duplicate = $(duplicate.status)" -> println
+    "git pin = $(gitPinned.status),$(gitPinned.packages)" -> println
 }

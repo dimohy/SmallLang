@@ -276,6 +276,14 @@ if (expectedFiles.Any(IsReusableSelfHostCompilerTest))
     Console.Out.Flush();
 }
 
+if (expectedFiles.Any(file => string.Equals(
+        Path.GetFileName(file),
+        "442-git-dependency.stdout.txt",
+        StringComparison.Ordinal)))
+{
+    PrepareGitDependencyFixture(baseArtifactsDir);
+}
+
 var failures = 0;
 var started = 0;
 var completed = 0;
@@ -1059,6 +1067,70 @@ static string ConvertToWslPath(string path)
 
     var drive = char.ToLowerInvariant(absolute[0]);
     return $"/mnt/{drive}/{absolute[3..].Replace('\\', '/')}";
+}
+
+static void PrepareGitDependencyFixture(string artifactsDir)
+{
+    var root = Path.Combine(artifactsDir, "442-git-dependency");
+    if (Directory.Exists(root))
+    {
+        foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+        Directory.Delete(root, recursive: true);
+    }
+    var remote = Path.Combine(root, "remote");
+    var app = Path.Combine(root, "app");
+    Directory.CreateDirectory(Path.Combine(remote, "src"));
+    Directory.CreateDirectory(Path.Combine(remote, "base", "src"));
+    Directory.CreateDirectory(Path.Combine(app, "src"));
+    File.WriteAllText(
+        Path.Combine(remote, "sollang.project"),
+        "project {\n    name: \"remote\"\n    version: \"1.2.3\"\n    root: \"src/remote.slg\"\n    dependencies: { base: { path: \"base\", version: \"^1.0.0\" } }\n}\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        Path.Combine(remote, "src", "remote.slg"),
+        "namespace remote\n\nimport base\n\npublic addTwo value: Int -> Int {\n    value -> base.addOne => incremented\n    incremented + 1\n}\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        Path.Combine(remote, "base", "sollang.project"),
+        "project {\n    name: \"base\"\n    version: \"1.0.0\"\n    root: \"src/base.slg\"\n}\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        Path.Combine(remote, "base", "src", "base.slg"),
+        "namespace base\n\npublic addOne value: Int -> Int { value + 1 }\n",
+        new UTF8Encoding(false));
+    foreach (var command in new[]
+    {
+        new[] { "init", "--quiet" },
+        new[] { "config", "user.name", "Sollang Tests" },
+        new[] { "config", "user.email", "tests@sollang.invalid" },
+        new[] { "add", "." },
+        new[] { "commit", "--quiet", "-m", "fixture" }
+    })
+    {
+        var result = Run("git", command, input: null, remote);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"failed to prepare Git dependency fixture: {result.Stderr}");
+        }
+    }
+    var revisionResult = Run("git", ["rev-parse", "HEAD"], input: null, remote);
+    if (revisionResult.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"failed to read Git dependency fixture revision: {revisionResult.Stderr}");
+    }
+    var revision = revisionResult.Stdout.Trim();
+    var portableRemote = remote.Replace('\\', '/');
+    File.WriteAllText(
+        Path.Combine(app, "sollang.project"),
+        $"project {{\n    name: \"git_app\"\n    version: \"0.1.0\"\n    root: \"src/main.slg\"\n    dependencies: {{\n        remote: {{ git: \"{portableRemote}\", rev: \"{revision}\", version: \"^1.2.0\" }}\n    }}\n}}\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        Path.Combine(app, "src", "main.slg"),
+        "import remote\n\nmain { 40 -> remote.addTwo => value\n    \"$value\" -> println }\n",
+        new UTF8Encoding(false));
 }
 
 static ProcessResult Run(

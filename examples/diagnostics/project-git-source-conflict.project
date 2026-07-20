@@ -1,0 +1,12 @@
+project {
+    name: "git_source_conflict"
+    version: "0.1.0"
+    root: "projects/undeclared-transitive/main.slg"
+    dependencies: {
+        remote: {
+            path: "projects/undeclared-transitive"
+            git: "https://example.com/remote.git"
+            rev: "0123456789abcdef0123456789abcdef01234567"
+        }
+    }
+}

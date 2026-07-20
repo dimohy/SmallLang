@@ -1,6 +1,7 @@
 .tools/
 artifacts/
 .sollang-cache/
+.sollang/
 drafts/
 **/bin/
 **/obj/

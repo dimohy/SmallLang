@@ -1738,6 +1738,26 @@ Stage2 executable is about **1.4 MiB**; the roughly 10.8 MB figures are emitted
 LLVM text rather than executable size. Periodic Stage3 cadence advances to
 **8/10**, so Stage3 is not due at this checkpoint.
 
+## Content-Pinned Git Package Sources (D208C)
+
+D208C adds `{ git, rev, version }` dependencies. Full 40- or 64-digit revisions
+are required, the fetched commit must match exactly, and the materialized tree
+is independently pinned by a deterministic SHA-256 digest in lock format 2.
+The cache contains source bytes without `.git`, rejects symbolic links, and
+detects mutation before compilation. The self-host lock parser accepts the same
+Git source and checksum contract. Example 442 builds through a freshly-created
+local Git repository, including a confined transitive path package that inherits
+the Git identity, while example 441 validates the self-host lock shape.
+
+D208 distribution work is now **4/5 (80%)**: local workspaces, semantic
+versions, deterministic locks, and content-pinned Git sources are implemented;
+registries remain. The formal roadmap remains **48 complete, 9 partial,
+3 missing: 52.5/60 (87.5%)** until the D208 gate closes. Validation results
+are: zero-warning Release build, Windows/Linux full suites at **594/594**,
+Windows Stage2 **6/6** at **10,772,923 bytes**, and Linux Stage2 **5/5** at
+**10,769,526 bytes**. The periodic Stage3 cadence is now **9/10**, so Stage3 is
+still deferred.
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).

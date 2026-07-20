@@ -84,17 +84,32 @@ internal static class PackageLock
     {
         var builder = new StringBuilder();
         builder.AppendLine("lock {");
-        builder.AppendLine("    format: 1");
+        builder.AppendLine("    format: 2");
         builder.AppendLine("    packages: [");
         foreach (var package in project.Packages
                      .OrderBy(static package => package.Identity, StringComparer.Ordinal)
                      .ThenBy(static package => package.Manifest.Path, StringComparer.OrdinalIgnoreCase))
         {
-            var relative = System.IO.Path.GetRelativePath(lockDirectory, package.Manifest.Directory)
-                .Replace('\\', '/');
             builder.AppendLine("        {");
             builder.Append("            id: \"").Append(Escape(package.Identity)).AppendLine("\"");
-            builder.Append("            source: \"path:").Append(Escape(relative)).AppendLine("\"");
+            switch (package.Source)
+            {
+                case PathPackageSource:
+                    var relative = System.IO.Path.GetRelativePath(lockDirectory, package.Manifest.Directory)
+                        .Replace('\\', '/');
+                    builder.Append("            source: \"path:").Append(Escape(relative)).AppendLine("\"");
+                    break;
+                case GitPackageSource git:
+                    builder.Append("            source: \"git:")
+                        .Append(Escape(git.Location))
+                        .Append('#')
+                        .Append(git.Revision)
+                        .AppendLine("\"");
+                    builder.Append("            checksum: \"").Append(git.Checksum).AppendLine("\"");
+                    break;
+                default:
+                    throw new InvalidOperationException("unknown package source");
+            }
             builder.Append("            dependencies: [");
             var dependencies = package.Dependencies.Values
                 .Select(static dependency => dependency.Identity)
