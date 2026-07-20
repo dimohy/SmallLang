@@ -2412,6 +2412,50 @@ fixed-point proof. Formal progress remains **49 complete, 8 partial, 3
 missing: 53/60 (88.3%)**; this checkpoint restores correctness but does not
 claim one of the remaining feature gates.
 
+## Inferred Aggregate Borrow Origins (D213I)
+
+D213I closes the aggregate-return boundary left by D213A-D213G. A returned
+struct, fixed or growable array, or dictionary now carries the union of every
+borrowed `Text` reachable from its value. The contract is inferred through
+direct and explicit early returns, local aliases, fields, indexes, and
+`Text`-containing parameter forwarding. Static or owned `Text` aggregates do
+not acquire a false origin merely because their type contains `Text`.
+
+The reference compiler recursively analyzes aggregate expressions and maps a
+SourceText parameter to its concrete caller owner while propagating only
+already-active origins through aggregate parameters. The self-host analyzer
+classifies recursive semantic types bottom-up, discovers contracts only below
+the canonical or explicit return operand, and transfers transitive origin rows
+through moved container bindings. The classification is allocation-free;
+avoiding a per-query work list also preserves Linux native parity.
+
+Examples 483-490 cover valid struct fields, growable arrays, dictionaries,
+field/index projections, aggregate move forwarding, explicit early returns,
+self-host E21 analysis, and self-host LLVM execution. The aggregate diagnostic
+and Stage2 fixture prove that a source owner cannot move before the final
+derived use. The obsolete diagnostic that rejected every sliced-Text array
+return has been removed because that program is now safe and supported.
+
+Windows/Linux full suites pass **656/656**. Windows Stage2 passes **7/7** at
+**11,727,474 LLVM bytes**, **3,465,668 bitcode bytes**, and a **1,638,400-byte
+executable**. Linux Stage2 passes **6/6** at **11,724,053 LLVM bytes**,
+**3,463,876 bitcode bytes**, and a **3,298,104-byte executable**. Both Stage1
+and Stage2 reject single, union, transferred, and aggregate-origin E21 before
+LLVM emission.
+
+The Stage3 cadence advances to **7/10**. Formal progress remains **49 complete,
+8 partial, 3 missing: 53/60 (88.3%)** because aggregate escape completes a
+major ownership sub-boundary, while simultaneous disjoint projected borrows
+and production precision for E17-E20 still keep the broader ownership/storage
+gate partial.
+
+Research basis:
+
+- [Rust lifetime elision](https://doc.rust-lang.org/stable/reference/lifetime-elision.html)
+- [Rust references stored in structs](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html)
+- [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes/)
+- [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
+
 ## Immediate Implementation Order
 
 1. Multi-file compilation (implemented by example 52).

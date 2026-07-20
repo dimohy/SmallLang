@@ -1,0 +1,153 @@
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+@sollang_runtime_newline = private constant [1 x i8] c"\0A"
+declare i64 @write(i32, ptr, i64)
+define internal void @sollang_runtime_flush_stdout() {
+entry:
+  ret void
+}
+define internal void @sollang_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  %written = call i64 @write(i32 1, ptr %data, i64 %len)
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  %newline_written = call i64 @write(i32 1, ptr @sollang_runtime_newline, i64 1)
+  br label %done
+done:
+  ret void
+}
+%sollang.source_text = type { ptr, i64, ptr, i64 }
+%sollang.text = type { ptr, i64 }
+%sollang.struct.m0_s0 = type { %sollang.text, %sollang.text }
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define internal void @sollang_drop_t25(%sollang.source_text %value) {
+entry:
+  call void @sollang_runtime_unmap_text(%sollang.source_text %value)
+  ret void
+}
+define internal void @sollang_drop_t26(%sollang.struct.m0_s0 %value) {
+entry:
+  ret void
+}
+declare void @llvm.trap()
+@sollang_str_21 = private unnamed_addr constant [6 x i8] c"lexer!"
+define %sollang.struct.m0_s0 @sollang_m0_s3(%sollang.source_text %arg) {
+entry:
+  %v7 = add i64 0, 0
+  %v9 = add i64 3, 0
+  %v13 = add i64 3, 0
+  %v15 = add i64 3, 0
+  %v5_base = extractvalue %sollang.source_text %arg, 0
+  %v5_start = getelementptr i8, ptr %v5_base, i64 %v7
+  %v5_ptr = insertvalue %sollang.text poison, ptr %v5_start, 0
+  %v5 = insertvalue %sollang.text %v5_ptr, i64 %v9, 1
+  %v11_base = extractvalue %sollang.source_text %arg, 0
+  %v11_start = getelementptr i8, ptr %v11_base, i64 %v13
+  %v11_ptr = insertvalue %sollang.text poison, ptr %v11_start, 0
+  %v11 = insertvalue %sollang.text %v11_ptr, i64 %v15, 1
+  %v4_f0 = insertvalue %sollang.struct.m0_s0 poison, %sollang.text %v5, 0
+  %v4 = insertvalue %sollang.struct.m0_s0 %v4_f0, %sollang.text %v11, 1
+  ret %sollang.struct.m0_s0 %v4
+}
+define i32 @main() {
+entry:
+  %slot18 = alloca %sollang.source_text, align 8
+  %v21_ptr = insertvalue %sollang.text poison, ptr @sollang_str_21, 0
+  %v21 = insertvalue %sollang.text %v21_ptr, i64 6, 1
+  %v20_data = extractvalue %sollang.text %v21, 0
+  %v20_length = extractvalue %sollang.text %v21, 1
+  %v20_value0 = insertvalue %sollang.source_text poison, ptr %v20_data, 0
+  %v20_value1 = insertvalue %sollang.source_text %v20_value0, i64 %v20_length, 1
+  %v20_value2 = insertvalue %sollang.source_text %v20_value1, ptr null, 2
+  %v20 = insertvalue %sollang.source_text %v20_value2, i64 0, 3
+  store %sollang.source_text %v20, ptr %slot18, align 8
+  %v23 = load %sollang.source_text, ptr %slot18, align 8
+  %v22 = call %sollang.struct.m0_s0 @sollang_m0_s3(%sollang.source_text %v23)
+  %v26 = freeze %sollang.struct.m0_s0 %v22
+  %v29 = freeze %sollang.struct.m0_s0 %v22
+  %v25 = extractvalue %sollang.struct.m0_s0 %v26, 0
+  %v28 = extractvalue %sollang.struct.m0_s0 %v29, 1
+  %v24_runtime_ptr = extractvalue %sollang.text %v25, 0
+  %v24_runtime_len = extractvalue %sollang.text %v25, 1
+  call void @sollang_runtime_print(ptr %v24_runtime_ptr, i64 %v24_runtime_len, i1 true)
+  %v27_runtime_ptr = extractvalue %sollang.text %v28, 0
+  %v27_runtime_len = extractvalue %sollang.text %v28, 1
+  call void @sollang_runtime_print(ptr %v27_runtime_ptr, i64 %v27_runtime_len, i1 true)
+  call void @sollang_drop_t26(%sollang.struct.m0_s0 %v22)
+  call void @sollang_runtime_flush_stdout()
+  ret i32 0
+}
+declare i32 @open(ptr, i32, i32)
+declare i32 @close(i32)
+declare i64 @lseek(i32, i64, i32)
+declare ptr @mmap(ptr, i64, i32, i32, i32, i64)
+declare i32 @munmap(ptr, i64)
+define %sollang.source_text @sollang_runtime_map_text(%sollang.text %path) {
+entry:
+  %path_data = extractvalue %sollang.text %path, 0
+  %path_length = extractvalue %sollang.text %path, 1
+  %buffer_length = add i64 %path_length, 1
+  %buffer = call ptr @malloc(i64 %buffer_length)
+  %allocated = icmp ne ptr %buffer, null
+  br i1 %allocated, label %copy, label %failure
+copy:
+  %index = phi i64 [ 0, %entry ], [ %next, %copy_body ]
+  %copy_done = icmp eq i64 %index, %path_length
+  br i1 %copy_done, label %terminate, label %copy_body
+copy_body:
+  %source = getelementptr i8, ptr %path_data, i64 %index
+  %byte = load i8, ptr %source, align 1
+  %destination = getelementptr i8, ptr %buffer, i64 %index
+  store i8 %byte, ptr %destination, align 1
+  %next = add i64 %index, 1
+  br label %copy
+terminate:
+  %terminator = getelementptr i8, ptr %buffer, i64 %path_length
+  store i8 0, ptr %terminator, align 1
+  %file = call i32 @open(ptr %buffer, i32 0, i32 0)
+  call void @free(ptr %buffer)
+  %opened = icmp sge i32 %file, 0
+  br i1 %opened, label %size, label %failure
+size:
+  %length = call i64 @lseek(i32 %file, i64 0, i32 2)
+  %size_ok = icmp sge i64 %length, 0
+  br i1 %size_ok, label %size_known, label %close_failure
+size_known:
+  %empty = icmp eq i64 %length, 0
+  br i1 %empty, label %empty_success, label %mapping
+empty_success:
+  %empty_closed = call i32 @close(i32 %file)
+  ret %sollang.source_text zeroinitializer
+mapping:
+  %base = call ptr @mmap(ptr null, i64 %length, i32 1, i32 1, i32 %file, i64 0)
+  %base_value = ptrtoint ptr %base to i64
+  %base_ok = icmp ne i64 %base_value, -1
+  br i1 %base_ok, label %success, label %close_failure
+success:
+  %file_closed = call i32 @close(i32 %file)
+  %result0 = insertvalue %sollang.source_text poison, ptr %base, 0
+  %result1 = insertvalue %sollang.source_text %result0, i64 %length, 1
+  %result2 = insertvalue %sollang.source_text %result1, ptr %base, 2
+  %result3 = insertvalue %sollang.source_text %result2, i64 %length, 3
+  ret %sollang.source_text %result3
+close_failure:
+  %failed_file_closed = call i32 @close(i32 %file)
+  br label %failure
+failure:
+  call void @llvm.trap()
+  unreachable
+}
+
+define void @sollang_runtime_unmap_text(%sollang.source_text %source) {
+entry:
+  %base = extractvalue %sollang.source_text %source, 2
+  %length = extractvalue %sollang.source_text %source, 3
+  %owned = icmp ne ptr %base, null
+  br i1 %owned, label %unmap, label %done
+unmap:
+  %ignored = call i32 @munmap(ptr %base, i64 %length)
+  br label %done
+done:
+  ret void
+}

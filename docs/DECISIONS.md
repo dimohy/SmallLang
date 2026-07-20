@@ -8018,6 +8018,54 @@ References:
 - [Mojo lifetimes, origins, and references](https://mojolang.org/docs/manual/values/lifetimes/)
 - [Swift memory safety and overlapping access](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
 
+## D213I - Aggregate Values Carry Inferred Borrow-Origin Unions
+
+Status: implemented and cross-target Stage2 verified
+Date: 2026-07-20
+
+Sollang infers borrowed origins recursively through returned structs, fixed and
+growable arrays, and dictionaries. No lifetime syntax or runtime field is
+added. A returned aggregate receives the union of every reachable borrowed
+`Text`, and a field or index projection keeps that union live until its final
+CFG-reachable use. Explicit early returns contribute to the same function
+contract.
+
+SourceText parameters introduce concrete caller-owner origins. By contrast, a
+parameter whose type merely contains `Text` propagates only origins already
+carried by its argument. This distinction is required so moving an array of
+static string literals through `forwardValues` remains legal, while moving an
+array of slices preserves the underlying SourceText owner set. Aggregate
+forwarding therefore transfers metadata without confusing the container owner
+with the storage referenced by its elements.
+
+The self-host analyzer classifies canonical types bottom-up because semantic
+type children precede their owners. Contract discovery is restricted to the
+actual canonical or explicit return operand, preventing ordinary parameter
+uses elsewhere in a compiler function from becoming false return origins.
+Borrow rows are propagated transitively when a moved aggregate is returned by
+another function. This stays allocation-free and keeps Windows/Linux behavior
+identical.
+
+Examples 483-490 and the aggregate diagnostic cover reference execution,
+self-host analysis, self-host LLVM, aggregate forwarding, and explicit early
+returns. Stage2 adds the aggregate fixture to its production E21 gate. Release
+builds have zero warnings and errors; Windows/Linux full suites pass
+**656/656**. Windows Stage2 passes **7/7** with **11,727,474 LLVM bytes**,
+**3,465,668 bitcode bytes**, and a **1,638,400-byte executable**. Linux Stage2
+passes **6/6** with **11,724,053 LLVM bytes**, **3,463,876 bitcode bytes**, and
+a **3,298,104-byte executable**.
+
+The periodic Stage3 cadence is **7/10**. Formal progress remains **49 complete,
+8 partial, 3 missing: 53/60 (88.3%)**; disjoint projected-borrow precision and
+production E17-E20 precision remain open within the broader ownership gate.
+
+References:
+
+- [Rust lifetime elision](https://doc.rust-lang.org/stable/reference/lifetime-elision.html)
+- [Rust references stored in structs](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html)
+- [Mojo lifetimes, origins, and references](https://docs.modular.com/mojo/manual/values/lifetimes/)
+- [Swift memory safety](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/memorysafety/)
+
 ## D213H - Collection-Argument ABI Integrity at the Stage3 Fixed Point
 
 Status: implemented, cross-target Stage2 verified, and Stage3 fixed point verified

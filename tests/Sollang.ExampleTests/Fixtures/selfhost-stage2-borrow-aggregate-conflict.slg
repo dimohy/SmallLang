@@ -1,0 +1,24 @@
+import sys.file as file
+
+struct TextPair {
+    first: Text
+    second: Text
+}
+
+pair source: file.SourceText -> TextPair {
+    TextPair {
+        first: source -> slice(UIntSize(0), UIntSize(3))
+        second: source -> slice(UIntSize(3), UIntSize(3))
+    }
+}
+
+consume source: move file.SourceText -> Unit {
+    source -> len -> println
+}
+
+main {
+    "lexer!" -> file.borrowText => source!
+    source! -> pair => views
+    source! -> consume
+    views.first -> println
+}

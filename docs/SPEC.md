@@ -1076,18 +1076,21 @@ Container rules in the current slice:
   lasts only for the call expression. Binding, returning, storing, or mutating
   through the indexed result or one of its projections is rejected. Use
   `owner! -> take(indexOrKey) => value!` to transfer ownership out explicitly.
-- A function with exactly one default-borrowed `sys.file.SourceText` input may
-  return a `Text` produced by `slice` from that input. The return origin is
-  inferred from the input; no lifetime parameter is written in the common
-  case. A caller may bind the returned view while the named SourceText owner
-  remains in the same or an enclosing lexical scope. Moving, replacing, or
-  mutating that origin while the view is live is a compile-time error. For a
-  straight-line function or main statement sequence, the compiler ends the
-  borrow immediately after the view's final use, so the owner may be moved or
-  mutated later in that sequence. A use after that operation keeps the borrow
-  live and is rejected. Returning borrowed Text inside an aggregate, ambiguous
-  multi-input origins, origin unions, and path-sensitive branch/loop regions
-  remain rejected.
+- A function may return `Text` produced by `slice` from one or more
+  default-borrowed `sys.file.SourceText` inputs. The compiler infers the union
+  of every possible input origin; no lifetime parameter is written in the
+  common case. The same origin union is inferred recursively when borrowed
+  `Text` values are stored in a returned struct, fixed or growable array, or
+  dictionary, including explicit early-return paths. Passing such an aggregate
+  through a `Text`-containing function parameter transfers its existing origin
+  union without treating an aggregate made only from static or owned `Text` as
+  borrowed. Field and index projections inherit the aggregate's origins.
+  Moving, replacing, or mutating any origin while a derived value is live is a
+  compile-time error. CFG last-use analysis ends the borrow after the final
+  reachable aggregate or projection use, so the origin may be moved later.
+  Origin metadata is compile-time-only and does not alter struct or container
+  ABI. Simultaneous mutable borrows of provably disjoint projections remain a
+  conservative follow-up.
 - `push`, `put`, and indexed assignment require a named mutable owner binding
   created with `=> name!`.
 - `array -> each item { ... }` binds `item` to the concrete element type for

@@ -1,0 +1,30 @@
+import sollang.compiler.llvm.text as llvm
+
+main {
+    [
+        """
+        import sys.file as file
+
+        struct TextPair {
+            first: Text
+            second: Text
+        }
+
+        pair source: file.SourceText -> TextPair {
+            TextPair {
+                first: source -> slice(UIntSize(0), UIntSize(3))
+                second: source -> slice(UIntSize(3), UIntSize(3))
+            }
+        }
+
+        main {
+            "lexer!" -> file.borrowText => source!
+            source! -> pair => views
+            views.first -> println
+            views.second -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinux
+}

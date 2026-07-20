@@ -27,8 +27,9 @@ $multiMainSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\self
 $borrowConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-conflict.slg"
 $borrowUnionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-union-conflict.slg"
 $borrowAliasConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-alias-conflict.slg"
+$borrowAggregateConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-aggregate-conflict.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
-$expectedStage2Bytes = 11695430L
+$expectedStage2Bytes = 11724053L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
@@ -221,7 +222,8 @@ Write-Host "[linux-stage2 6/6] Reject a moved origin while its borrowed Text vie
 foreach ($conflict in @(
     @($borrowConflictSource, "single"),
     @($borrowUnionConflictSource, "union"),
-    @($borrowAliasConflictSource, "alias")
+    @($borrowAliasConflictSource, "alias"),
+    @($borrowAggregateConflictSource, "aggregate")
 )) {
     $stage1DiagnosticOutput = Join-Path $artifactsDir "linux-stage2-check-borrow-$($conflict[1])-stage1.txt"
     $stage1DiagnosticError = Join-Path $artifactsDir "linux-stage2-check-borrow-$($conflict[1])-stage1.err"
@@ -248,4 +250,4 @@ foreach ($conflict in @(
         }
     }
 }
-Write-Host "[linux-stage2 6/6] PASS single, union, and transferred-origin E21 block LLVM emission in stage-1 and stage-2."
+Write-Host "[linux-stage2 6/6] PASS single, union, transferred, and aggregate-origin E21 block LLVM emission in stage-1 and stage-2."

@@ -22,6 +22,7 @@ $groupedNotSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\sel
 $borrowConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-conflict.slg"
 $borrowUnionConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-union-conflict.slg"
 $borrowAliasConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-alias-conflict.slg"
+$borrowAggregateConflictSource = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-aggregate-conflict.slg"
 $borrowSourceRuntime = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-stage2-borrow-source.slg"
 $runtimeManifestPath = Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\selfhost-compiler-runtime.sources.txt"
 $fingerprintSources = @(
@@ -33,7 +34,7 @@ $semanticContextSource = Join-Path $repoRoot "selfhost\semantic\context.slg"
 $compilerRuntimeSources = Get-Content $runtimeManifestPath |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
     ForEach-Object { Join-Path $repoRoot $_.Trim() }
-$expectedStage2Bytes = 11698851L
+$expectedStage2Bytes = 11727474L
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
@@ -336,7 +337,8 @@ Write-Host "[stage2 6/7] Reject a moved origin while its borrowed Text view rema
 foreach ($conflict in @(
     @($borrowConflictSource, "single"),
     @($borrowUnionConflictSource, "union"),
-    @($borrowAliasConflictSource, "alias")
+    @($borrowAliasConflictSource, "alias"),
+    @($borrowAggregateConflictSource, "aggregate")
 )) {
     foreach ($compiler in @(
         @($stage1Path, "stage1"),
@@ -363,7 +365,7 @@ foreach ($conflict in @(
         }
     }
 }
-Write-Host "[stage2 6/7] PASS single, union, and transferred-origin E21 block LLVM emission in stage-1 and stage-2."
+Write-Host "[stage2 6/7] PASS single, union, transferred, and aggregate-origin E21 block LLVM emission in stage-1 and stage-2."
 
 Write-Host "[stage2 7/7] Compare C# reference and native Sollang compiler runtime behavior."
 & dotnet run --project $runnerProject -c Release --no-build -- `

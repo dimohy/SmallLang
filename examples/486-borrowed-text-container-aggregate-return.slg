@@ -1,0 +1,36 @@
+import sys.file as file
+
+parts source: file.SourceText -> [Text; ~] {
+    [
+        source -> slice(UIntSize(0), UIntSize(3)),
+        source -> slice(UIntSize(3), UIntSize(3)),
+        ~
+    ]
+}
+
+forward values: move [Text; ~] -> [Text; ~] {
+    values
+}
+
+labels source: file.SourceText -> {Text: Text} {
+    source -> slice(UIntSize(0), UIntSize(3)) => key
+    source -> slice(UIntSize(3), UIntSize(3)) => value
+    {Text: Text; key: value }
+}
+
+consume source: move file.SourceText -> Unit {
+}
+
+main {
+    "lexer!" -> file.borrowText => arraySource!
+    arraySource! -> parts => views!
+    views! -> forward => forwarded!
+    forwarded![0] -> println
+    forwarded![1] -> println
+    arraySource! -> consume
+
+    "parser!" -> file.borrowText => dictionarySource!
+    dictionarySource! -> labels => labels!
+    labels!["par"] -> println
+    dictionarySource! -> consume
+}

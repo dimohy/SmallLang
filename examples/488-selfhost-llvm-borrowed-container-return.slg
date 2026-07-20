@@ -1,0 +1,31 @@
+import sollang.compiler.llvm.text as llvm
+
+main {
+    [
+        """
+        import sys.file as file
+
+        parts source: file.SourceText -> [Text; ~] {
+            [
+                source -> slice(UIntSize(0), UIntSize(3)),
+                source -> slice(UIntSize(3), UIntSize(3)),
+                ~
+            ]
+        }
+
+        forward values: move [Text; ~] -> [Text; ~] {
+            values
+        }
+
+        main {
+            "lexer!" -> file.borrowText => source!
+            source! -> parts => views!
+            views! -> forward => forwarded!
+            forwarded![0] -> println
+            forwarded![1] -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emitLinux
+}

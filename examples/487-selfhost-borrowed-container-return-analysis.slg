@@ -1,0 +1,54 @@
+import sollang.compiler.semantic.context as semanticContext
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+main {
+    [
+        """
+        import sys.file as file
+
+        parts source: file.SourceText -> [Text; ~] {
+            [
+                source -> slice(UIntSize(0), UIntSize(3)),
+                source -> slice(UIntSize(3), UIntSize(3)),
+                ~
+            ]
+        }
+
+        forward values: move [Text; ~] -> [Text; ~] {
+            values
+        }
+
+        consume source: move file.SourceText -> Unit {
+            source -> len -> println
+        }
+
+        main {
+            "lexer!" -> file.borrowText => source!
+            source! -> parts => views!
+            views! -> forward => forwarded!
+            source! -> consume
+            forwarded![0] -> println
+        }
+        """,
+        """
+        namespace sys.file
+
+        public struct SourceText {
+            token: UInt64
+        }
+
+        borrowText text: Text -> SourceText = intrinsic
+        """,
+        ~
+    ] => sources!
+    sources! -> semanticContext.prepare => snapshot!
+    snapshot! -> ownershipCheck.analyzeContext => errors!
+    0 => index!
+    index! < (errors! -> len) -> while {
+        errors![index!] => error
+        error.code == 21 -> if {
+            "container borrow conflict" -> println
+        }
+        index! + 1 => index!
+    }
+}

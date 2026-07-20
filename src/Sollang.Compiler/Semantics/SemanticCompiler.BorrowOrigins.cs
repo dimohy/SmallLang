@@ -20,8 +20,8 @@ internal sealed partial class SemanticCompiler
             foreach (var function in candidates)
             {
                 if (_borrowedTextReturnOrigins.ContainsKey(function)
-                    || function.ReturnType != BoundType.Text
-                    || !BorrowedSourceTextParameterNames(function).Any())
+                    || !TypeContains(function.ReturnType, BoundType.Text)
+                    || !BorrowedTextOriginParameterNames(function).Any())
                 {
                     continue;
                 }
@@ -49,17 +49,20 @@ internal sealed partial class SemanticCompiler
         }
     }
 
-    private static IEnumerable<string> BorrowedSourceTextParameterNames(BoundFunction function)
+    private IEnumerable<string> BorrowedTextOriginParameterNames(BoundFunction function)
     {
-        if (function.InputType == BoundType.SourceText
-            && function.InputOwnership == BoundFunctionInputOwnership.Default)
+        if (function.InputType is { } inputType
+            && ((inputType == BoundType.SourceText
+                    && function.InputOwnership == BoundFunctionInputOwnership.Default)
+                || TypeContains(inputType, BoundType.Text)))
         {
             yield return function.InputName ?? "it";
         }
         foreach (var parameter in function.AdditionalParameters ?? [])
         {
-            if (parameter.Type == BoundType.SourceText
-                && parameter.Ownership == BoundFunctionInputOwnership.Default)
+            if ((parameter.Type == BoundType.SourceText
+                    && parameter.Ownership == BoundFunctionInputOwnership.Default)
+                || TypeContains(parameter.Type, BoundType.Text))
             {
                 yield return parameter.Name;
             }
@@ -71,30 +74,98 @@ internal sealed partial class SemanticCompiler
         IReadOnlyDictionary<string, BoundFunction> functions,
         out IReadOnlySet<string> origins)
     {
-        var locals = BorrowedSourceTextParameterNames(function).ToDictionary(
+        var locals = BorrowedTextOriginParameterNames(function).ToDictionary(
             static name => name,
             static name => (IReadOnlySet<string>)new HashSet<string>([name], StringComparer.Ordinal),
             StringComparer.Ordinal);
-        foreach (var statement in function.BlockBody)
-        {
-            if (statement is ReturnStatement)
-            {
-                origins = EmptyBorrowOrigins();
-                return false;
-            }
-            if (statement is BindingStatement binding
-                && TryInferBorrowedTextOrigins(binding.Value, functions, locals, out var bindingOrigins))
-            {
-                locals[binding.Name] = bindingOrigins;
-            }
-        }
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        CollectBorrowedTextReturnOrigins(
+            function.BlockBody,
+            functions,
+            locals,
+            union);
 
-        if (function.Body is not null)
+        if (function.Body is not null
+            && TryInferBorrowedTextOrigins(function.Body, functions, locals, out var bodyOrigins))
         {
-            return TryInferBorrowedTextOrigins(function.Body, functions, locals, out origins);
+            union.UnionWith(bodyOrigins);
         }
-        origins = EmptyBorrowOrigins();
-        return false;
+        origins = union;
+        return union.Count > 0;
+    }
+
+    private void CollectBorrowedTextReturnOrigins(
+        IReadOnlyList<Statement> statements,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        Dictionary<string, IReadOnlySet<string>> locals,
+        HashSet<string> union)
+    {
+        foreach (var statement in statements)
+        {
+            switch (statement)
+            {
+                case BindingStatement binding:
+                    CollectNestedBorrowedTextReturnOrigins(binding.Value, functions, locals, union);
+                    if (TryInferBorrowedTextOrigins(
+                            binding.Value,
+                            functions,
+                            locals,
+                            out var bindingOrigins))
+                    {
+                        locals[binding.Name] = bindingOrigins;
+                    }
+                    break;
+                case ReturnStatement { Value: { } value }:
+                    if (TryInferBorrowedTextOrigins(value, functions, locals, out var returnOrigins))
+                    {
+                        union.UnionWith(returnOrigins);
+                    }
+                    CollectNestedBorrowedTextReturnOrigins(value, functions, locals, union);
+                    break;
+                case ExpressionStatement expression:
+                    CollectNestedBorrowedTextReturnOrigins(
+                        expression.Expression,
+                        functions,
+                        locals,
+                        union);
+                    break;
+                case BlockFunctionCallStatement block:
+                    CollectNestedBorrowedTextReturnOrigins(block.Source, functions, locals, union);
+                    var blockLocals = new Dictionary<string, IReadOnlySet<string>>(
+                        locals,
+                        StringComparer.Ordinal);
+                    CollectBorrowedTextReturnOrigins(block.Body, functions, blockLocals, union);
+                    break;
+            }
+        }
+    }
+
+    private void CollectNestedBorrowedTextReturnOrigins(
+        Expression expression,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> locals,
+        HashSet<string> union)
+    {
+        switch (expression)
+        {
+            case IfExpression conditional:
+                CollectBlockBorrowedTextReturnOrigins(conditional.Then, functions, locals, union);
+                if (conditional.Else is not null)
+                {
+                    CollectBlockBorrowedTextReturnOrigins(conditional.Else, functions, locals, union);
+                }
+                break;
+            case WhenExpression match:
+                foreach (var arm in match.Arms)
+                {
+                    CollectBlockBorrowedTextReturnOrigins(arm.Body, functions, locals, union);
+                }
+                CollectBlockBorrowedTextReturnOrigins(match.Else, functions, locals, union);
+                break;
+            case FoldExpression fold:
+                CollectBlockBorrowedTextReturnOrigins(fold.Body, functions, locals, union);
+                break;
+        }
     }
 
     private bool TryInferBorrowedTextOrigins(
@@ -106,6 +177,54 @@ internal sealed partial class SemanticCompiler
         if (expression is NameExpression name && locals.TryGetValue(name.Name, out origins!))
         {
             return true;
+        }
+
+        if (expression is StructLiteralExpression structure)
+        {
+            return TryUnionBorrowedTextOrigins(
+                structure.Fields.Select(static field => field.Value),
+                functions,
+                locals,
+                out origins);
+        }
+
+        if (expression is ArrayLiteralExpression array)
+        {
+            return TryUnionBorrowedTextOrigins(array.Elements, functions, locals, out origins);
+        }
+
+        if (expression is ArrayRepeatExpression repeat)
+        {
+            return TryInferBorrowedTextOrigins(repeat.Value, functions, locals, out origins);
+        }
+
+        if (expression is DictionaryLiteralExpression dictionary)
+        {
+            return TryUnionBorrowedTextOrigins(
+                dictionary.Entries.SelectMany(static entry => new[] { entry.Key, entry.Value }),
+                functions,
+                locals,
+                out origins);
+        }
+
+        if (expression is FieldAccessExpression field)
+        {
+            return TryInferBorrowedTextOrigins(field.Source, functions, locals, out origins);
+        }
+
+        if (expression is IndexExpression index)
+        {
+            return TryInferBorrowedTextOrigins(index.Source, functions, locals, out origins);
+        }
+
+        if (expression is TryExpression attempted)
+        {
+            return TryInferBorrowedTextOrigins(attempted.Value, functions, locals, out origins);
+        }
+
+        if (expression is BoxExpression boxed)
+        {
+            return TryInferBorrowedTextOrigins(boxed.Value, functions, locals, out origins);
         }
 
         if (expression is CallExpression call
@@ -191,6 +310,24 @@ internal sealed partial class SemanticCompiler
         return false;
     }
 
+    private bool TryUnionBorrowedTextOrigins(
+        IEnumerable<Expression> expressions,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> locals,
+        out IReadOnlySet<string> origins)
+    {
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var expression in expressions)
+        {
+            if (TryInferBorrowedTextOrigins(expression, functions, locals, out var nested))
+            {
+                union.UnionWith(nested);
+            }
+        }
+        origins = union;
+        return union.Count > 0;
+    }
+
     private void CollectBlockBorrowedTextOrigins(
         BlockBody block,
         IReadOnlyDictionary<string, BoundFunction> functions,
@@ -210,6 +347,20 @@ internal sealed partial class SemanticCompiler
             && TryInferBorrowedTextOrigins(block.Value, functions, locals, out var origins))
         {
             union.UnionWith(origins);
+        }
+    }
+
+    private void CollectBlockBorrowedTextReturnOrigins(
+        BlockBody block,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> parentLocals,
+        HashSet<string> union)
+    {
+        var locals = new Dictionary<string, IReadOnlySet<string>>(parentLocals, StringComparer.Ordinal);
+        CollectBorrowedTextReturnOrigins(block.Statements, functions, locals, union);
+        if (block.Value is not null)
+        {
+            CollectNestedBorrowedTextReturnOrigins(block.Value, functions, locals, union);
         }
     }
 
@@ -262,12 +413,60 @@ internal sealed partial class SemanticCompiler
             return true;
         }
 
+        if (expression is StructLiteralExpression structure)
+        {
+            return TryUnionCallSiteBorrowedOrigins(
+                structure.Fields.Select(static field => field.Value),
+                functions,
+                bindings,
+                out origins);
+        }
+
+        if (expression is ArrayLiteralExpression array)
+        {
+            return TryUnionCallSiteBorrowedOrigins(array.Elements, functions, bindings, out origins);
+        }
+
+        if (expression is ArrayRepeatExpression repeat)
+        {
+            return TryGetBorrowedTextCallOrigins(repeat.Value, functions, bindings, out origins);
+        }
+
+        if (expression is DictionaryLiteralExpression dictionary)
+        {
+            return TryUnionCallSiteBorrowedOrigins(
+                dictionary.Entries.SelectMany(static entry => new[] { entry.Key, entry.Value }),
+                functions,
+                bindings,
+                out origins);
+        }
+
+        if (expression is FieldAccessExpression field)
+        {
+            return TryGetBorrowedTextCallOrigins(field.Source, functions, bindings, out origins);
+        }
+
+        if (expression is IndexExpression index)
+        {
+            return TryGetBorrowedTextCallOrigins(index.Source, functions, bindings, out origins);
+        }
+
+        if (expression is TryExpression attempted)
+        {
+            return TryGetBorrowedTextCallOrigins(attempted.Value, functions, bindings, out origins);
+        }
+
+        if (expression is BoxExpression boxed)
+        {
+            return TryGetBorrowedTextCallOrigins(boxed.Value, functions, bindings, out origins);
+        }
+
         if (expression is CallExpression call
             && TryGetFunction(call.Path, functions, out var called)
             && _borrowedTextReturnOrigins.TryGetValue(called, out var returnOrigins))
         {
             return TryMapCallSiteBorrowedOrigins(
-                called, returnOrigins, call.Arguments, bindings, out origins);
+                called, returnOrigins, call.Arguments, functions, bindings, out origins);
         }
 
         if (expression is FlowExpression flow)
@@ -294,7 +493,7 @@ internal sealed partial class SemanticCompiler
                     }
                     var arguments = new Expression[] { current }.Concat(target.Arguments).ToArray();
                     return TryMapCallSiteBorrowedOrigins(
-                        flowedFunction, flowedReturnOrigins, arguments, bindings, out origins);
+                        flowedFunction, flowedReturnOrigins, arguments, functions, bindings, out origins);
                 }
                 break;
             }
@@ -304,29 +503,76 @@ internal sealed partial class SemanticCompiler
         return false;
     }
 
+    private bool TryUnionCallSiteBorrowedOrigins(
+        IEnumerable<Expression> expressions,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        IReadOnlyDictionary<string, BoundType> bindings,
+        out IReadOnlySet<string> origins)
+    {
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var expression in expressions)
+        {
+            if (TryGetBorrowedTextCallOrigins(expression, functions, bindings, out var nested))
+            {
+                union.UnionWith(nested);
+            }
+        }
+        origins = union;
+        return union.Count > 0;
+    }
+
     private bool TryMapCallSiteBorrowedOrigins(
         BoundFunction called,
         IReadOnlySet<string> returnOrigins,
         IReadOnlyList<Expression> arguments,
+        IReadOnlyDictionary<string, BoundFunction> functions,
         IReadOnlyDictionary<string, BoundType> bindings,
         out IReadOnlySet<string> origins)
     {
         var parameters = FunctionParameters(called);
+        var parameterTypes = FunctionParameterTypes(called);
         var union = new HashSet<string>(StringComparer.Ordinal);
         foreach (var returnOrigin in returnOrigins)
         {
             var ordinal = parameters.FindIndex(parameter =>
                 StringComparer.Ordinal.Equals(parameter, returnOrigin));
-            if (ordinal < 0 || ordinal >= arguments.Count
-                || !TryGetConcreteBorrowOrigins(arguments[ordinal], bindings, out var argumentOrigins))
+            if (ordinal < 0 || ordinal >= arguments.Count || ordinal >= parameterTypes.Count)
             {
                 origins = EmptyBorrowOrigins();
                 return false;
             }
-            union.UnionWith(argumentOrigins);
+
+            if (parameterTypes[ordinal] == BoundType.SourceText)
+            {
+                if (!TryGetConcreteBorrowOrigins(arguments[ordinal], bindings, out var sourceOrigins))
+                {
+                    origins = EmptyBorrowOrigins();
+                    return false;
+                }
+                union.UnionWith(sourceOrigins);
+            }
+            else if (TryGetBorrowedTextCallOrigins(
+                         arguments[ordinal],
+                         functions,
+                         bindings,
+                         out var propagatedOrigins))
+            {
+                union.UnionWith(propagatedOrigins);
+            }
         }
         origins = union;
         return union.Count > 0;
+    }
+
+    private static List<BoundType> FunctionParameterTypes(BoundFunction function)
+    {
+        var parameters = new List<BoundType>();
+        if (function.InputType is { } inputType)
+        {
+            parameters.Add(inputType);
+        }
+        parameters.AddRange((function.AdditionalParameters ?? []).Select(static parameter => parameter.Type));
+        return parameters;
     }
 
     private bool TryGetConcreteBorrowOrigins(
@@ -334,16 +580,19 @@ internal sealed partial class SemanticCompiler
         IReadOnlyDictionary<string, BoundType> bindings,
         out IReadOnlySet<string> origins)
     {
-        if (expression is NameExpression name && bindings.ContainsKey(name.Name))
+        if (expression is NameExpression name)
         {
             if (_activeBorrowedTextOrigins.TryGetValue(name.Name, out origins!))
             {
                 return true;
             }
-            origins = new HashSet<string>(
-                [CanonicalBorrowOriginName(name.Name)],
-                StringComparer.Ordinal);
-            return true;
+            if (bindings.ContainsKey(name.Name))
+            {
+                origins = new HashSet<string>(
+                    [CanonicalBorrowOriginName(name.Name)],
+                    StringComparer.Ordinal);
+                return true;
+            }
         }
         origins = EmptyBorrowOrigins();
         return false;

@@ -1584,18 +1584,17 @@ internal sealed partial class SemanticCompiler
                 $"function '{function.Name}' returns {FormatType(bodyType)} but declares {FormatType(function.ReturnType)}");
         }
 
-        if (BorrowedSourceTextParameterNames(function).Any()
+        if (BorrowedTextOriginParameterNames(function).Any()
             && TypeContains(function.ReturnType, BoundType.Text)
             && (ContainsSliceFlow(function.BlockBody)
                 || (function.Body is not null && ContainsSliceFlow(function.Body))))
         {
-            if (function.ReturnType != BoundType.Text
-                || !_borrowedTextReturnOrigins.ContainsKey(function))
+            if (!_borrowedTextReturnOrigins.ContainsKey(function))
             {
                 throw Error(
                     function.Line,
                     function.Column,
-                    $"function '{function.Name}' cannot return Text storage after slicing borrowed SourceText; return a direct Text view with inferred input origins or copy into an owned text type");
+                    $"function '{function.Name}' cannot return Text storage after slicing borrowed SourceText; return a value whose borrowed Text origins can be inferred from its inputs or copy into an owned text type");
             }
         }
 
