@@ -91,6 +91,9 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
             functions.AppendLine("declare dllimport ptr @FindFirstFileA(ptr, ptr)");
             functions.AppendLine("declare dllimport i32 @FindNextFileA(ptr, ptr)");
             functions.AppendLine("declare dllimport i32 @FindClose(ptr)");
+            functions.AppendLine("declare dllimport ptr @CreateFileW(ptr, i32, i32, ptr, i32, i32, ptr)");
+            functions.AppendLine("declare dllimport i32 @GetFinalPathNameByHandleW(ptr, ptr, i32, i32)");
+            functions.AppendLine("declare dllimport i32 @GetFileInformationByHandle(ptr, ptr)");
         }
         if (UsesAsyncFile || UsesComputePool)
         {
@@ -2137,6 +2140,146 @@ internal sealed class WindowsLlvmRuntimePlatform : LlvmRuntimePlatform
               %failure2 = insertvalue %sollang.directory_result %failure1, i64 0, 2
               %failure3 = insertvalue %sollang.directory_result %failure2, i32 0, 3
               ret %sollang.directory_result %failure3
+            }
+
+            """);
+        functions.AppendLine("""
+            define internal %sollang.path_query_result @sollang_platform_query_path(ptr %path, i64 %len, i32 %style) #0 {
+            entry:
+              %style_ok = icmp eq i32 %style, 1
+              %len32 = trunc i64 %len to i32
+              %len_roundtrip = zext i32 %len32 to i64
+              %length_ok = icmp eq i64 %len_roundtrip, %len
+              %input_ok = and i1 %style_ok, %length_ok
+              br i1 %input_ok, label %measure_input, label %fail
+
+            measure_input:
+              %wide_chars = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %path, i32 %len32, ptr null, i32 0)
+              %wide_ok = icmp sgt i32 %wide_chars, 0
+              br i1 %wide_ok, label %allocate_input, label %fail
+
+            allocate_input:
+              %wide_chars64 = zext i32 %wide_chars to i64
+              %wide_with_zero = add i64 %wide_chars64, 1
+              %wide_bytes = mul i64 %wide_with_zero, 2
+              %wide_input = call ptr @sollang_alloc(i64 %wide_bytes)
+              %wide_input_ok = icmp ne ptr %wide_input, null
+              br i1 %wide_input_ok, label %convert_input, label %fail
+
+            convert_input:
+              %converted = call i32 @MultiByteToWideChar(i32 65001, i32 8, ptr %path, i32 %len32, ptr %wide_input, i32 %wide_chars)
+              %converted_ok = icmp eq i32 %converted, %wide_chars
+              br i1 %converted_ok, label %terminate_input, label %input_fail
+
+            terminate_input:
+              %wide_zero = getelementptr i16, ptr %wide_input, i64 %wide_chars64
+              store i16 0, ptr %wide_zero, align 2
+              %handle = call ptr @CreateFileW(ptr %wide_input, i32 0, i32 7, ptr null, i32 3, i32 33554432, ptr null)
+              call void @sollang_free(ptr %wide_input)
+              %invalid_handle = inttoptr i64 -1 to ptr
+              %handle_ok = icmp ne ptr %handle, %invalid_handle
+              br i1 %handle_ok, label %measure_canonical, label %fail
+
+            measure_canonical:
+              %canonical_chars = call i32 @GetFinalPathNameByHandleW(ptr %handle, ptr null, i32 0, i32 0)
+              %canonical_ok = icmp sgt i32 %canonical_chars, 0
+              br i1 %canonical_ok, label %allocate_canonical, label %handle_fail
+
+            allocate_canonical:
+              %canonical_chars64 = zext i32 %canonical_chars to i64
+              %canonical_capacity = add i32 %canonical_chars, 1
+              %canonical_capacity64 = zext i32 %canonical_capacity to i64
+              %canonical_wide_bytes = mul i64 %canonical_capacity64, 2
+              %canonical_wide = call ptr @sollang_alloc(i64 %canonical_wide_bytes)
+              %canonical_wide_ok = icmp ne ptr %canonical_wide, null
+              br i1 %canonical_wide_ok, label %read_canonical, label %handle_fail
+
+            read_canonical:
+              %canonical_written = call i32 @GetFinalPathNameByHandleW(ptr %handle, ptr %canonical_wide, i32 %canonical_capacity, i32 0)
+              %canonical_written_positive = icmp sgt i32 %canonical_written, 0
+              %canonical_written_fits = icmp ule i32 %canonical_written, %canonical_chars
+              %canonical_written_ok = and i1 %canonical_written_positive, %canonical_written_fits
+              br i1 %canonical_written_ok, label %metadata, label %canonical_wide_fail
+
+            metadata:
+              %information = alloca [52 x i8], align 8
+              %information_status = call i32 @GetFileInformationByHandle(ptr %handle, ptr %information)
+              %information_ok = icmp ne i32 %information_status, 0
+              br i1 %information_ok, label %measure_utf8, label %canonical_wide_fail
+
+            measure_utf8:
+              %utf8_bytes = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %canonical_wide, i32 %canonical_written, ptr null, i32 0, ptr null, ptr null)
+              %utf8_ok = icmp sgt i32 %utf8_bytes, 0
+              br i1 %utf8_ok, label %allocate_utf8, label %canonical_wide_fail
+
+            allocate_utf8:
+              %utf8_bytes64 = zext i32 %utf8_bytes to i64
+              %canonical_utf8 = call ptr @sollang_alloc(i64 %utf8_bytes64)
+              %canonical_utf8_ok = icmp ne ptr %canonical_utf8, null
+              br i1 %canonical_utf8_ok, label %convert_canonical, label %canonical_wide_fail
+
+            convert_canonical:
+              %utf8_written = call i32 @WideCharToMultiByte(i32 65001, i32 128, ptr %canonical_wide, i32 %canonical_written, ptr %canonical_utf8, i32 %utf8_bytes, ptr null, ptr null)
+              %utf8_written_ok = icmp eq i32 %utf8_written, %utf8_bytes
+              br i1 %utf8_written_ok, label %success, label %utf8_fail
+
+            success:
+              %attributes = load i32, ptr %information, align 4
+              %directory_bits = and i32 %attributes, 16
+              %is_directory = icmp ne i32 %directory_bits, 0
+              %kind = select i1 %is_directory, i8 1, i8 0
+              %size_high_ptr = getelementptr i8, ptr %information, i64 32
+              %size_high32 = load i32, ptr %size_high_ptr, align 4
+              %size_low_ptr = getelementptr i8, ptr %information, i64 36
+              %size_low32 = load i32, ptr %size_low_ptr, align 4
+              %size_high = zext i32 %size_high32 to i64
+              %size_low = zext i32 %size_low32 to i64
+              %size_shifted = shl i64 %size_high, 32
+              %size = or i64 %size_shifted, %size_low
+              %time_low_ptr = getelementptr i8, ptr %information, i64 20
+              %time_low32 = load i32, ptr %time_low_ptr, align 4
+              %time_high_ptr = getelementptr i8, ptr %information, i64 24
+              %time_high32 = load i32, ptr %time_high_ptr, align 4
+              %time_low = zext i32 %time_low32 to i64
+              %time_high = zext i32 %time_high32 to i64
+              %time_shifted = shl i64 %time_high, 32
+              %file_time = or i64 %time_shifted, %time_low
+              %unix_ticks = sub i64 %file_time, 116444736000000000
+              %modified_nanos = mul i64 %unix_ticks, 100
+              call void @sollang_free(ptr %canonical_wide)
+              %closed = call i32 @CloseHandle(ptr %handle)
+              %result0 = insertvalue %sollang.path_query_result poison, ptr %canonical_utf8, 0
+              %result1 = insertvalue %sollang.path_query_result %result0, i64 %utf8_bytes64, 1
+              %result2 = insertvalue %sollang.path_query_result %result1, i8 %kind, 2
+              %result3 = insertvalue %sollang.path_query_result %result2, i64 %size, 3
+              %result4 = insertvalue %sollang.path_query_result %result3, i64 %modified_nanos, 4
+              %result5 = insertvalue %sollang.path_query_result %result4, i32 1, 5
+              ret %sollang.path_query_result %result5
+
+            utf8_fail:
+              call void @sollang_free(ptr %canonical_utf8)
+              br label %canonical_wide_fail
+
+            canonical_wide_fail:
+              call void @sollang_free(ptr %canonical_wide)
+              br label %handle_fail
+
+            handle_fail:
+              %failed_closed = call i32 @CloseHandle(ptr %handle)
+              br label %fail
+
+            input_fail:
+              call void @sollang_free(ptr %wide_input)
+              br label %fail
+
+            fail:
+              %failure0 = insertvalue %sollang.path_query_result poison, ptr null, 0
+              %failure1 = insertvalue %sollang.path_query_result %failure0, i64 0, 1
+              %failure2 = insertvalue %sollang.path_query_result %failure1, i8 3, 2
+              %failure3 = insertvalue %sollang.path_query_result %failure2, i64 0, 3
+              %failure4 = insertvalue %sollang.path_query_result %failure3, i64 0, 4
+              %failure5 = insertvalue %sollang.path_query_result %failure4, i32 0, 5
+              ret %sollang.path_query_result %failure5
             }
 
             """);

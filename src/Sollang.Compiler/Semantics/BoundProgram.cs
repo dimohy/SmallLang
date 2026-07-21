@@ -125,6 +125,7 @@ internal enum BoundFunctionKind
     RuntimeMapSourceText,
     RuntimeMapSourcePath,
     RuntimePathStyle,
+    RuntimePathQuery,
     RuntimeWriteScalar,
     RuntimeReadScalar,
     RuntimeReadScalarAsync,

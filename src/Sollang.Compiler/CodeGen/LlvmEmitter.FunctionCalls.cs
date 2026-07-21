@@ -195,6 +195,15 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeReadDirectory(function, EmitExpression(expression.Arguments[0]));
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimePathQuery)
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SollangException($"{path} expects exactly one Path argument");
+            }
+            return EmitRuntimePathQuery(function, EmitExpression(expression.Arguments[0]));
+        }
+
         if (function.Kind is BoundFunctionKind.RuntimeSyncFile
             or BoundFunctionKind.RuntimeAtomicReplaceFile)
         {
@@ -935,6 +944,15 @@ internal sealed partial class LlvmEmitter
                 throw new SollangException($"{function.Name} expects exactly one Path value");
             }
             return EmitRuntimeReadDirectory(function, argument);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimePathQuery)
+        {
+            if (argument is null)
+            {
+                throw new SollangException($"{function.Name} expects exactly one Path value");
+            }
+            return EmitRuntimePathQuery(function, argument);
         }
 
         if (function.Kind is BoundFunctionKind.RuntimeSyncFile
@@ -1884,7 +1902,7 @@ internal sealed partial class LlvmEmitter
                 return;
             }
 
-            if (target.Kind == BoundFunctionKind.RuntimeReadDirectory)
+            if (target.Kind is BoundFunctionKind.RuntimeReadDirectory or BoundFunctionKind.RuntimePathQuery)
             {
                 _usesDirectoryTraversal = true;
             }

@@ -1,5 +1,7 @@
 namespace sys.path
 
+import sys.directory.kind as kinds
+
 # Path owns its UTF-8 storage. It is not a Text alias and therefore cannot
 # outlive borrowed source storage accidentally.
 public struct Path {
@@ -7,11 +9,75 @@ public struct Path {
     style: Style
 }
 
+# A query follows symbolic links and returns one owned canonical path together
+# with the portable metadata shared by Windows and Linux.
+public struct RawInfo {
+    bytes: [UInt8; ~]
+    kindCode: UInt8
+    byteLength: UInt64
+    modifiedNanos: UInt64
+}
+
+public struct Info {
+    canonical: Path
+    kind: kinds.Kind
+    byteLength: UInt64
+    modifiedNanos: UInt64
+}
+
 # Path style is explicit so a cross-compiler can manipulate target paths
 # without silently applying the host machine's separator rules.
 public enum Style {
     Posix
     Windows
+}
+
+public queryRaw target: Path -> Result<RawInfo, Text> uses File = intrinsic
+
+queryKind code: UInt8 -> kinds.Kind {
+    code == UInt8(0) -> if {
+        kinds.Kind.File
+    } else {
+        code == UInt8(1) -> if {
+            kinds.Kind.Directory
+        } else {
+            code == UInt8(2) -> if {
+                kinds.Kind.Symlink
+            } else {
+                kinds.Kind.Other
+            }
+        }
+    }
+}
+
+copyBytes source: [UInt8; ~] -> [UInt8; ~] {
+    [UInt8; ~] => copied!
+    0 => index!
+    index! < (source -> len) -> while {
+        copied! -> push(source[index!])
+        index! + 1 => index!
+    }
+    copied!
+}
+
+public query target: Path -> Result<Info, Text> uses File {
+    target.style => style
+    target -> queryRaw -> when {
+        Ok(raw) {
+            raw.bytes -> copyBytes => canonicalBytes!
+            Info {
+                canonical: Path { bytes: canonicalBytes!, style: style }
+                kind: raw.kindCode -> queryKind
+                byteLength: raw.byteLength
+                modifiedNanos: raw.modifiedNanos
+            } => info!
+            Result<Info, Text>.Ok(info!) -> return
+        }
+        Err(error) {
+            Result<Info, Text>.Err(error) -> return
+        }
+    }
+    Result<Info, Text>.Err("io")
 }
 
 # The compiled target decides this value; it never reflects the build host.

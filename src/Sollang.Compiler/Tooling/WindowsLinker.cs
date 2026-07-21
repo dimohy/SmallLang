@@ -110,11 +110,14 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             GetOverlappedResult
             WriteFile
             CreateFileA
+            CreateFileW
             CloseHandle
             GetCurrentProcess
             DuplicateHandle
             SetFilePointerEx
             GetFileSizeEx
+            GetFinalPathNameByHandleW
+            GetFileInformationByHandle
             SetEndOfFile
             CreateFileMappingA
             MapViewOfFile

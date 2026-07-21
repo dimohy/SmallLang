@@ -4070,6 +4070,42 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
             directoryCallIndex! + 1 => directoryCallIndex!
         }
     }
+    # Canonical path metadata shares the target filesystem lowering opcode
+    # with directory traversal; the LLVM emitter distinguishes the RawInfo
+    # payload shape from directory Raw without relying on user-visible names.
+    -1 => pathModuleSource!
+    0 => pathModuleSearch!
+    pathModuleSearch! < (prepared.modules -> len) -> while {
+        prepared.modules[pathModuleSearch!] => pathModuleIdentity
+        pathModuleIdentity.pathHash == UInt64(7794543808165292697) -> if { pathModuleIdentity.sourceIndex => pathModuleSource! }
+        pathModuleSearch! + 1 => pathModuleSearch!
+    }
+    -1 => pathQueryRawSymbol!
+    pathModuleSource! >= 0 -> if {
+        prepared.package.ranges[pathModuleSource!] => pathSourceRange
+        prepared.package.sources[pathModuleSource!] -> len => pathSourceLength
+        prepared.package.sources[pathModuleSource!] -> slice(UIntSize(0), pathSourceLength) => pathSource
+        0 => pathSymbolSearch!
+        pathSymbolSearch! < pathSourceRange.symbolCount -> while {
+            prepared.package.symbols[pathSourceRange.symbolStart + pathSymbolSearch!] => pathSymbol
+            (pathSymbol.kind == 7 and pathSymbol.parent < 0) -> if {
+                prepared.package.tokens[pathSourceRange.tokenStart + pathSymbol.nameToken] => pathNameToken
+                pathNameToken.span.length == UIntSize(8) -> if {
+                    ((pathSource -> byte(pathNameToken.span.start)) == UInt8(113) and (pathSource -> byte(pathNameToken.span.start + UIntSize(1))) == UInt8(117) and (pathSource -> byte(pathNameToken.span.start + UIntSize(2))) == UInt8(101) and (pathSource -> byte(pathNameToken.span.start + UIntSize(3))) == UInt8(114) and (pathSource -> byte(pathNameToken.span.start + UIntSize(4))) == UInt8(121) and (pathSource -> byte(pathNameToken.span.start + UIntSize(5))) == UInt8(82) and (pathSource -> byte(pathNameToken.span.start + UIntSize(6))) == UInt8(97) and (pathSource -> byte(pathNameToken.span.start + UIntSize(7))) == UInt8(119)) -> if { pathSymbolSearch! => pathQueryRawSymbol! }
+                }
+            }
+            pathSymbolSearch! + 1 => pathSymbolSearch!
+        }
+        0 => pathCallIndex!
+        pathCallIndex! < (results! -> len) -> while {
+            results![pathCallIndex!] => pathCall!
+            (pathCall!.kind == 6 and pathCall!.targetModule == pathModuleSource! and pathCall!.symbol == pathQueryRawSymbol!) -> if {
+                -215 => pathCall!.opcode
+                pathCall! => results![pathCallIndex!]
+            }
+            pathCallIndex! + 1 => pathCallIndex!
+        }
+    }
     # Owned File calls have a stable runtime ABI in the LLVM backend. Resolve
     # declared sys.file functions by canonical module/symbol identity; member
     # readAt/writeAt opcodes are assigned from their compiler-provided names by

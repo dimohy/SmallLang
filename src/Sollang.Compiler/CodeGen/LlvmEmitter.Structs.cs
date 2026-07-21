@@ -44,7 +44,6 @@ internal sealed partial class LlvmEmitter
     private bool ShouldEmitTypeDefinition(TypeId type) =>
         _usesDirectoryTraversal
         || type is not (TypeId.DirectoryRaw
-            or TypeId.DirectoryEntryKind
             or TypeId.DirectoryEntry
             or TypeId.DynamicDirectoryEntryArray
             or TypeId.DirectoryRawResult

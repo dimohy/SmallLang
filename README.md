@@ -348,8 +348,8 @@ selects the newest compatible non-yanked release. See the
 
 ## Self-Hosting Progress
 
-The measured roadmap is currently **57.5/60 equivalent gates (95.8%)**, with
-**2.5 equivalent gates remaining**.
+The measured roadmap is currently **58/60 equivalent gates (96.7%)**, with
+**2 equivalent gates remaining**.
 
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2

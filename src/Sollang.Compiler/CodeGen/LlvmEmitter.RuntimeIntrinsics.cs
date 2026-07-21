@@ -585,6 +585,103 @@ internal sealed partial class LlvmEmitter
             [(success, successExit), (failure, errorExit)]);
     }
 
+    private RuntimeEnum EmitRuntimePathQuery(BoundFunction function, RuntimeValue argument)
+    {
+        if (argument is not RuntimeStruct path
+            || !_program.Types.IsStruct(path.Type)
+            || _program.Types.GetStruct(path.Type) is not { Name: "sys.path.Path" } pathDefinition)
+        {
+            throw new SollangException($"{function.Name} expects sys.path.Path");
+        }
+
+        var bytesField = pathDefinition.Fields.First(field => field.Name == "bytes");
+        var styleField = pathDefinition.Fields.First(field => field.Name == "style");
+        var bytesAggregate = NextTemp("path_query_input_bytes");
+        EmitAssign(bytesAggregate,
+            $"extractvalue {LlvmStructType(path.Type)} {path.ValueName}, {bytesField.Index.ToString(CultureInfo.InvariantCulture)}");
+        if (DematerializeAggregateValue(bytesField.Type, bytesAggregate) is not RuntimeDynamicInlineArray bytes
+            || bytes.ElementType != BoundType.UInt8)
+        {
+            throw new SollangException("sys.path.Path.bytes must be [UInt8; ~]");
+        }
+        var styleAggregate = NextTemp("path_query_input_style");
+        EmitAssign(styleAggregate,
+            $"extractvalue {LlvmStructType(path.Type)} {path.ValueName}, {styleField.Index.ToString(CultureInfo.InvariantCulture)}");
+        var styleTag = NextTemp("path_query_input_style_tag");
+        EmitAssign(styleTag, $"extractvalue {LlvmEnumType(styleField.Type)} {styleAggregate}, 0");
+
+        var platformResult = NextTemp("path_query_platform_result");
+        EmitCall(platformResult, "%sollang.path_query_result", "sollang_platform_query_path",
+            $"ptr {bytes.PointerName}, i64 {bytes.LengthName}, i32 {styleTag}");
+        string Extract(string name, int index)
+        {
+            var value = NextTemp(name);
+            EmitAssign(value, $"extractvalue %sollang.path_query_result {platformResult}, {index.ToString(CultureInfo.InvariantCulture)}");
+            return value;
+        }
+        var canonicalPointer = Extract("path_query_canonical_pointer", 0);
+        var canonicalLength = Extract("path_query_canonical_length", 1);
+        var kindCode = Extract("path_query_kind", 2);
+        var byteLength = Extract("path_query_byte_length", 3);
+        var modifiedNanos = Extract("path_query_modified_nanos", 4);
+        var status = Extract("path_query_status", 5);
+        var succeeded = NextTemp("path_query_succeeded");
+        EmitCompare(succeeded, "sgt", "i32", status, "0");
+
+        if (!_program.Types.TryGetResultTypes(function.ReturnType, out var resultTypes)
+            || !_program.Types.IsStruct(resultTypes.Ok)
+            || _program.Types.GetStruct(resultTypes.Ok) is not { Name: "sys.path.RawInfo" } rawDefinition
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw new SollangException($"{function.Name} has an invalid path query result type");
+        }
+        var rawBytesField = rawDefinition.Fields.First(field => field.Name == "bytes");
+        var kindField = rawDefinition.Fields.First(field => field.Name == "kindCode");
+        var lengthField = rawDefinition.Fields.First(field => field.Name == "byteLength");
+        var modifiedField = rawDefinition.Fields.First(field => field.Name == "modifiedNanos");
+        var rawArray = new RuntimeDynamicInlineArray(
+            rawBytesField.Type, BoundType.UInt8, canonicalPointer, canonicalLength, canonicalLength);
+        var arrayAggregate = BuildDynamicArrayAggregate(
+            rawArray.PointerName, rawArray.LengthName, rawArray.CapacityName);
+
+        var definition = _program.Types.GetEnum(function.ReturnType);
+        var okVariant = definition.Variants.First(variant => variant.Name == "Ok");
+        var errVariant = definition.Variants.First(variant => variant.Name == "Err");
+        var successLabel = NextLabel("path_query_success");
+        var errorLabel = NextLabel("path_query_error");
+        var endLabel = NextLabel("path_query_end");
+        EmitConditionalBranch(succeeded, successLabel, errorLabel);
+
+        EmitLabel(successLabel);
+        _currentBlockLabel = successLabel;
+        var withBytes = NextTemp("path_query_raw_bytes");
+        EmitAssign(withBytes,
+            $"insertvalue {LlvmStructType(resultTypes.Ok)} poison, %sollang.dynamic_int_array {arrayAggregate}, {rawBytesField.Index.ToString(CultureInfo.InvariantCulture)}");
+        var withKind = NextTemp("path_query_raw_kind");
+        EmitAssign(withKind,
+            $"insertvalue {LlvmStructType(resultTypes.Ok)} {withBytes}, i8 {kindCode}, {kindField.Index.ToString(CultureInfo.InvariantCulture)}");
+        var withLength = NextTemp("path_query_raw_length");
+        EmitAssign(withLength,
+            $"insertvalue {LlvmStructType(resultTypes.Ok)} {withKind}, i64 {byteLength}, {lengthField.Index.ToString(CultureInfo.InvariantCulture)}");
+        var rawValue = NextTemp("path_query_raw_value");
+        EmitAssign(rawValue,
+            $"insertvalue {LlvmStructType(resultTypes.Ok)} {withLength}, i64 {modifiedNanos}, {modifiedField.Index.ToString(CultureInfo.InvariantCulture)}");
+        var success = EmitEnumValue(function.ReturnType, okVariant, new RuntimeStruct(resultTypes.Ok, rawValue));
+        EmitBranch(endLabel);
+        var successExit = _currentBlockLabel;
+
+        EmitLabel(errorLabel);
+        _currentBlockLabel = errorLabel;
+        var failure = EmitEnumValue(function.ReturnType, errVariant, EmitRuntimeErrorText("io"));
+        EmitBranch(endLabel);
+        var errorExit = _currentBlockLabel;
+
+        EmitLabel(endLabel);
+        _currentBlockLabel = endLabel;
+        return EmitEnumPhi("path_query_result", function.ReturnType,
+            [(success, successExit), (failure, errorExit)]);
+    }
+
     private RuntimeTask EmitRuntimeOpenFileAsync(BoundFunction function, RuntimeValue argument)
     {
         var path = argument as RuntimeText

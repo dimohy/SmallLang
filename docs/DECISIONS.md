@@ -9747,3 +9747,40 @@ Research basis:
 - [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
 - [VS Code programmatic language features](https://code.visualstudio.com/api/language-extensions/programmatic-language-features)
 - [VS Code formatting provider API](https://code.visualstudio.com/api/references/vscode-api)
+
+## D251 - Canonical Path Queries Return Owned Portable Metadata
+
+`sys.path.query(Path)` now follows the target filesystem and returns an owned
+canonical `Path` together with a portable entry kind, `UInt64` byte length, and
+nanoseconds since the Unix epoch for the last modification time. Its low-level
+`queryRaw` intrinsic preserves the existing target-explicit style contract and
+returns `Result<RawInfo, Text>`; style mismatch, missing paths, conversion
+failure, and native metadata failure remain explicit `Err("io")` values.
+
+Windows converts UTF-8 input to UTF-16, opens the target with directory-safe
+flags, resolves the final handle path, and reads `BY_HANDLE_FILE_INFORMATION`.
+Linux uses `realpath` and `stat` on the x86-64 ABI. Both runtimes transfer one
+owned canonical byte buffer into Sollang. The self-host compiler resolves the
+canonical `sys.path.queryRaw` symbol to its filesystem opcode, emits the same
+six-field platform result ABI, and reconstructs the owned `RawInfo`/`Result`
+aggregate. The Windows import-library surface now includes the required wide
+path and handle-metadata APIs.
+
+Example 565 validates self-host LLVM assembly, native linking, and execution on
+Windows and Linux. Direct bootstrap-generated native programs additionally
+verify canonical absolute paths, file/directory kind, a six-byte fixture size,
+positive modification time, and missing-path failure on both targets. Existing
+owned-dictionary dominance regressions 452 and 454 pass on both targets. The
+complete self-host suite passes **354/354** on Windows and **354/354** on Linux,
+and the Release solution build has zero warnings and zero errors.
+
+This closes the portable filesystem/Path gate. Formal progress advances to
+**57 complete, 2 partial, 1 missing: 58/60 (96.7%)**, with **2 equivalent gates
+remaining**. The Stage 3 cadence advances to **2/10**.
+
+Research basis:
+
+- [Rust `std::fs::canonicalize`](https://doc.rust-lang.org/std/fs/fn.canonicalize.html)
+- [Rust filesystem metadata](https://doc.rust-lang.org/std/fs/struct.Metadata.html)
+- [Go `filepath.EvalSymlinks`](https://pkg.go.dev/path/filepath#EvalSymlinks)
+- [Go `os.FileInfo`](https://pkg.go.dev/os#FileInfo)

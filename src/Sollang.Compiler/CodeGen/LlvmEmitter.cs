@@ -511,6 +511,7 @@ internal sealed partial class LlvmEmitter
             header += """
                 %sollang.directory_result = type { ptr, i64, i64, i32 }
                 %sollang.directory_node = type { ptr, i64, i8, [7 x i8] }
+                %sollang.path_query_result = type { ptr, i64, i8, i64, i64, i32 }
 
                 """;
         }

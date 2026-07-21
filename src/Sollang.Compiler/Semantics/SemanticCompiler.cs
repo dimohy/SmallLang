@@ -1962,6 +1962,10 @@ internal sealed partial class SemanticCompiler
             "sys.path.nativeStyle" => RequireIntrinsicSignature(
                 function, inputType, returnType, expectedInputType: null, TypeId.PathStyle,
                 BoundFunctionKind.RuntimePathStyle),
+            "sys.path.queryRaw" => RequirePathQuerySignature(
+                function,
+                inputType,
+                returnType),
             "sys.directory.readRaw" => RequireReadDirectorySignature(
                 function,
                 inputType,
@@ -2119,6 +2123,26 @@ internal sealed partial class SemanticCompiler
         }
 
         return BoundFunctionKind.RuntimeReadDirectory;
+    }
+
+    private BoundFunctionKind RequirePathQuerySignature(
+        FunctionDeclaration function,
+        BoundType? inputType,
+        BoundType returnType)
+    {
+        if (inputType is not { } pathType
+            || !_types.IsStruct(pathType)
+            || _types.GetStruct(pathType).Name != "sys.path.Path"
+            || !_types.TryGetResultTypes(returnType, out var resultTypes)
+            || !_types.IsStruct(resultTypes.Ok)
+            || _types.GetStruct(resultTypes.Ok).Name != "sys.path.RawInfo"
+            || resultTypes.Error != BoundType.Text)
+        {
+            throw Error(function.Line, function.Column,
+                $"intrinsic '{function.Name}' must have signature Path -> Result<RawInfo, Text>");
+        }
+
+        return BoundFunctionKind.RuntimePathQuery;
     }
 
     private BoundFunctionKind RequireOwnedFileSyncSignature(
@@ -5392,6 +5416,7 @@ internal sealed partial class SemanticCompiler
                     case BoundFunctionKind.RuntimeRunProcess:
                     case BoundFunctionKind.RuntimeRunProcessToFile:
                     case BoundFunctionKind.RuntimeReadDirectory:
+                    case BoundFunctionKind.RuntimePathQuery:
                     case BoundFunctionKind.RuntimeSyncFile:
                     case BoundFunctionKind.RuntimeAtomicReplaceFile:
                         EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
@@ -6320,6 +6345,7 @@ internal sealed partial class SemanticCompiler
                 EnsureRuntimeInput(argvType, function, expression.Arguments[0].Line, expression.Arguments[0].Column, path);
                 return function.ReturnType;
             case BoundFunctionKind.RuntimeReadDirectory:
+            case BoundFunctionKind.RuntimePathQuery:
                 if (expression.Arguments.Count != 1)
                 {
                     throw Error(expression.Line, expression.Column, $"{path} expects exactly one Path argument");

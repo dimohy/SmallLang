@@ -3271,8 +3271,137 @@ emitCore context: EmitContext -> Unit uses Console {
             ", ptr %v$(request.callIndex)_file_result_slot, align 8" -> println
         }
     }
+    emitPathQueryCall request: DirectoryCallRequest -> Unit uses Console {
+        context.ir[request.callIndex] => call
+        request.callIndex -> callArgumentIndex => argumentIndex!
+        argumentIndex! -> aggregateValueIndex => argumentIndex!
+        context.ir[argumentIndex!] => pathValue
+        -1 => pathBytesType!
+        -1 => pathStyleType!
+        0 => pathFieldIndex!
+        pathFieldIndex! < (context.fields -> len) -> while {
+            context.fields[pathFieldIndex!] => pathField
+            (pathField.status == 0 and pathField.ownerType == pathValue.typeId and pathField.ordinal == 0) -> if { pathField.fieldType => pathBytesType! }
+            (pathField.status == 0 and pathField.ownerType == pathValue.typeId and pathField.ordinal == 1) -> if { pathField.fieldType => pathStyleType! }
+            pathFieldIndex! + 1 => pathFieldIndex!
+        }
+        context.types[call.typeId] => resultType
+        resultType.first => rawTypeId!
+        call.typeId -> isNominalEnumType -> if {
+            call.typeId -> enumPayloadTypes => resultPayloads!
+            (resultPayloads! -> len) > 0 -> if { resultPayloads![0] => rawTypeId! }
+        }
+        -1 => rawBytesType!
+        0 => rawFieldSearch!
+        rawFieldSearch! < (context.fields -> len) -> while {
+            context.fields[rawFieldSearch!] => rawField
+            (rawField.status == 0 and rawField.ownerType == rawTypeId! and rawField.ordinal == 0) -> if { rawField.fieldType => rawBytesType! }
+            rawFieldSearch! + 1 => rawFieldSearch!
+        }
+        "  %v$(request.callIndex)_path_query_bytes = extractvalue " -> print
+        pathValue -> writeIrType
+        " " -> print
+        (pathValue.kind == 5 and request.ownerIndex >= 0 and context.ir[request.ownerIndex].operand1 >= 0 and pathValue.symbol == context.ir[context.ir[request.ownerIndex].operand1].symbol) -> if { "%arg" -> print } else { "%v$(argumentIndex!)" -> print }
+        ", 0" -> println
+        "  %v$(request.callIndex)_path_query_data = extractvalue " -> print
+        pathBytesType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_bytes, 0" -> println
+        "  %v$(request.callIndex)_path_query_length = extractvalue " -> print
+        pathBytesType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_bytes, 1" -> println
+        "  %v$(request.callIndex)_path_query_style_value = extractvalue " -> print
+        pathValue -> writeIrType
+        " " -> print
+        (pathValue.kind == 5 and request.ownerIndex >= 0 and context.ir[request.ownerIndex].operand1 >= 0 and pathValue.symbol == context.ir[context.ir[request.ownerIndex].operand1].symbol) -> if { "%arg" -> print } else { "%v$(argumentIndex!)" -> print }
+        ", 1" -> println
+        "  %v$(request.callIndex)_path_query_style = extractvalue " -> print
+        pathStyleType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_style_value, 0" -> println
+        "  %v$(request.callIndex)_path_query_raw = call %sollang.path_query_result @sollang_platform_query_path(ptr %v$(request.callIndex)_path_query_data, i64 %v$(request.callIndex)_path_query_length, i32 %v$(request.callIndex)_path_query_style)" -> println
+        "  %v$(request.callIndex)_path_query_canonical = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 0" -> println
+        "  %v$(request.callIndex)_path_query_canonical_length = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 1" -> println
+        "  %v$(request.callIndex)_path_query_kind = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 2" -> println
+        "  %v$(request.callIndex)_path_query_size = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 3" -> println
+        "  %v$(request.callIndex)_path_query_modified = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 4" -> println
+        "  %v$(request.callIndex)_path_query_status = extractvalue %sollang.path_query_result %v$(request.callIndex)_path_query_raw, 5" -> println
+        "  %v$(request.callIndex)_path_query_ok = icmp sgt i32 %v$(request.callIndex)_path_query_status, 0" -> println
+        "  %v$(request.callIndex)_path_query_result_slot = alloca " -> print
+        call -> writeIrType
+        ", align 8" -> println
+        "  store " -> print
+        call -> writeIrType
+        " zeroinitializer, ptr %v$(request.callIndex)_path_query_result_slot, align 8" -> println
+        "  br i1 %v$(request.callIndex)_path_query_ok, label %path_query$(request.callIndex)_ok, label %path_query$(request.callIndex)_error" -> println
+        "path_query$(request.callIndex)_ok:" -> println
+        "  %v$(request.callIndex)_path_query_array0 = insertvalue " -> print
+        rawBytesType! -> writeSemanticTypeId
+        " poison, ptr %v$(request.callIndex)_path_query_canonical, 0" -> println
+        "  %v$(request.callIndex)_path_query_array1 = insertvalue " -> print
+        rawBytesType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_array0, i64 %v$(request.callIndex)_path_query_canonical_length, 1" -> println
+        "  %v$(request.callIndex)_path_query_array = insertvalue " -> print
+        rawBytesType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_array1, i64 %v$(request.callIndex)_path_query_canonical_length, 2" -> println
+        "  %v$(request.callIndex)_path_query_info0 = insertvalue " -> print
+        rawTypeId! -> writeSemanticTypeId
+        " poison, " -> print
+        rawBytesType! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_array, 0" -> println
+        "  %v$(request.callIndex)_path_query_info1 = insertvalue " -> print
+        rawTypeId! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_info0, i8 %v$(request.callIndex)_path_query_kind, 1" -> println
+        "  %v$(request.callIndex)_path_query_info2 = insertvalue " -> print
+        rawTypeId! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_info1, i64 %v$(request.callIndex)_path_query_size, 2" -> println
+        "  %v$(request.callIndex)_path_query_info = insertvalue " -> print
+        rawTypeId! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_info2, i64 %v$(request.callIndex)_path_query_modified, 3" -> println
+        "  %v$(request.callIndex)_path_query_ok_tag = getelementptr inbounds " -> print
+        call -> writeIrType
+        ", ptr %v$(request.callIndex)_path_query_result_slot, i32 0, i32 0" -> println
+        "  store i32 0, ptr %v$(request.callIndex)_path_query_ok_tag, align 4" -> println
+        "  %v$(request.callIndex)_path_query_ok_payload = getelementptr inbounds " -> print
+        call -> writeIrType
+        ", ptr %v$(request.callIndex)_path_query_result_slot, i32 0, i32 1" -> println
+        "  store " -> print
+        rawTypeId! -> writeSemanticTypeId
+        " %v$(request.callIndex)_path_query_info, ptr %v$(request.callIndex)_path_query_ok_payload, align 8" -> println
+        "  br label %path_query$(request.callIndex)_merge" -> println
+        "path_query$(request.callIndex)_error:" -> println
+        "  %v$(request.callIndex)_path_query_error_tag = getelementptr inbounds " -> print
+        call -> writeIrType
+        ", ptr %v$(request.callIndex)_path_query_result_slot, i32 0, i32 0" -> println
+        "  store i32 1, ptr %v$(request.callIndex)_path_query_error_tag, align 4" -> println
+        "  %v$(request.callIndex)_path_query_error_text0 = insertvalue %sollang.text poison, ptr @sollang_directory_error_io, 0" -> println
+        "  %v$(request.callIndex)_path_query_error_text = insertvalue %sollang.text %v$(request.callIndex)_path_query_error_text0, i64 2, 1" -> println
+        "  %v$(request.callIndex)_path_query_error_payload = getelementptr inbounds " -> print
+        call -> writeIrType
+        ", ptr %v$(request.callIndex)_path_query_result_slot, i32 0, i32 1" -> println
+        "  store %sollang.text %v$(request.callIndex)_path_query_error_text, ptr %v$(request.callIndex)_path_query_error_payload, align 8" -> println
+        "  br label %path_query$(request.callIndex)_merge" -> println
+        "path_query$(request.callIndex)_merge:" -> println
+        "  %v$(request.callIndex) = load " -> print
+        call -> writeIrType
+        ", ptr %v$(request.callIndex)_path_query_result_slot, align 8" -> println
+    }
     emitDirectoryCall request: DirectoryCallRequest -> Unit uses Console {
         context.ir[request.callIndex] => call
+        context.types[call.typeId] => dispatchResultType
+        dispatchResultType.first => dispatchRawTypeId!
+        call.typeId -> isNominalEnumType -> if {
+            call.typeId -> enumPayloadTypes => dispatchPayloads!
+            (dispatchPayloads! -> len) > 0 -> if { dispatchPayloads![0] => dispatchRawTypeId! }
+        }
+        0 => dispatchFieldCount!
+        0 => dispatchFieldIndex!
+        dispatchFieldIndex! < (context.fields -> len) -> while {
+            context.fields[dispatchFieldIndex!] => dispatchField
+            (dispatchField.status == 0 and dispatchField.ownerType == dispatchRawTypeId!) -> if { dispatchFieldCount! + 1 => dispatchFieldCount! }
+            dispatchFieldIndex! + 1 => dispatchFieldIndex!
+        }
+        dispatchFieldCount! == 4 -> if {
+            request -> emitPathQueryCall
+        } else {
         request.callIndex -> callArgumentIndex => argumentIndex!
         argumentIndex! -> aggregateValueIndex => argumentIndex!
         context.ir[argumentIndex!] => directoryPath
@@ -3375,6 +3504,7 @@ emitCore context: EmitContext -> Unit uses Console {
         "  %v$(request.callIndex) = load " -> print
         call -> writeIrType
         ", ptr %v$(request.callIndex)_directory_result_slot, align 8" -> println
+        }
     }
     emitTryParallelCollect request: TryParallelCollectRequest -> Unit uses Console {
         context.types[request.callbackTypeId] => callbackResultType
@@ -10217,6 +10347,7 @@ emitCore context: EmitContext -> Unit uses Console {
     context -> usesDirectoryRuntime => usesDirectoryTraversal
     usesDirectoryTraversal -> if {
         "%sollang.directory_result = type { ptr, i64, i64, i32 }" -> println
+        "%sollang.path_query_result = type { ptr, i64, i8, i64, i64, i32 }" -> println
         "%sollang.directory_node = type { ptr, i64, i8, [7 x i8] }" -> println
         """
         @sollang_directory_error_io = private constant [2 x i8] c"io"

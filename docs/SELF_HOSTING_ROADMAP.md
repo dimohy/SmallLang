@@ -136,10 +136,10 @@ not lines of code.
 | Ownership and storage | 10 | 10 | 0 | 0 | 10.0 |
 | Modules, visibility, and builds | 8 | 8 | 0 | 0 | 8.0 |
 | Compiler-construction primitives | 12 | 12 | 0 | 0 | 12.0 |
-| Standard library and tooling | 8 | 5 | 3 | 0 | 6.5 |
-| **Total** | **60** | **56** | **3** | **1** | **57.5 / 60** |
+| Standard library and tooling | 8 | 6 | 2 | 0 | 7.0 |
+| **Total** | **60** | **57** | **2** | **1** | **58.0 / 60** |
 
-Current count-based progress: **95.8% (57.5 of 60 equivalent gates)**.
+Current count-based progress: **96.7% (58 of 60 equivalent gates)**.
 
 The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
@@ -150,7 +150,7 @@ reject mutable or structurally non-sendable captures. The submitting parent now
 helps drain its task group before the structured join. Exact cancellation and
 partial-result destruction plus full Windows/Linux suite parity are proven.
 This completed feature-local subproject does not promote a roadmap gate.
-There are **2.5 equivalent gates remaining**. Because the remaining compiler
+There are **2 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -334,12 +334,14 @@ milestone without changing the broader 60-gate language-capability score.
 - Partial (0).
 - Missing (0).
 
-### Standard library and tooling — 6.5 / 8
+### Standard library and tooling — 7 / 8
 
-- Complete (5): basic `sys.io`, three LLVM-backed target link paths, the
+- Complete (6): basic `sys.io`, three LLVM-backed target link paths, the
   reproducible package/build surface, a generated-parser-backed canonical
-  formatter and LSP server, and VS Code parser-backed document formatting.
-- Partial (3): file/random/time APIs remain narrow compiler intrinsics; tests
+  formatter and LSP server, VS Code parser-backed document formatting, and an
+  owned portable Path API with target-native canonical queries plus portable
+  kind, byte-length, and modification-time metadata.
+- Partial (2): file/random/time APIs remain narrow compiler intrinsics; tests
   are example-driven without an Sollang unit-test framework. File I/O now
   monomorphizes canonical scalar `write<T>` and
   zero-input `read<T>` calls with explicit EOF/error results. Affine `File`
@@ -355,9 +357,10 @@ milestone without changing the broader 60-gate language-capability score.
   private-registry authentication, package signing, and a general build DAG
   remain tooling work.
   The owned portable Path layer has explicit Posix/Windows lexical normalization
-  and confined joins. Windows/Linux directory reads now return sorted owned
-  snapshots with entry kind metadata; canonical queries and richer metadata
-  remain.
+  and confined joins. Windows/Linux directory reads return sorted owned
+  snapshots with entry kind metadata, while `sys.path.query` follows links and
+  returns an owned canonical target path, portable kind, byte length, and
+  nanosecond modification timestamp.
 - Missing (0).
 
 ## Critical Path To Self-Hosting

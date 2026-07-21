@@ -69,6 +69,9 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
             functions.AppendLine("declare ptr @readdir(ptr)");
             functions.AppendLine("declare i32 @closedir(ptr)");
             functions.AppendLine("declare ptr @__errno_location()");
+            functions.AppendLine("declare ptr @realpath(ptr, ptr)");
+            functions.AppendLine("declare i64 @strlen(ptr)");
+            functions.AppendLine("declare i32 @stat(ptr, ptr)");
         }
         if (UsesAsyncFile || UsesComputePool)
         {
@@ -1484,6 +1487,73 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
               %failure2 = insertvalue %sollang.directory_result %failure1, i64 0, 2
               %failure3 = insertvalue %sollang.directory_result %failure2, i32 0, 3
               ret %sollang.directory_result %failure3
+            }
+
+            """);
+        functions.AppendLine("""
+            define internal %sollang.path_query_result @sollang_platform_query_path(ptr %path, i64 %len, i32 %style) #0 {
+            entry:
+              %style_ok = icmp eq i32 %style, 0
+              br i1 %style_ok, label %prepare, label %fail
+
+            prepare:
+              %buffer_size = add i64 %len, 1
+              %buffer = call ptr @sollang_alloc(i64 %buffer_size)
+              %buffer_ok = icmp ne ptr %buffer, null
+              br i1 %buffer_ok, label %copy, label %fail
+
+            copy:
+              call void @llvm.memcpy.p0.p0.i64(ptr %buffer, ptr %path, i64 %len, i1 false)
+              %zero_ptr = getelementptr i8, ptr %buffer, i64 %len
+              store i8 0, ptr %zero_ptr, align 1
+              %canonical = call ptr @realpath(ptr %buffer, ptr null)
+              call void @sollang_free(ptr %buffer)
+              %canonical_ok = icmp ne ptr %canonical, null
+              br i1 %canonical_ok, label %metadata, label %fail
+
+            metadata:
+              %stat_buffer = alloca [144 x i8], align 8
+              %stat_status = call i32 @stat(ptr %canonical, ptr %stat_buffer)
+              %stat_ok = icmp eq i32 %stat_status, 0
+              br i1 %stat_ok, label %success, label %canonical_fail
+
+            success:
+              %canonical_len = call i64 @strlen(ptr %canonical)
+              %mode_ptr = getelementptr i8, ptr %stat_buffer, i64 24
+              %mode = load i32, ptr %mode_ptr, align 4
+              %type = and i32 %mode, 61440
+              %is_file = icmp eq i32 %type, 32768
+              %is_directory = icmp eq i32 %type, 16384
+              %kind_directory_or_other = select i1 %is_directory, i8 1, i8 3
+              %kind = select i1 %is_file, i8 0, i8 %kind_directory_or_other
+              %size_ptr = getelementptr i8, ptr %stat_buffer, i64 48
+              %size = load i64, ptr %size_ptr, align 8
+              %modified_seconds_ptr = getelementptr i8, ptr %stat_buffer, i64 88
+              %modified_seconds = load i64, ptr %modified_seconds_ptr, align 8
+              %modified_fraction_ptr = getelementptr i8, ptr %stat_buffer, i64 96
+              %modified_fraction = load i64, ptr %modified_fraction_ptr, align 8
+              %modified_seconds_nanos = mul i64 %modified_seconds, 1000000000
+              %modified_nanos = add i64 %modified_seconds_nanos, %modified_fraction
+              %result0 = insertvalue %sollang.path_query_result poison, ptr %canonical, 0
+              %result1 = insertvalue %sollang.path_query_result %result0, i64 %canonical_len, 1
+              %result2 = insertvalue %sollang.path_query_result %result1, i8 %kind, 2
+              %result3 = insertvalue %sollang.path_query_result %result2, i64 %size, 3
+              %result4 = insertvalue %sollang.path_query_result %result3, i64 %modified_nanos, 4
+              %result5 = insertvalue %sollang.path_query_result %result4, i32 1, 5
+              ret %sollang.path_query_result %result5
+
+            canonical_fail:
+              call void @sollang_free(ptr %canonical)
+              br label %fail
+
+            fail:
+              %failure0 = insertvalue %sollang.path_query_result poison, ptr null, 0
+              %failure1 = insertvalue %sollang.path_query_result %failure0, i64 0, 1
+              %failure2 = insertvalue %sollang.path_query_result %failure1, i8 3, 2
+              %failure3 = insertvalue %sollang.path_query_result %failure2, i64 0, 3
+              %failure4 = insertvalue %sollang.path_query_result %failure3, i64 0, 4
+              %failure5 = insertvalue %sollang.path_query_result %failure4, i32 0, 5
+              ret %sollang.path_query_result %failure5
             }
 
             """);

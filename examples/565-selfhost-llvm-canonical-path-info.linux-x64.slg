@@ -1,0 +1,43 @@
+import sollang.compiler.llvm.text as llvm
+
+main {
+    [
+        """
+        namespace sys.path
+        public struct Path {
+            bytes: [UInt8; ~]
+            style: Style
+        }
+        public struct RawInfo {
+            bytes: [UInt8; ~]
+            kindCode: UInt8
+            byteLength: UInt64
+            modifiedNanos: UInt64
+        }
+        public enum Style {
+            Posix
+            Windows
+        }
+        public queryRaw target: Path -> Result<RawInfo, Text> uses File = intrinsic
+        public fromText value: Text, style: Style -> Path {
+            [UInt8; ~] => bytes!
+            UIntSize(0) => index!
+            index! < (value -> len) -> while {
+                bytes! -> push(value -> byte(index!))
+                index! + UIntSize(1) => index!
+            }
+            Path { bytes: bytes!, style: style } => result!
+            result!
+        }
+        """,
+        """
+        import sys.path as path
+        main {
+            "examples/fixtures/425-directory-order/Alpha.txt" -> path.fromText(path.Style.Posix) => filePath!
+            filePath! -> path.queryRaw => result!
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emit
+}
