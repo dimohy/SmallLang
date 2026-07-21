@@ -2964,8 +2964,10 @@ D234/example 548 and 550 add the first self-host Swiss-table storage slice.
 Dictionary key allocations now include a control-byte tail, literal slots are
 marked occupied, and indexed lookup skips empty control bytes before comparing
 keys. The four-field ABI remains compatible and Windows/Linux LLVM execution
-passes. H2 fingerprints, grouped probing, insertion, growth, and rehashing are
-still pending, so formal progress remains **53/60 (88.3%)**.
+passes. The control-tail occupancy marker and bounded wrapped scalar probe
+scaffolding are now implemented; H2 hashing, grouped probing, non-integer key
+hashing, insertion, growth, and rehashing are still pending, so formal progress
+remains **53/60 (88.3%)**.
 
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics

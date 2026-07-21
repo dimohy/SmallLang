@@ -195,18 +195,24 @@ if31_then:
   %v33_capacity = extractvalue %sollang.dict %v34, 3
   %v33_control_offset = mul i64 %v33_capacity, 32
   %v33_controls = getelementptr i8, ptr %v33_keys, i64 %v33_control_offset
+  %v33_h2 = add i8 0, 1
+  %v33_start_slot = add i64 0, 0
   br label %dict33_start
 dict33_start:
   br label %dict33_loop
 dict33_loop:
-  %v33_slot = phi i64 [ 0, %dict33_start ], [ %v33_next, %dict33_advance ]
-  %v33_in_range = icmp ult i64 %v33_slot, %v33_length
+  %v33_slot = phi i64 [ %v33_start_slot, %dict33_start ], [ %v33_next, %dict33_advance ]
+  %v33_probe = phi i64 [ 0, %dict33_start ], [ %v33_probe_next, %dict33_advance ]
+  %v33_in_range = icmp ult i64 %v33_probe, %v33_capacity
   br i1 %v33_in_range, label %dict33_check, label %dict33_missing
 dict33_check:
   %v33_control_ptr = getelementptr i8, ptr %v33_controls, i64 %v33_slot
   %v33_control = load i8, ptr %v33_control_ptr, align 1
   %v33_occupied = icmp ne i8 %v33_control, 0
-  br i1 %v33_occupied, label %dict33_key_check, label %dict33_advance
+  br label %dict33_h2_check
+dict33_h2_check:
+  %v33_h2_match = icmp eq i8 %v33_control, %v33_h2
+  br i1 %v33_h2_match, label %dict33_key_check, label %dict33_advance
 dict33_key_check:
   %v33_key_ptr = getelementptr %sollang.struct.m0_s0, ptr %v33_keys, i64 %v33_slot
   %v33_key = load %sollang.struct.m0_s0, ptr %v33_key_ptr, align 8
@@ -215,7 +221,9 @@ dict33_key_check:
   %v33_found = icmp eq i32 %v33_stored_eq, %v33_query_eq
   br i1 %v33_found, label %dict33_hit, label %dict33_advance
 dict33_advance:
-  %v33_next = add i64 %v33_slot, 1
+  %v33_next_unwrapped = add i64 %v33_slot, 1
+  %v33_next = urem i64 %v33_next_unwrapped, %v33_capacity
+  %v33_probe_next = add i64 %v33_probe, 1
   br label %dict33_loop
 dict33_missing:
   call void @llvm.trap()
@@ -275,18 +283,24 @@ assign44_done:
   %v49_capacity = extractvalue %sollang.dict %v50, 3
   %v49_control_offset = mul i64 %v49_capacity, 32
   %v49_controls = getelementptr i8, ptr %v49_keys, i64 %v49_control_offset
+  %v49_h2 = add i8 0, 1
+  %v49_start_slot = add i64 0, 0
   br label %dict49_start
 dict49_start:
   br label %dict49_loop
 dict49_loop:
-  %v49_slot = phi i64 [ 0, %dict49_start ], [ %v49_next, %dict49_advance ]
-  %v49_in_range = icmp ult i64 %v49_slot, %v49_length
+  %v49_slot = phi i64 [ %v49_start_slot, %dict49_start ], [ %v49_next, %dict49_advance ]
+  %v49_probe = phi i64 [ 0, %dict49_start ], [ %v49_probe_next, %dict49_advance ]
+  %v49_in_range = icmp ult i64 %v49_probe, %v49_capacity
   br i1 %v49_in_range, label %dict49_check, label %dict49_missing
 dict49_check:
   %v49_control_ptr = getelementptr i8, ptr %v49_controls, i64 %v49_slot
   %v49_control = load i8, ptr %v49_control_ptr, align 1
   %v49_occupied = icmp ne i8 %v49_control, 0
-  br i1 %v49_occupied, label %dict49_key_check, label %dict49_advance
+  br label %dict49_h2_check
+dict49_h2_check:
+  %v49_h2_match = icmp eq i8 %v49_control, %v49_h2
+  br i1 %v49_h2_match, label %dict49_key_check, label %dict49_advance
 dict49_key_check:
   %v49_key_ptr = getelementptr %sollang.struct.m0_s0, ptr %v49_keys, i64 %v49_slot
   %v49_key = load %sollang.struct.m0_s0, ptr %v49_key_ptr, align 8
@@ -295,7 +309,9 @@ dict49_key_check:
   %v49_found = icmp eq i32 %v49_stored_eq, %v49_query_eq
   br i1 %v49_found, label %dict49_hit, label %dict49_advance
 dict49_advance:
-  %v49_next = add i64 %v49_slot, 1
+  %v49_next_unwrapped = add i64 %v49_slot, 1
+  %v49_next = urem i64 %v49_next_unwrapped, %v49_capacity
+  %v49_probe_next = add i64 %v49_probe, 1
   br label %dict49_loop
 dict49_missing:
   call void @llvm.trap()

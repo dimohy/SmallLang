@@ -51,25 +51,33 @@ entry:
   %v10_capacity = extractvalue %sollang.dict %arg, 3
   %v10_control_offset = mul i64 %v10_capacity, 1
   %v10_controls = getelementptr i8, ptr %v10_keys, i64 %v10_control_offset
+  %v10_h2 = add i8 0, 1
+  %v10_start_slot = add i64 0, 0
   br label %dict10_start
 dict10_start:
   br label %dict10_loop
 dict10_loop:
-  %v10_slot = phi i64 [ 0, %dict10_start ], [ %v10_next, %dict10_advance ]
-  %v10_in_range = icmp ult i64 %v10_slot, %v10_length
+  %v10_slot = phi i64 [ %v10_start_slot, %dict10_start ], [ %v10_next, %dict10_advance ]
+  %v10_probe = phi i64 [ 0, %dict10_start ], [ %v10_probe_next, %dict10_advance ]
+  %v10_in_range = icmp ult i64 %v10_probe, %v10_capacity
   br i1 %v10_in_range, label %dict10_check, label %dict10_missing
 dict10_check:
   %v10_control_ptr = getelementptr i8, ptr %v10_controls, i64 %v10_slot
   %v10_control = load i8, ptr %v10_control_ptr, align 1
   %v10_occupied = icmp ne i8 %v10_control, 0
-  br i1 %v10_occupied, label %dict10_key_check, label %dict10_advance
+  br label %dict10_h2_check
+dict10_h2_check:
+  %v10_h2_match = icmp eq i8 %v10_control, %v10_h2
+  br i1 %v10_h2_match, label %dict10_key_check, label %dict10_advance
 dict10_key_check:
   %v10_key_ptr = getelementptr i1, ptr %v10_keys, i64 %v10_slot
   %v10_key = load i1, ptr %v10_key_ptr, align 1
   %v10_found = icmp eq i1 %v10_key, 0
   br i1 %v10_found, label %dict10_hit, label %dict10_advance
 dict10_advance:
-  %v10_next = add i64 %v10_slot, 1
+  %v10_next_unwrapped = add i64 %v10_slot, 1
+  %v10_next = urem i64 %v10_next_unwrapped, %v10_capacity
+  %v10_probe_next = add i64 %v10_probe, 1
   br label %dict10_loop
 dict10_missing:
   call void @llvm.trap()

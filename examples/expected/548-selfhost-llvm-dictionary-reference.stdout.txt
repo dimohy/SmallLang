@@ -165,25 +165,33 @@ entry:
   %v11_capacity = extractvalue %sollang.dict %arg, 3
   %v11_control_offset = mul i64 %v11_capacity, 4
   %v11_controls = getelementptr i8, ptr %v11_keys, i64 %v11_control_offset
+  %v11_h2 = add i8 0, 1
+  %v11_start_slot = add i64 0, 0
   br label %dict11_start
 dict11_start:
   br label %dict11_loop
 dict11_loop:
-  %v11_slot = phi i64 [ 0, %dict11_start ], [ %v11_next, %dict11_advance ]
-  %v11_in_range = icmp ult i64 %v11_slot, %v11_length
+  %v11_slot = phi i64 [ %v11_start_slot, %dict11_start ], [ %v11_next, %dict11_advance ]
+  %v11_probe = phi i64 [ 0, %dict11_start ], [ %v11_probe_next, %dict11_advance ]
+  %v11_in_range = icmp ult i64 %v11_probe, %v11_capacity
   br i1 %v11_in_range, label %dict11_check, label %dict11_missing
 dict11_check:
   %v11_control_ptr = getelementptr i8, ptr %v11_controls, i64 %v11_slot
   %v11_control = load i8, ptr %v11_control_ptr, align 1
   %v11_occupied = icmp ne i8 %v11_control, 0
-  br i1 %v11_occupied, label %dict11_key_check, label %dict11_advance
+  br label %dict11_h2_check
+dict11_h2_check:
+  %v11_h2_match = icmp eq i8 %v11_control, %v11_h2
+  br i1 %v11_h2_match, label %dict11_key_check, label %dict11_advance
 dict11_key_check:
   %v11_key_ptr = getelementptr i32, ptr %v11_keys, i64 %v11_slot
   %v11_key = load i32, ptr %v11_key_ptr, align 4
   %v11_found = icmp eq i32 %v11_key, 1
   br i1 %v11_found, label %dict11_hit, label %dict11_advance
 dict11_advance:
-  %v11_next = add i64 %v11_slot, 1
+  %v11_next_unwrapped = add i64 %v11_slot, 1
+  %v11_next = urem i64 %v11_next_unwrapped, %v11_capacity
+  %v11_probe_next = add i64 %v11_probe, 1
   br label %dict11_loop
 dict11_missing:
   call void @llvm.trap()

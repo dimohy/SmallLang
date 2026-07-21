@@ -57,25 +57,33 @@ entry:
   %v14_capacity = extractvalue %sollang.dict %arg, 3
   %v14_control_offset = mul i64 %v14_capacity, 4
   %v14_controls = getelementptr i8, ptr %v14_keys, i64 %v14_control_offset
+  %v14_h2 = add i8 0, 1
+  %v14_start_slot = add i64 0, 0
   br label %dict14_start
 dict14_start:
   br label %dict14_loop
 dict14_loop:
-  %v14_slot = phi i64 [ 0, %dict14_start ], [ %v14_next, %dict14_advance ]
-  %v14_in_range = icmp ult i64 %v14_slot, %v14_length
+  %v14_slot = phi i64 [ %v14_start_slot, %dict14_start ], [ %v14_next, %dict14_advance ]
+  %v14_probe = phi i64 [ 0, %dict14_start ], [ %v14_probe_next, %dict14_advance ]
+  %v14_in_range = icmp ult i64 %v14_probe, %v14_capacity
   br i1 %v14_in_range, label %dict14_check, label %dict14_missing
 dict14_check:
   %v14_control_ptr = getelementptr i8, ptr %v14_controls, i64 %v14_slot
   %v14_control = load i8, ptr %v14_control_ptr, align 1
   %v14_occupied = icmp ne i8 %v14_control, 0
-  br i1 %v14_occupied, label %dict14_key_check, label %dict14_advance
+  br label %dict14_h2_check
+dict14_h2_check:
+  %v14_h2_match = icmp eq i8 %v14_control, %v14_h2
+  br i1 %v14_h2_match, label %dict14_key_check, label %dict14_advance
 dict14_key_check:
   %v14_key_ptr = getelementptr i32, ptr %v14_keys, i64 %v14_slot
   %v14_key = load i32, ptr %v14_key_ptr, align 4
   %v14_found = icmp eq i32 %v14_key, 2
   br i1 %v14_found, label %dict14_hit, label %dict14_advance
 dict14_advance:
-  %v14_next = add i64 %v14_slot, 1
+  %v14_next_unwrapped = add i64 %v14_slot, 1
+  %v14_next = urem i64 %v14_next_unwrapped, %v14_capacity
+  %v14_probe_next = add i64 %v14_probe, 1
   br label %dict14_loop
 dict14_missing:
   call void @llvm.trap()

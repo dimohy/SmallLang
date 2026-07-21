@@ -79,25 +79,33 @@ entry:
   %v24_capacity = extractvalue %sollang.dict %v25, 3
   %v24_control_offset = mul i64 %v24_capacity, 4
   %v24_controls = getelementptr i8, ptr %v24_keys, i64 %v24_control_offset
+  %v24_h2 = add i8 0, 1
+  %v24_start_slot = add i64 0, 0
   br label %dict24_start
 dict24_start:
   br label %dict24_loop
 dict24_loop:
-  %v24_slot = phi i64 [ 0, %dict24_start ], [ %v24_next, %dict24_advance ]
-  %v24_in_range = icmp ult i64 %v24_slot, %v24_length
+  %v24_slot = phi i64 [ %v24_start_slot, %dict24_start ], [ %v24_next, %dict24_advance ]
+  %v24_probe = phi i64 [ 0, %dict24_start ], [ %v24_probe_next, %dict24_advance ]
+  %v24_in_range = icmp ult i64 %v24_probe, %v24_capacity
   br i1 %v24_in_range, label %dict24_check, label %dict24_missing
 dict24_check:
   %v24_control_ptr = getelementptr i8, ptr %v24_controls, i64 %v24_slot
   %v24_control = load i8, ptr %v24_control_ptr, align 1
   %v24_occupied = icmp ne i8 %v24_control, 0
-  br i1 %v24_occupied, label %dict24_key_check, label %dict24_advance
+  br label %dict24_h2_check
+dict24_h2_check:
+  %v24_h2_match = icmp eq i8 %v24_control, %v24_h2
+  br i1 %v24_h2_match, label %dict24_key_check, label %dict24_advance
 dict24_key_check:
   %v24_key_ptr = getelementptr i32, ptr %v24_keys, i64 %v24_slot
   %v24_key = load i32, ptr %v24_key_ptr, align 4
   %v24_found = icmp eq i32 %v24_key, 2
   br i1 %v24_found, label %dict24_hit, label %dict24_advance
 dict24_advance:
-  %v24_next = add i64 %v24_slot, 1
+  %v24_next_unwrapped = add i64 %v24_slot, 1
+  %v24_next = urem i64 %v24_next_unwrapped, %v24_capacity
+  %v24_probe_next = add i64 %v24_probe, 1
   br label %dict24_loop
 dict24_missing:
   call void @llvm.trap()

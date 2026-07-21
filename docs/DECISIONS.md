@@ -9320,6 +9320,6 @@ before loading a key during indexed lookup. The existing four-field dictionary
 ABI remains unchanged, so values and drop/free ownership continue to work.
 Examples 548 and 550 produce, assemble, link, and execute on Windows and
 Linux with the new layout. This is the first self-host Swiss-table storage
-slice, not the complete algorithm: H2 hash fingerprints, grouped probing,
-insertion, growth, and rehashing remain open; formal progress stays
+slice, not the complete algorithm: H2 hashing, grouped probing, insertion,
+growth, and rehashing remain open; formal progress stays
 **53/60 (88.3%)**.

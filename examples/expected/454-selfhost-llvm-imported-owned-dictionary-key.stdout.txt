@@ -193,18 +193,24 @@ entry:
   %v28_capacity = extractvalue %sollang.dict %v29, 3
   %v28_control_offset = mul i64 %v28_capacity, 32
   %v28_controls = getelementptr i8, ptr %v28_keys, i64 %v28_control_offset
+  %v28_h2 = add i8 0, 1
+  %v28_start_slot = add i64 0, 0
   br label %dict28_start
 dict28_start:
   br label %dict28_loop
 dict28_loop:
-  %v28_slot = phi i64 [ 0, %dict28_start ], [ %v28_next, %dict28_advance ]
-  %v28_in_range = icmp ult i64 %v28_slot, %v28_length
+  %v28_slot = phi i64 [ %v28_start_slot, %dict28_start ], [ %v28_next, %dict28_advance ]
+  %v28_probe = phi i64 [ 0, %dict28_start ], [ %v28_probe_next, %dict28_advance ]
+  %v28_in_range = icmp ult i64 %v28_probe, %v28_capacity
   br i1 %v28_in_range, label %dict28_check, label %dict28_missing
 dict28_check:
   %v28_control_ptr = getelementptr i8, ptr %v28_controls, i64 %v28_slot
   %v28_control = load i8, ptr %v28_control_ptr, align 1
   %v28_occupied = icmp ne i8 %v28_control, 0
-  br i1 %v28_occupied, label %dict28_key_check, label %dict28_advance
+  br label %dict28_h2_check
+dict28_h2_check:
+  %v28_h2_match = icmp eq i8 %v28_control, %v28_h2
+  br i1 %v28_h2_match, label %dict28_key_check, label %dict28_advance
 dict28_key_check:
   %v28_key_ptr = getelementptr %sollang.struct.m1_s0, ptr %v28_keys, i64 %v28_slot
   %v28_key = load %sollang.struct.m1_s0, ptr %v28_key_ptr, align 8
@@ -213,7 +219,9 @@ dict28_key_check:
   %v28_found = icmp eq i32 %v28_stored_eq, %v28_query_eq
   br i1 %v28_found, label %dict28_hit, label %dict28_advance
 dict28_advance:
-  %v28_next = add i64 %v28_slot, 1
+  %v28_next_unwrapped = add i64 %v28_slot, 1
+  %v28_next = urem i64 %v28_next_unwrapped, %v28_capacity
+  %v28_probe_next = add i64 %v28_probe, 1
   br label %dict28_loop
 dict28_missing:
   call void @llvm.trap()
@@ -260,18 +268,24 @@ assign35_done:
   %v38_capacity = extractvalue %sollang.dict %v39, 3
   %v38_control_offset = mul i64 %v38_capacity, 32
   %v38_controls = getelementptr i8, ptr %v38_keys, i64 %v38_control_offset
+  %v38_h2 = add i8 0, 1
+  %v38_start_slot = add i64 0, 0
   br label %dict38_start
 dict38_start:
   br label %dict38_loop
 dict38_loop:
-  %v38_slot = phi i64 [ 0, %dict38_start ], [ %v38_next, %dict38_advance ]
-  %v38_in_range = icmp ult i64 %v38_slot, %v38_length
+  %v38_slot = phi i64 [ %v38_start_slot, %dict38_start ], [ %v38_next, %dict38_advance ]
+  %v38_probe = phi i64 [ 0, %dict38_start ], [ %v38_probe_next, %dict38_advance ]
+  %v38_in_range = icmp ult i64 %v38_probe, %v38_capacity
   br i1 %v38_in_range, label %dict38_check, label %dict38_missing
 dict38_check:
   %v38_control_ptr = getelementptr i8, ptr %v38_controls, i64 %v38_slot
   %v38_control = load i8, ptr %v38_control_ptr, align 1
   %v38_occupied = icmp ne i8 %v38_control, 0
-  br i1 %v38_occupied, label %dict38_key_check, label %dict38_advance
+  br label %dict38_h2_check
+dict38_h2_check:
+  %v38_h2_match = icmp eq i8 %v38_control, %v38_h2
+  br i1 %v38_h2_match, label %dict38_key_check, label %dict38_advance
 dict38_key_check:
   %v38_key_ptr = getelementptr %sollang.struct.m1_s0, ptr %v38_keys, i64 %v38_slot
   %v38_key = load %sollang.struct.m1_s0, ptr %v38_key_ptr, align 8
@@ -280,7 +294,9 @@ dict38_key_check:
   %v38_found = icmp eq i32 %v38_stored_eq, %v38_query_eq
   br i1 %v38_found, label %dict38_hit, label %dict38_advance
 dict38_advance:
-  %v38_next = add i64 %v38_slot, 1
+  %v38_next_unwrapped = add i64 %v38_slot, 1
+  %v38_next = urem i64 %v38_next_unwrapped, %v38_capacity
+  %v38_probe_next = add i64 %v38_probe, 1
   br label %dict38_loop
 dict38_missing:
   call void @llvm.trap()
