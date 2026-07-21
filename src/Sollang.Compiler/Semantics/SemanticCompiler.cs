@@ -11,6 +11,8 @@ internal sealed partial class SemanticCompiler
     private readonly TypeDefinitionTable _types;
     private readonly IReadOnlyDictionary<string, BoundTraitDefinition> _traits;
     private readonly Dictionary<object, BoundFunction> _resolvedGenericCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, BoundDynTraitConversion> _dynTraitConversions = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, BoundDynTraitDispatch> _dynTraitDispatches = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BoundFunction> _validatingGenericSpecializations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundFunction, IReadOnlyDictionary<string, BoundType>> _functionBindings =
         new(ReferenceEqualityComparer.Instance);
@@ -114,6 +116,8 @@ internal sealed partial class SemanticCompiler
             _traits,
             functions,
             _resolvedGenericCalls,
+            _dynTraitConversions,
+            _dynTraitDispatches,
             _program.Statements,
             mainBindings,
             _functionBindings,
@@ -5253,6 +5257,18 @@ internal sealed partial class SemanticCompiler
             var isLast = i == expression.Targets.Count - 1;
             var path = string.Join('.', target.Path);
 
+            if (path == "dyn")
+            {
+                currentType = InferDynTraitConversion(target, currentType, functions);
+                continue;
+            }
+
+            if (_types.IsDynTrait(currentType))
+            {
+                currentType = InferDynTraitDispatch(target, path, currentType);
+                continue;
+            }
+
             if (TryInferContainerFlowTarget(
                 expression,
                 target,
@@ -5507,6 +5523,147 @@ internal sealed partial class SemanticCompiler
 
         return new FlowResult(currentType, FlowEffect.None);
     }
+
+    private BoundType InferDynTraitConversion(
+        FlowTarget target,
+        BoundType concreteType,
+        IReadOnlyDictionary<string, BoundFunction> functions)
+    {
+        if (target.TypeArgument is null
+            || target.CompileTimeValueArgument is not null
+            || target.Arguments.Count != 0
+            || target.UsesCallSyntax)
+        {
+            throw Error(target.Line, target.Column,
+                "dyn conversion requires the form 'value -> dyn<Trait>'");
+        }
+        if (!_types.IsStruct(concreteType) && !_types.IsEnum(concreteType))
+        {
+            throw Error(target.Line, target.Column,
+                $"dyn conversion requires a user value but received {FormatType(concreteType)}");
+        }
+        if (_types.ContainsOwnedStorage(concreteType))
+        {
+            throw Error(target.Line, target.Column,
+                "dyn conversion of values with nested owned storage is not supported until move transfer is explicit");
+        }
+
+        var trait = ResolveDynTrait(target.TypeArgument, target.Line, target.Column);
+        EnsureDynCompatible(trait, target.Line, target.Column);
+        var canonicalTraitName = CanonicalTraitName(trait);
+        var methods = new List<BoundFunction>(trait.Methods.Count);
+        foreach (var requirement in trait.Methods)
+        {
+            var implementations = functions.Values
+                .Where(function => function.InputType == concreteType
+                    && function.TraitName is { } implementedTrait
+                    && (implementedTrait == trait.Name || implementedTrait == canonicalTraitName)
+                    && function.Name.EndsWith("." + requirement.Name, StringComparison.Ordinal))
+                .Distinct()
+                .ToArray();
+            if (implementations.Length != 1)
+            {
+                throw Error(target.Line, target.Column,
+                    $"{FormatType(concreteType)} must provide exactly one implementation of "
+                    + $"'{canonicalTraitName}.{requirement.Name}' for dyn conversion");
+            }
+            var implementation = implementations[0];
+            if (implementation.IsLocal
+                || (implementation.AdditionalParameters?.Count ?? 0) != 0
+                || implementation.IsAsync)
+            {
+                throw Error(target.Line, target.Column,
+                    $"implementation '{implementation.Name}' is not dyn-compatible");
+            }
+            methods.Add(implementation);
+        }
+
+        var dynType = _types.GetOrAddDynTrait(canonicalTraitName);
+        _dynTraitConversions[target] = new BoundDynTraitConversion(
+            dynType, concreteType, trait, methods);
+        return dynType;
+    }
+
+    private BoundType InferDynTraitDispatch(FlowTarget target, string path, BoundType dynType)
+    {
+        if (target.TypeArgument is not null
+            || target.CompileTimeValueArgument is not null
+            || target.Arguments.Count != 0
+            || target.UsesCallSyntax)
+        {
+            throw Error(target.Line, target.Column,
+                "dyn trait methods currently take only the erased self receiver");
+        }
+
+        var definition = _types.GetDynTrait(dynType);
+        var trait = ResolveDynTrait(definition.TraitName, target.Line, target.Column);
+        var separator = path.LastIndexOf('.');
+        var requestedTrait = separator < 0 ? "" : path[..separator];
+        var methodName = separator < 0 ? path : path[(separator + 1)..];
+        if (requestedTrait.Length > 0
+            && requestedTrait != trait.Name
+            && requestedTrait != CanonicalTraitName(trait))
+        {
+            throw Error(target.Line, target.Column,
+                $"dyn {definition.TraitName} cannot dispatch '{path}'");
+        }
+        var methodIndex = trait.Methods
+            .Select((method, index) => (method, index))
+            .FirstOrDefault(item => item.method.Name == methodName);
+        if (methodIndex.method is null)
+        {
+            throw Error(target.Line, target.Column,
+                $"trait '{CanonicalTraitName(trait)}' has no method '{methodName}'");
+        }
+        if (methodIndex.method.ReturnType is not { } returnType)
+        {
+            throw Error(target.Line, target.Column,
+                $"associated return type method '{methodName}' is not dyn-compatible");
+        }
+        _dynTraitDispatches[target] = new BoundDynTraitDispatch(
+            dynType, trait, methodIndex.method, methodIndex.index);
+        return returnType;
+    }
+
+    private BoundTraitDefinition ResolveDynTrait(string requestedName, int line, int column)
+    {
+        var candidates = _traits.Values
+            .Where(trait => trait.Name == requestedName
+                || CanonicalTraitName(trait) == requestedName)
+            .Distinct()
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            throw Error(line, column, $"unknown trait '{requestedName}'");
+        }
+        if (candidates.Length > 1)
+        {
+            throw Error(line, column, $"ambiguous trait '{requestedName}'; use its qualified name");
+        }
+        EnsureTraitVisible(candidates[0], line, column);
+        return candidates[0];
+    }
+
+    private void EnsureDynCompatible(BoundTraitDefinition trait, int line, int column)
+    {
+        if (trait.AssociatedTypes.Count != 0)
+        {
+            throw Error(line, column,
+                $"trait '{CanonicalTraitName(trait)}' is not dyn-compatible because it declares associated types");
+        }
+        var incompatible = trait.Methods.FirstOrDefault(method =>
+            method.SelfOwnership != BoundFunctionInputOwnership.Default
+            || method.ReturnType != BoundType.Int);
+        if (incompatible is not null)
+        {
+            throw Error(line, column,
+                $"trait method '{CanonicalTraitName(trait)}.{incompatible.Name}' is not dyn-compatible; "
+                + "the current dyn slice requires readonly self and an Int return type");
+        }
+    }
+
+    private static string CanonicalTraitName(BoundTraitDefinition trait) =>
+        trait.ModuleName.Length == 0 ? trait.Name : trait.ModuleName + "." + trait.Name;
 
     private bool TryInferContainerFlowTarget(
         FlowExpression expression,
@@ -8084,6 +8241,33 @@ internal sealed partial class SemanticCompiler
 
     private BoundType ParseType(string typeName, int line, int column)
     {
+        if (typeName.StartsWith("dyn ", StringComparison.Ordinal))
+        {
+            var requestedName = typeName[4..].Trim();
+            var declarations = _program.Traits
+                .Where(trait => trait.Name == requestedName
+                    || (trait.ModuleName.Length > 0
+                        && trait.ModuleName + "." + trait.Name == requestedName))
+                .ToArray();
+            if (declarations.Length == 0)
+            {
+                throw Error(line, column, $"unknown trait '{requestedName}'");
+            }
+            if (declarations.Length > 1)
+            {
+                throw Error(line, column, $"ambiguous trait '{requestedName}'; use its qualified name");
+            }
+            var declaration = declarations[0];
+            if (!declaration.IsPublic && declaration.ModuleName != _currentModuleName)
+            {
+                throw Error(line, column,
+                    $"trait '{declaration.Name}' is internal to module '{declaration.ModuleName}'");
+            }
+            var canonicalName = declaration.ModuleName.Length == 0
+                ? declaration.Name
+                : declaration.ModuleName + "." + declaration.Name;
+            return _types.GetOrAddDynTrait(canonicalName);
+        }
         if (typeName.StartsWith("ref ", StringComparison.Ordinal))
         {
             var elementType = ParseType(typeName[4..].Trim(), line, column);
@@ -8379,6 +8563,10 @@ internal sealed partial class SemanticCompiler
 
     private string FormatType(BoundType type)
     {
+        if (_types.IsDynTrait(type))
+        {
+            return "dyn " + _types.GetDynTrait(type).TraitName;
+        }
         if (_types.IsReference(type))
         {
             return "ref " + FormatType(_types.GetReference(type).ElementType);
@@ -9905,6 +10093,19 @@ internal sealed partial class SemanticCompiler
         else if (_types.IsReference(type))
         {
             EnsureTypeVisible(_types.GetReference(type).ElementType, line, column);
+            return;
+        }
+        else if (_types.IsDynTrait(type))
+        {
+            var traitName = _types.GetDynTrait(type).TraitName;
+            var trait = _traits.Values.FirstOrDefault(candidate =>
+                candidate.Name == traitName
+                || (candidate.ModuleName.Length > 0
+                    && candidate.ModuleName + "." + candidate.Name == traitName));
+            if (trait is not null)
+            {
+                EnsureTraitVisible(trait, line, column);
+            }
             return;
         }
 

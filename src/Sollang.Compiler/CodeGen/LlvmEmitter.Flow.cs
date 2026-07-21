@@ -48,6 +48,19 @@ internal sealed partial class LlvmEmitter
             var isLast = i == expression.Targets.Count - 1;
             var path = string.Join('.', target.Path);
 
+            if (_program.DynTraitConversions.TryGetValue(target, out var conversion))
+            {
+                current = EmitDynTraitConversion(current, conversion);
+                continue;
+            }
+            if (_program.DynTraitDispatches.TryGetValue(target, out var dispatch))
+            {
+                current = current is RuntimeDynTrait dyn
+                    ? EmitDynTraitDispatch(dyn, dispatch)
+                    : throw new SollangException("dyn trait dispatch requires a dyn trait object");
+                continue;
+            }
+
             if (TryEmitContainerFlowTarget(expression.Source, target, path, current, isLast, out var containerResult))
             {
                 if (containerResult.Value is null)

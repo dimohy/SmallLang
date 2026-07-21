@@ -37,6 +37,10 @@ internal sealed partial class LlvmEmitter
         {
             EmitBoxDropHelper(box);
         }
+        foreach (var dyn in _program.Types.DynTraits.OrderBy(static dyn => dyn.Id))
+        {
+            EmitDynTraitDropHelper(dyn);
+        }
         EmitDynamicArrayDropHelper(BoundType.DynamicIntArray, BoundType.Int);
         foreach (var array in _program.Types.DynamicArrays
                      .Where(array => ShouldEmitTypeDefinition(array.Id))
@@ -123,6 +127,7 @@ internal sealed partial class LlvmEmitter
     private bool IsCustomOwnedType(BoundType type)
     {
         return _program.Types.IsBox(type)
+            || _program.Types.IsDynTrait(type)
             || ((_program.Types.IsStruct(type) || _program.Types.IsEnum(type))
                 && _program.Types.ContainsOwnedStorage(type));
     }
@@ -139,6 +144,25 @@ internal sealed partial class LlvmEmitter
             EmitOwnedDropCall(box.ElementType, loaded);
         }
         EmitCall(target: null, "void", "sollang_free", "ptr %value");
+        EmitInstruction("ret void");
+        EmitFunctionLine("}");
+        EmitFunctionLine();
+    }
+
+    private void EmitDynTraitDropHelper(BoundDynTraitDefinition dyn)
+    {
+        EmitFunctionLine($"define internal void {DropSymbol(dyn.Id)}(%sollang.dyn %value) #0 {{");
+        EmitFunctionLine("entry:");
+        _currentBlockLabel = "entry";
+        var data = NextTemp("drop_dyn_data");
+        EmitAssign(data, "extractvalue %sollang.dyn %value, 0");
+        var vtable = NextTemp("drop_dyn_vtable");
+        EmitAssign(vtable, "extractvalue %sollang.dyn %value, 1");
+        var slot = NextTemp("drop_dyn_slot");
+        EmitAssign(slot, $"getelementptr ptr, ptr {vtable}, i64 0");
+        var drop = NextTemp("drop_dyn_function");
+        EmitLoad(drop, "ptr", slot, _platform.PointerBitWidth / 8);
+        EmitInstruction($"call void {drop}(ptr {data})");
         EmitInstruction("ret void");
         EmitFunctionLine("}");
         EmitFunctionLine();

@@ -864,6 +864,13 @@ internal static class ParserEmitter
         builder.AppendLine("            return \"box \" + ResolveTypePath(ParsePathAfterFirstIdentifier(elementType));");
         builder.AppendLine("        }");
         builder.AppendLine();
+        builder.AppendLine("        if (CheckIdentifier(\"dyn\"))");
+        builder.AppendLine("        {");
+        builder.AppendLine("            ExpectIdentifier(\"dyn\");");
+        builder.AppendLine("            var trait = ExpectIdentifier();");
+        builder.AppendLine("            return \"dyn \" + ResolveTypePath(ParsePathAfterFirstIdentifier(trait));");
+        builder.AppendLine("        }");
+        builder.AppendLine();
         builder.AppendLine("        if (Match(TokenKind.LeftBracket, out var arrayStart))");
         builder.AppendLine("        {");
         builder.AppendLine("            var elementType = ExpectIdentifier();");

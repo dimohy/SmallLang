@@ -807,6 +807,28 @@ time. The current LLVM backends lower `each` directly to basic blocks with an
 SSA phi value for the item binding, with no heap allocation, function pointer,
 closure object, or dynamic block dispatch.
 
+## Dynamic Trait Objects
+
+Static trait dispatch remains the default. Runtime polymorphism is explicit:
+
+```sollang
+Cat { value: 1 } -> dyn<Speak> => speaker!
+speaker! -> Speak.sound => value
+```
+
+`dyn<Trait>` is an affine two-pointer value containing an erased data pointer
+and a vtable pointer. Slot 0 is the erased drop function. Subsequent slots are
+trait methods in declaration order. Conversion allocates storage for the
+concrete value and selects its concrete implementation table; dispatch loads
+the requested slot and calls it indirectly. Scope cleanup calls slot 0 exactly
+once.
+
+The implemented dyn-compatible subset requires a trait without associated
+types and synchronous, capture-free methods with readonly `self`, no additional
+arguments, and an `Int` result. Concrete values with nested owned storage are
+rejected until conversion has an explicit recursive move-transfer contract.
+These restrictions are diagnostics, not implicit fallback to static dispatch.
+
 ## Standard Library Imports And Aliases
 
 The current standard library implements the `sys.io` module in Sollang:
@@ -2221,7 +2243,8 @@ Current backend:
   transforms, nominal inline `struct` values, complete field initialization,
   direct nested field access, readonly `self` methods in `impl` blocks,
   parenthesis-free computed members, payload `enum` values, exhaustive enum
-  `when` patterns, nominal traits with explicit implementations, checked
+  `when` patterns, nominal traits with explicit implementations, explicit
+  affine `dyn<Trait>` conversion and vtable dispatch, checked
   one- and two-type generics with trait bounds, associated-type inference, and
   monomorphization, compile-time
   `Int` value generics with explicit fluent specialization such as

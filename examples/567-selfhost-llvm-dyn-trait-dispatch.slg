@@ -1,0 +1,38 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies explicit dyn Trait creation, vtable dispatch, and owned cleanup.
+main {
+    [
+        """
+        struct Cat {
+            value: Int
+        }
+
+        struct Dog {
+            value: Int
+        }
+
+        trait Speak {
+            sound: self -> Int
+        }
+
+        impl Speak for Cat {
+            sound: self -> Int => 11
+        }
+
+        impl Speak for Dog {
+            sound: self -> Int => 22
+        }
+
+        main {
+            Cat { value: 1 } -> dyn<Speak> => cat!
+            Dog { value: 2 } -> dyn<Speak> => dog!
+            cat! -> Speak.sound => catSound
+            dog! -> Speak.sound => dogSound
+            "$catSound,$dogSound" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emit
+}

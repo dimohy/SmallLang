@@ -7,6 +7,8 @@ internal sealed record BoundProgram(
     IReadOnlyDictionary<string, BoundTraitDefinition> Traits,
     IReadOnlyDictionary<string, BoundFunction> Functions,
     IReadOnlyDictionary<object, BoundFunction> ResolvedGenericCalls,
+    IReadOnlyDictionary<object, BoundDynTraitConversion> DynTraitConversions,
+    IReadOnlyDictionary<object, BoundDynTraitDispatch> DynTraitDispatches,
     IReadOnlyList<Statement> MainStatements,
     IReadOnlyDictionary<string, BoundType> MainBindings,
     IReadOnlyDictionary<BoundFunction, IReadOnlyDictionary<string, BoundType>> FunctionBindings,
@@ -19,6 +21,18 @@ internal sealed record BoundProgram(
     int ReusedSemanticFunctions,
     int TotalSemanticFunctions,
     bool ReusedMainSemantics);
+
+internal sealed record BoundDynTraitConversion(
+    BoundType DynType,
+    BoundType ConcreteType,
+    BoundTraitDefinition Trait,
+    IReadOnlyList<BoundFunction> Methods);
+
+internal sealed record BoundDynTraitDispatch(
+    BoundType DynType,
+    BoundTraitDefinition Trait,
+    BoundTraitMethod Method,
+    int MethodIndex);
 
 internal sealed record BoundFunction(
     string Name,
@@ -227,6 +241,8 @@ internal sealed record BoundBoxDefinition(TypeId Id, TypeId ElementType, int Siz
 
 internal sealed record BoundReferenceDefinition(TypeId Id, TypeId ElementType);
 
+internal sealed record BoundDynTraitDefinition(TypeId Id, string TraitName);
+
 internal sealed record BoundStaticArrayDefinition(
     TypeId Id,
     TypeId ElementType,
@@ -258,6 +274,8 @@ internal sealed class TypeDefinitionTable
     private readonly Dictionary<TypeId, BoundBoxDefinition> _boxes;
     private readonly Dictionary<TypeId, BoundReferenceDefinition> _references;
     private readonly Dictionary<TypeId, TypeId> _referencesByElement;
+    private readonly Dictionary<TypeId, BoundDynTraitDefinition> _dynTraits = [];
+    private readonly Dictionary<string, TypeId> _dynTraitsByName = new(StringComparer.Ordinal);
     private readonly Dictionary<TypeId, BoundStaticArrayDefinition> _staticArrays = [];
     private readonly Dictionary<TypeId, TypeId> _staticArraysByElement = [];
     private readonly Dictionary<TypeId, BoundDynamicArrayDefinition> _dynamicArrays = [];
@@ -316,6 +334,8 @@ internal sealed class TypeDefinitionTable
 
     public IReadOnlyCollection<BoundReferenceDefinition> References => _references.Values.ToArray();
 
+    public IReadOnlyCollection<BoundDynTraitDefinition> DynTraits => _dynTraits.Values.ToArray();
+
     public IReadOnlyCollection<BoundStaticArrayDefinition> StaticArrays => _staticArrays.Values.ToArray();
 
     public IReadOnlyCollection<BoundDynamicArrayDefinition> DynamicArrays => _dynamicArrays.Values.ToArray();
@@ -333,6 +353,27 @@ internal sealed class TypeDefinitionTable
     public bool IsBox(TypeId type) => _boxes.ContainsKey(type);
 
     public bool IsReference(TypeId type) => _references.ContainsKey(type);
+
+    public bool IsDynTrait(TypeId type) => _dynTraits.ContainsKey(type);
+
+    public TypeId GetOrAddDynTrait(string traitName)
+    {
+        if (_dynTraitsByName.TryGetValue(traitName, out var existing))
+        {
+            return existing;
+        }
+
+        var id = (TypeId)_nextParametricTypeId++;
+        _dynTraits.Add(id, new BoundDynTraitDefinition(id, traitName));
+        _dynTraitsByName.Add(traitName, id);
+        _names.TryAdd("dyn " + traitName, id);
+        return id;
+    }
+
+    public BoundDynTraitDefinition GetDynTrait(TypeId type) =>
+        _dynTraits.TryGetValue(type, out var definition)
+            ? definition
+            : throw new KeyNotFoundException($"type id '{(int)type}' is not a dyn trait");
 
     public TypeId GetOrAddReference(TypeId elementType)
     {
@@ -505,7 +546,8 @@ internal sealed class TypeDefinitionTable
         if (type is TypeId.DynamicIntArray or TypeId.IntDictionary or TypeId.Arena
             or TypeId.File or TypeId.FileWriter
             or TypeId.SourceText or TypeId.MappedBytes or TypeId.MutableMappedBytes
-            || IsTask(type) || IsBox(type) || IsStaticArray(type) || IsDynamicArray(type) || IsDictionary(type))
+            || IsTask(type) || IsBox(type) || IsDynTrait(type)
+            || IsStaticArray(type) || IsDynamicArray(type) || IsDictionary(type))
         {
             return true;
         }
@@ -589,6 +631,10 @@ internal sealed class TypeDefinitionTable
         if (_boxes.ContainsKey(type) || _references.ContainsKey(type))
         {
             return _pointerSize;
+        }
+        if (_dynTraits.ContainsKey(type))
+        {
+            return checked(_pointerSize * 2);
         }
         if (type == TypeId.SourceText)
         {

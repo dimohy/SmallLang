@@ -47,7 +47,8 @@ explicit value flow with `value -> target` and expression-first bindings with
   as `condition -> if continue`
 - expression-oriented `if` and `when`, with contextual enum patterns such as
   `Ok(value)` and `Err(error)`
-- nested structs, traits with associated types, `<T, R, E>` type generics, and
+- nested structs, traits with associated types, explicit owned `dyn<Trait>`
+  objects with vtable dispatch, `<T, R, E>` type generics, and
   compile-time value generics such as `<N: Int>`
 - fixed and growable generic arrays (`[T; N]`, `[T; ~]`) and Swiss-table
   dictionaries (`{K: V}`), including contextual struct keys and elements
@@ -371,8 +372,8 @@ selects the newest compatible non-yanked release. See the
 
 ## Self-Hosting Progress
 
-The measured roadmap is currently **58.5/60 equivalent gates (97.5%)**, with
-**1.5 equivalent gates remaining**.
+The measured roadmap is currently **59.5/60 equivalent gates (99.2%)**, with
+**0.5 equivalent gates remaining**.
 
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2
@@ -400,6 +401,9 @@ The native `sollang test` command discovers project test modules, validates
 zero-input `Bool` contracts, supports qualified-name filtering, and executes a
 generated Sollang harness on Windows or Linux. The same harness shape passes
 C# bootstrap versus self-host LLVM differential verification.
+Explicit `value -> dyn<Trait>` conversion now creates an affine two-pointer
+trait object. `object -> Trait.method` selects the declaration-ordered vtable
+slot at runtime, and slot zero performs deterministic erased cleanup.
 Owned nominal values now transfer into dictionary storage, displaced values are
 dropped before replacement, and growth preserves the single owner. Owned
 nominal keys use the same static `Hash`/`Eq` contract across lookup, mutation,

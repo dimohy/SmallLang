@@ -132,14 +132,14 @@ not lines of code.
 | Area | Gates | Complete | Partial | Missing | Score |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Core syntax and control flow | 10 | 10 | 0 | 0 | 10.0 |
-| Types, traits, and generics | 12 | 11 | 0 | 1 | 11.0 |
+| Types, traits, and generics | 12 | 12 | 0 | 0 | 12.0 |
 | Ownership and storage | 10 | 10 | 0 | 0 | 10.0 |
 | Modules, visibility, and builds | 8 | 8 | 0 | 0 | 8.0 |
 | Compiler-construction primitives | 12 | 12 | 0 | 0 | 12.0 |
 | Standard library and tooling | 8 | 7 | 1 | 0 | 7.5 |
-| **Total** | **60** | **58** | **1** | **1** | **58.5 / 60** |
+| **Total** | **60** | **59** | **1** | **0** | **59.5 / 60** |
 
-Current count-based progress: **97.5% (58.5 of 60 equivalent gates)**.
+Current count-based progress: **99.2% (59.5 of 60 equivalent gates)**.
 
 The frontend parallel-compilation subproject is **28/28 checks (100%)**. Its
 source-local product boundary, typed callback-result role slice, nested-call
@@ -150,7 +150,7 @@ reject mutable or structurally non-sendable captures. The submitting parent now
 helps drain its task group before the structured join. Exact cancellation and
 partial-result destruction plus full Windows/Linux suite parity are proven.
 This completed feature-local subproject does not promote a roadmap gate.
-There are **1.5 equivalent gates remaining**. Because the remaining compiler
+There are **0.5 equivalent gates remaining**. Because the remaining compiler
 primitives are harder than early syntax gates, this is not an elapsed-time
 estimate.
 
@@ -261,9 +261,9 @@ milestone without changing the broader 60-gate language-capability score.
   may be reinitialized; a branch or loop must repair every partial move before
   it rejoins its parent region.
 
-### Types, traits, and generics — 11.0 / 12
+### Types, traits, and generics — 12 / 12
 
-- Complete (11): nominal structs, payload enums, exhaustive matching, impl
+- Complete (12): nominal structs, payload enums, exhaustive matching, impl
   methods, nominal traits/static dispatch, checked type/value specialization,
   associated types with equality constraints, two-parameter generic inference,
   standard `Option<T>`/`Result<T, E>` tagged values, fixed-width signed,
@@ -272,9 +272,12 @@ milestone without changing the broader 60-gate language-capability score.
   and dictionaries preserve scalar/user-value layouts and recursively drop
   owned elements. Generic collection function contracts preserve concrete
   component types, fixed arrays infer `T` from `[T; N]` while checking `N`, and
-  indexed extraction transfers owned array/dictionary elements exactly once.
+  indexed extraction transfers owned array/dictionary elements exactly once;
+  explicit `value -> dyn<Trait>` conversion creates an owned two-pointer trait
+  object whose declaration-ordered vtable provides drop and late-bound method
+  dispatch.
 - Partial (0).
-- Missing (1): explicit `dyn Trait`.
+- Missing (0).
 
 ### Ownership and storage — 10 / 10
 
@@ -3292,3 +3295,39 @@ Research basis:
 - [Rust test functions and generated runner](https://doc.rust-lang.org/stable/book/ch11-01-writing-tests.html)
 - [Zig test declarations](https://ziglang.org/documentation/0.15.2/#Zig-Test)
 - [Swift Testing function declarations](https://developer.apple.com/documentation/Testing/DefiningTests)
+
+## D253/example 567 - Explicit Owned `dyn Trait` Dispatch
+
+Sollang now creates an explicit runtime trait object with
+`value -> dyn<Trait>` and invokes it with `object -> Trait.method`. The object
+owns a two-pointer `{ data, vtable }` value. Vtable slot 0 destroys the erased
+heap allocation, and following slots preserve trait declaration order. The C#
+bootstrap emitter and Sollang self-host emitter both allocate and materialize
+the concrete value, select a concrete-type vtable, load the method pointer, and
+dispatch indirectly. Two concrete implementations in example 567 return
+different values through the same trait method, proving that selection happens
+through the runtime object rather than static call rewriting.
+
+The first dyn-compatible contract is deliberately narrow and checked: traits
+have no associated types; methods use readonly `self`, take no additional
+arguments, are synchronous and capture-free, and return `Int`; concrete values
+cannot yet contain nested owned storage. The object itself remains affine and
+is dropped exactly once. Self-host scheduling now treats earlier bindings as
+dependencies of interpolated print calls, so both indirect calls dominate their
+uses and mutable slots provide the current trait object value.
+
+Example 567 passes LLVM validation, native linking and execution, and C# versus
+self-host runtime differential verification on Windows and Linux. The owned
+dictionary dominance regressions 452 and 454 pass on both targets. The complete
+self-host suite passes **356/356** on Windows and **356/356** on Linux, and the
+Release solution build has zero warnings and zero errors.
+
+This closes the explicit runtime-polymorphism gate. Formal progress advances to
+**59 complete, 1 partial, 0 missing: 59.5/60 (99.2%)**, with **0.5 equivalent
+gates remaining**. Stage 3 cadence advances to **4/10**.
+
+Research basis:
+
+- [Rust trait objects](https://doc.rust-lang.org/stable/reference/types/trait-object.html)
+- [Rust dyn compatibility](https://doc.rust-lang.org/stable/reference/items/traits.html#dyn-compatibility)
+- [Swift existential types](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/types/)

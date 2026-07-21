@@ -442,6 +442,7 @@ internal sealed partial class LlvmEmitter
             RuntimeEnum enumeration => (LlvmEnumType(enumeration.Type), enumeration.ValueName),
             RuntimeBox box => ("ptr", box.PointerName),
             RuntimeReference reference => ("ptr", reference.PointerName),
+            RuntimeDynTrait dyn => ("%sollang.dyn", BuildDynTraitAggregate(dyn)),
             RuntimeDynamicIntArray array => (
                 "%sollang.dynamic_int_array",
                 BuildDynamicArrayAggregate(array.PointerName, array.LengthName, array.CapacityName)),
@@ -504,6 +505,14 @@ internal sealed partial class LlvmEmitter
         {
             return new RuntimeReference(type, _program.Types.GetReference(type).ElementType, valueName);
         }
+        if (_program.Types.IsDynTrait(type))
+        {
+            var data = NextTemp("dyn_data");
+            EmitAssign(data, $"extractvalue %sollang.dyn {valueName}, 0");
+            var vtable = NextTemp("dyn_vtable");
+            EmitAssign(vtable, $"extractvalue %sollang.dyn {valueName}, 1");
+            return new RuntimeDynTrait(type, data, vtable);
+        }
         if (type == BoundType.DynamicIntArray)
         {
             var (pointer, length, capacity) = ExtractDynamicArrayAggregate(valueName);
@@ -564,6 +573,15 @@ internal sealed partial class LlvmEmitter
         var aggregate1 = NextTemp("text_value");
         EmitAssign(aggregate1, $"insertvalue %sollang.text {aggregate0}, i64 {text.LengthName}, 1");
         return aggregate1;
+    }
+
+    private string BuildDynTraitAggregate(RuntimeDynTrait dyn)
+    {
+        var withData = NextTemp("dyn_value");
+        EmitAssign(withData, $"insertvalue %sollang.dyn poison, ptr {dyn.DataPointerName}, 0");
+        var aggregate = NextTemp("dyn_value");
+        EmitAssign(aggregate, $"insertvalue %sollang.dyn {withData}, ptr {dyn.VtablePointerName}, 1");
+        return aggregate;
     }
 
     private string BuildIntSliceAggregate(string pointer, string length)
@@ -686,6 +704,10 @@ internal sealed partial class LlvmEmitter
         if (_program.Types.IsReference(type))
         {
             return "ptr";
+        }
+        if (_program.Types.IsDynTrait(type))
+        {
+            return "%sollang.dyn";
         }
         if (_program.Types.IsDictionary(type))
         {

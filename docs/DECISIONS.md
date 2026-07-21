@@ -9822,3 +9822,44 @@ Research basis:
 - [Rust test functions and generated runner](https://doc.rust-lang.org/stable/book/ch11-01-writing-tests.html)
 - [Zig test declarations](https://ziglang.org/documentation/0.15.2/#Zig-Test)
 - [Swift Testing function declarations](https://developer.apple.com/documentation/Testing/DefiningTests)
+
+## D253 - Dynamic Dispatch Uses Explicit Owned Trait Objects
+
+Sollang keeps static trait dispatch as the default and spells runtime
+polymorphism explicitly: `value -> dyn<Trait>` creates an affine trait object,
+and `object -> Trait.method` performs late-bound dispatch. The runtime value is
+two pointers, `{ data, vtable }`. Slot 0 is erased drop; method slots follow
+trait declaration order. Conversion allocates and materializes the concrete
+value, while cleanup calls slot 0 exactly once and frees the erased allocation.
+
+The C# bootstrap compiler records conversion and dispatch sites in bound maps
+and emits concrete vtables, erased wrappers, indirect calls, and dynamic drop
+glue. The Sollang self-host compiler preserves the same operations as typed-IR
+opcodes `-224` and `-225`. Its LLVM scheduler makes preceding binding results
+dominate interpolated output, preventing a print from reading an as-yet
+uncomputed dynamic call result.
+
+The initial dyn-compatible boundary is checked rather than inferred: no
+associated types, readonly `self`, no additional arguments, no async or local
+captures, and an `Int` result. Concrete values with recursively owned storage
+remain rejected until dyn conversion has an explicit recursive move-transfer
+rule. This keeps the first ABI auditable without a garbage collector or hidden
+fallback dispatch.
+
+Example 567 creates `Cat` and `Dog` objects, selects two concrete vtables,
+invokes the same trait method indirectly, prints `11,22`, and drops both objects
+through vtable slot 0. LLVM validation, linking, execution, and C# versus
+self-host runtime differential verification pass on Windows and Linux. Examples
+452 and 454 retain owned-dictionary dominance coverage on both targets. The
+complete self-host suite passes **356/356** on Windows and Linux; the Release
+solution build has zero warnings and zero errors.
+
+This promotes explicit `dyn Trait` from missing to complete. Formal progress is
+now **59 complete, 1 partial, 0 missing: 59.5/60 (99.2%)**, with **0.5 equivalent
+gates remaining**. Stage 3 cadence advances to **4/10**.
+
+Research basis:
+
+- [Rust trait objects](https://doc.rust-lang.org/stable/reference/types/trait-object.html)
+- [Rust dyn compatibility](https://doc.rust-lang.org/stable/reference/items/traits.html#dyn-compatibility)
+- [Swift existential types](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/types/)

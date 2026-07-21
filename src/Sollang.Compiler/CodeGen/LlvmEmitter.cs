@@ -504,6 +504,7 @@ internal sealed partial class LlvmEmitter
             %sollang.environment_result = type { ptr, i64, i1, i1 }
             %sollang.process_result = type { i32, i32 }
             %sollang.task = type { ptr, ptr }
+            %sollang.dyn = type { ptr, ptr }
             %sollang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr, ptr, i64, ptr, ptr, i32, i32, i64, i64, i32, ptr, i64, i64, i32, i32 }
             """;
         if (_usesDirectoryTraversal)
@@ -576,6 +577,7 @@ internal sealed partial class LlvmEmitter
         EmitFunctionLine("declare void @llvm.lifetime.end.p0(i64 immarg, ptr nocapture)");
         EmitFunctionLine();
 
+        EmitDynTraitTables();
         EmitOwnedDropHelpers();
         EmitParallelCallbacks();
         var prefixKey = reuse?.PrefixKey ?? default;

@@ -212,6 +212,10 @@ internal static class SemanticStableIdentity
         {
             return "Ref<" + Type(types, types.GetReference(type).ElementType) + ">";
         }
+        if (types.IsDynTrait(type))
+        {
+            return "Dyn<" + types.GetDynTrait(type).TraitName + ">";
+        }
         if (types.IsStruct(type))
         {
             return "struct:" + types.GetStruct(type).Name;
@@ -539,6 +543,12 @@ internal static class SemanticStableIdentity
             }
             if (Take("Ref<"))
                 return Close(types.GetOrAddReference(Parse()));
+            if (Take("Dyn<"))
+            {
+                var traitName = Rest();
+                Expect('>');
+                return types.GetOrAddDynTrait(traitName);
+            }
             if (Take("Result<"))
             {
                 var ok = Parse();

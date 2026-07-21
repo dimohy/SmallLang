@@ -1,0 +1,226 @@
+target datalayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-windows-msvc"
+@sollang_runtime_newline = private constant [1 x i8] c"\0A"
+@sollang_runtime_stdout_buffer = private global [1048576 x i8] zeroinitializer
+@sollang_runtime_stdout_count = private global i64 0
+@sollang_runtime_stdout_written = private global i32 0
+declare ptr @GetStdHandle(i32)
+declare i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
+define internal void @sollang_runtime_flush_stdout() {
+entry:
+  %count = load i64, ptr @sollang_runtime_stdout_count, align 8
+  %has_data = icmp ugt i64 %count, 0
+  br i1 %has_data, label %write, label %done
+write:
+  %handle = call ptr @GetStdHandle(i32 -11)
+  %count32 = trunc i64 %count to i32
+  %ok = call i32 @WriteFile(ptr %handle, ptr @sollang_runtime_stdout_buffer, i32 %count32, ptr @sollang_runtime_stdout_written, ptr null)
+  store i64 0, ptr @sollang_runtime_stdout_count, align 8
+  br label %done
+done:
+  ret void
+}
+define internal void @sollang_runtime_append_stdout(ptr %data, i64 %len) {
+entry:
+  %count = load i64, ptr @sollang_runtime_stdout_count, align 8
+  %total = add i64 %count, %len
+  %fits = icmp ule i64 %total, 1048576
+  br i1 %fits, label %append, label %flush
+flush:
+  call void @sollang_runtime_flush_stdout()
+  %large = icmp ugt i64 %len, 1048576
+  br i1 %large, label %direct, label %append_empty
+direct:
+  %handle = call ptr @GetStdHandle(i32 -11)
+  %len32 = trunc i64 %len to i32
+  %ok = call i32 @WriteFile(ptr %handle, ptr %data, i32 %len32, ptr @sollang_runtime_stdout_written, ptr null)
+  ret void
+append_empty:
+  call void @llvm.memcpy.p0.p0.i64(ptr @sollang_runtime_stdout_buffer, ptr %data, i64 %len, i1 false)
+  store i64 %len, ptr @sollang_runtime_stdout_count, align 8
+  ret void
+append:
+  %slot = getelementptr i8, ptr @sollang_runtime_stdout_buffer, i64 %count
+  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %data, i64 %len, i1 false)
+  store i64 %total, ptr @sollang_runtime_stdout_count, align 8
+  ret void
+}
+define internal void @sollang_runtime_print(ptr %data, i64 %len, i1 %newline) {
+entry:
+  call void @sollang_runtime_append_stdout(ptr %data, i64 %len)
+  br i1 %newline, label %write_newline, label %done
+write_newline:
+  call void @sollang_runtime_append_stdout(ptr @sollang_runtime_newline, i64 1)
+  br label %done
+done:
+  ret void
+}
+define internal void @sollang_runtime_print_i32(i32 %value, i1 %newline) {
+entry:
+  %buffer = alloca [12 x i8], align 1
+  %end = getelementptr [12 x i8], ptr %buffer, i64 0, i64 12
+  %wide = sext i32 %value to i64
+  %negative = icmp slt i64 %wide, 0
+  %negated = sub i64 0, %wide
+  %magnitude = select i1 %negative, i64 %negated, i64 %wide
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sollang_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
+define internal void @sollang_runtime_print_i64(i64 %value, i1 %signed, i1 %newline) {
+entry:
+  %buffer = alloca [21 x i8], align 1
+  %end = getelementptr [21 x i8], ptr %buffer, i64 0, i64 21
+  %negative_value = icmp slt i64 %value, 0
+  %negative = and i1 %signed, %negative_value
+  %negated = sub i64 0, %value
+  %magnitude = select i1 %negative, i64 %negated, i64 %value
+  br label %digits
+digits:
+  %current = phi i64 [ %magnitude, %entry ], [ %quotient, %digits ]
+  %cursor = phi ptr [ %end, %entry ], [ %digit_slot, %digits ]
+  %digit = urem i64 %current, 10
+  %quotient = udiv i64 %current, 10
+  %digit_slot = getelementptr i8, ptr %cursor, i64 -1
+  %digit8 = trunc i64 %digit to i8
+  %ascii = add i8 %digit8, 48
+  store i8 %ascii, ptr %digit_slot, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %digits, label %digits_done
+digits_done:
+  br i1 %negative, label %write_sign, label %emit
+write_sign:
+  %sign_slot = getelementptr i8, ptr %digit_slot, i64 -1
+  store i8 45, ptr %sign_slot, align 1
+  br label %emit
+emit:
+  %start = phi ptr [ %digit_slot, %digits_done ], [ %sign_slot, %write_sign ]
+  %end_address = ptrtoint ptr %end to i64
+  %start_address = ptrtoint ptr %start to i64
+  %length = sub i64 %end_address, %start_address
+  call void @sollang_runtime_print(ptr %start, i64 %length, i1 %newline)
+  ret void
+}
+%sollang.struct.m0_s0 = type { i32 }
+%sollang.struct.m0_s2 = type { i32 }
+%sollang.dyn = type { ptr, ptr }
+@sollang_dyn_vtable_11 = private constant [2 x ptr] [ptr @sollang_dyn_drop_11, ptr @sollang_dyn_method_11]
+define internal void @sollang_dyn_drop_11(ptr %data) {
+entry:
+  call void @free(ptr %data)
+  ret void
+}
+define internal i32 @sollang_dyn_method_11(ptr %data) {
+entry:
+  %receiver = load %sollang.struct.m0_s0, ptr %data, align 4
+  %result = call i32 @sollang_m0_s7(%sollang.struct.m0_s0 %receiver)
+  ret i32 %result
+}
+@sollang_dyn_vtable_14 = private constant [2 x ptr] [ptr @sollang_dyn_drop_14, ptr @sollang_dyn_method_14]
+define internal void @sollang_dyn_drop_14(ptr %data) {
+entry:
+  call void @free(ptr %data)
+  ret void
+}
+define internal i32 @sollang_dyn_method_14(ptr %data) {
+entry:
+  %receiver = load %sollang.struct.m0_s2, ptr %data, align 4
+  %result = call i32 @sollang_m0_s9(%sollang.struct.m0_s2 %receiver)
+  ret i32 %result
+}
+declare ptr @malloc(i64)
+declare void @free(ptr)
+define internal void @sollang_drop_t26(%sollang.struct.m0_s0 %value) {
+entry:
+  ret void
+}
+define internal void @sollang_drop_t27(%sollang.struct.m0_s2 %value) {
+entry:
+  ret void
+}
+%sollang.text = type { ptr, i64 }
+@sollang_str_22 = private unnamed_addr constant [19 x i8] c"$catSound,$dogSound"
+define i32 @sollang_m0_s7() {
+entry:
+  ret i32 11
+}
+define i32 @sollang_m0_s9() {
+entry:
+  ret i32 22
+}
+define i32 @main() {
+entry:
+  %slot7 = alloca %sollang.dyn, align 8
+  %slot8 = alloca %sollang.dyn, align 8
+  %v22_ptr = insertvalue %sollang.text poison, ptr @sollang_str_22, 0
+  %v22 = insertvalue %sollang.text %v22_ptr, i64 19, 1
+  %v12 = insertvalue %sollang.struct.m0_s0 poison, i32 1, 0
+  %v15 = insertvalue %sollang.struct.m0_s2 poison, i32 2, 0
+  %v11_data = call ptr @malloc(i64 4)
+  store %sollang.struct.m0_s0 %v12, ptr %v11_data, align 4
+  %v11_with_data = insertvalue %sollang.dyn poison, ptr %v11_data, 0
+  %v11 = insertvalue %sollang.dyn %v11_with_data, ptr @sollang_dyn_vtable_11, 1
+  %v14_data = call ptr @malloc(i64 4)
+  store %sollang.struct.m0_s2 %v15, ptr %v14_data, align 4
+  %v14_with_data = insertvalue %sollang.dyn poison, ptr %v14_data, 0
+  %v14 = insertvalue %sollang.dyn %v14_with_data, ptr @sollang_dyn_vtable_14, 1
+  store %sollang.dyn %v11, ptr %slot7, align 8
+  store %sollang.dyn %v14, ptr %slot8, align 8
+  %v18 = load %sollang.dyn, ptr %slot7, align 8
+  %v20 = load %sollang.dyn, ptr %slot8, align 8
+  %v17_data = extractvalue %sollang.dyn %v18, 0
+  %v17_vtable = extractvalue %sollang.dyn %v18, 1
+  %v17_slot = getelementptr ptr, ptr %v17_vtable, i64 1
+  %v17_method = load ptr, ptr %v17_slot, align 8
+  %v17 = call i32 %v17_method(ptr %v17_data)
+  %v19_data = extractvalue %sollang.dyn %v20, 0
+  %v19_vtable = extractvalue %sollang.dyn %v20, 1
+  %v19_slot = getelementptr ptr, ptr %v19_vtable, i64 1
+  %v19_method = load ptr, ptr %v19_slot, align 8
+  %v19 = call i32 %v19_method(ptr %v19_data)
+  %v21_expression_literal0 = getelementptr i8, ptr @sollang_str_22, i64 0
+  call void @sollang_runtime_print(ptr %v21_expression_literal0, i64 0, i1 false)
+  call void @sollang_runtime_print_i32(i32 %v17, i1 false)
+  %v21_expression_literal1 = getelementptr i8, ptr @sollang_str_22, i64 9
+  call void @sollang_runtime_print(ptr %v21_expression_literal1, i64 1, i1 false)
+  call void @sollang_runtime_print_i32(i32 %v19, i1 false)
+  %v21_expression_suffix = getelementptr i8, ptr @sollang_str_22, i64 19
+  call void @sollang_runtime_print(ptr %v21_expression_suffix, i64 0, i1 true)
+  %cleanup66_b8_current = load %sollang.dyn, ptr %slot8, align 8
+  %cleanup66_b8_data = extractvalue %sollang.dyn %cleanup66_b8_current, 0
+  %cleanup66_b8_vtable = extractvalue %sollang.dyn %cleanup66_b8_current, 1
+  %cleanup66_b8_drop_slot = getelementptr ptr, ptr %cleanup66_b8_vtable, i64 0
+  %cleanup66_b8_drop = load ptr, ptr %cleanup66_b8_drop_slot, align 8
+  call void %cleanup66_b8_drop(ptr %cleanup66_b8_data)
+  %cleanup66_b7_current = load %sollang.dyn, ptr %slot7, align 8
+  %cleanup66_b7_data = extractvalue %sollang.dyn %cleanup66_b7_current, 0
+  %cleanup66_b7_vtable = extractvalue %sollang.dyn %cleanup66_b7_current, 1
+  %cleanup66_b7_drop_slot = getelementptr ptr, ptr %cleanup66_b7_vtable, i64 0
+  %cleanup66_b7_drop = load ptr, ptr %cleanup66_b7_drop_slot, align 8
+  call void %cleanup66_b7_drop(ptr %cleanup66_b7_data)
+  call void @sollang_runtime_flush_stdout()
+  ret i32 0
+}

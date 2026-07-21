@@ -152,6 +152,7 @@ intrinsicOpcode request: IntrinsicNameRequest -> Int {
     -1 => opcode!
     request.token.span.length == UIntSize(3) -> if {
         ((request.source -> byte(request.token.span.start)) == UInt8(108) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(101) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(110)) -> if { -201 => opcode! }
+        ((request.source -> byte(request.token.span.start)) == UInt8(100) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(121) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(110)) -> if { -224 => opcode! }
     }
     request.token.span.length == UIntSize(4) -> if {
         ((request.source -> byte(request.token.span.start)) == UInt8(98) and (request.source -> byte(request.token.span.start + UIntSize(1))) == UInt8(121) and (request.source -> byte(request.token.span.start + UIntSize(2))) == UInt8(116) and (request.source -> byte(request.token.span.start + UIntSize(3))) == UInt8(101)) -> if { -202 => opcode! }
@@ -1139,6 +1140,8 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                     false => knownMapTextExpression!
                     false => knownMapPathExpression!
                     false => knownBorrowTextExpression!
+                    false => knownDynExpression!
+                    false => knownDynDispatchExpression!
                     expression.kind == 53 => knownIndexAssignment!
                     expression.kind == 54 => knownMemberAssignment!
                     expression.kind == 10 -> if {
@@ -1148,6 +1151,83 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         flowOpcode == -205 -> if { true => knownMapTextExpression! }
                         flowOpcode == -214 -> if { true => knownMapPathExpression! }
                         flowOpcode == -206 -> if { true => knownBorrowTextExpression! }
+                        flowOpcode == -224 -> if { true => knownDynExpression! }
+                        expression.firstToken => knownDynTokenSearch!
+                        knownDynTokenSearch! < expression.firstToken + expression.tokenCount -> while {
+                            prepared.package.tokens[sourceRange.tokenStart + knownDynTokenSearch!] => knownDynToken
+                            (knownDynToken.kind == grammar.tokenIdIdentifier and knownDynToken.span.length == UIntSize(3) and (source -> byte(knownDynToken.span.start)) == UInt8(100) and (source -> byte(knownDynToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(knownDynToken.span.start + UIntSize(2))) == UInt8(110)) -> if { true => knownDynExpression! }
+                            knownDynTokenSearch! + 1 => knownDynTokenSearch!
+                        }
+                        false => knownDynDispatchPath!
+                        0 => knownDynDispatchPathSearch!
+                        knownDynDispatchPathSearch! < sourceRange.astCount -> while {
+                            prepared.package.nodes[sourceRange.astStart + knownDynDispatchPathSearch!] => knownDynDispatchPath
+                            (knownDynDispatchPath.kind == 16 and knownDynDispatchPath.parent == expressionAstIndex!) -> if {
+                                -1 => knownDynDispatchTraitToken!
+                                -1 => knownDynDispatchMethodToken!
+                                knownDynDispatchPath.firstToken => knownDynDispatchTokenSearch!
+                                knownDynDispatchTokenSearch! < knownDynDispatchPath.firstToken + knownDynDispatchPath.tokenCount -> while {
+                                    prepared.package.tokens[sourceRange.tokenStart + knownDynDispatchTokenSearch!] => knownDynDispatchToken
+                                    knownDynDispatchToken.kind == grammar.tokenIdIdentifier -> if {
+                                        knownDynDispatchTraitToken! < 0 -> if { knownDynDispatchTokenSearch! => knownDynDispatchTraitToken! } else { knownDynDispatchTokenSearch! => knownDynDispatchMethodToken! }
+                                    }
+                                    knownDynDispatchTokenSearch! + 1 => knownDynDispatchTokenSearch!
+                                }
+                                0 => knownDynDispatchTraitSearch!
+                                knownDynDispatchTraitSearch! < sourceRange.symbolCount -> while {
+                                    prepared.package.symbols[sourceRange.symbolStart + knownDynDispatchTraitSearch!] => knownDynDispatchTrait
+                                    (knownDynDispatchTrait.kind == 5 and knownDynDispatchTraitToken! >= 0 and knownDynDispatchMethodToken! >= 0) -> if {
+                                        prepared.package.tokens[sourceRange.tokenStart + knownDynDispatchTrait.nameToken] => knownDynDispatchDeclaredName
+                                        prepared.package.tokens[sourceRange.tokenStart + knownDynDispatchTraitToken!] => knownDynDispatchRequestedName
+                                        knownDynDispatchDeclaredName.span.length == knownDynDispatchRequestedName.span.length => knownDynDispatchNameEqual!
+                                        UIntSize(0) => knownDynDispatchNameByte!
+                                        (knownDynDispatchNameEqual! and knownDynDispatchNameByte! < knownDynDispatchDeclaredName.span.length) -> while {
+                                            (source -> byte(knownDynDispatchDeclaredName.span.start + knownDynDispatchNameByte!)) != (source -> byte(knownDynDispatchRequestedName.span.start + knownDynDispatchNameByte!)) -> if { false => knownDynDispatchNameEqual! }
+                                            knownDynDispatchNameByte! + UIntSize(1) => knownDynDispatchNameByte!
+                                        }
+                                        knownDynDispatchNameEqual! -> if { true => knownDynDispatchPath! }
+                                    }
+                                    knownDynDispatchTraitSearch! + 1 => knownDynDispatchTraitSearch!
+                                }
+                            }
+                            knownDynDispatchPathSearch! + 1 => knownDynDispatchPathSearch!
+                        }
+                        -1 => knownDynDispatchSourceSymbol!
+                        0 => knownDynDispatchSourceSearch!
+                        knownDynDispatchSourceSearch! < sourceRange.astCount -> while {
+                            prepared.package.nodes[sourceRange.astStart + knownDynDispatchSourceSearch!] => knownDynDispatchSource
+                            (knownDynDispatchSource.kind == 15 and knownDynDispatchSource.parent == expressionAstIndex!) -> if {
+                                0 => knownDynDispatchNameResolutionSearch!
+                                knownDynDispatchNameResolutionSearch! < (resolvedNames! -> len) -> while {
+                                    resolvedNames![knownDynDispatchNameResolutionSearch!].astNode == knownDynDispatchSourceSearch! -> if { resolvedNames![knownDynDispatchNameResolutionSearch!].symbol => knownDynDispatchSourceSymbol! }
+                                    knownDynDispatchNameResolutionSearch! + 1 => knownDynDispatchNameResolutionSearch!
+                                }
+                            }
+                            knownDynDispatchSourceSearch! + 1 => knownDynDispatchSourceSearch!
+                        }
+                        false => knownDynDispatchSource!
+                        knownDynDispatchSourceSymbol! >= 0 -> if {
+                            prepared.package.symbols[sourceRange.symbolStart + knownDynDispatchSourceSymbol!] => knownDynDispatchSourceBinding
+                            prepared.package.nodes[sourceRange.astStart + knownDynDispatchSourceBinding.astNode] => knownDynDispatchSourceDeclaration
+                            knownDynDispatchSourceDeclaration.firstToken => knownDynDispatchSourceTokenSearch!
+                            knownDynDispatchSourceTokenSearch! < knownDynDispatchSourceDeclaration.firstToken + knownDynDispatchSourceDeclaration.tokenCount -> while {
+                                prepared.package.tokens[sourceRange.tokenStart + knownDynDispatchSourceTokenSearch!] => knownDynDispatchSourceToken
+                                (knownDynDispatchSourceToken.kind == grammar.tokenIdIdentifier and knownDynDispatchSourceToken.span.length == UIntSize(3) and (source -> byte(knownDynDispatchSourceToken.span.start)) == UInt8(100) and (source -> byte(knownDynDispatchSourceToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(knownDynDispatchSourceToken.span.start + UIntSize(2))) == UInt8(110)) -> if { true => knownDynDispatchSource! }
+                                knownDynDispatchSourceTokenSearch! + 1 => knownDynDispatchSourceTokenSearch!
+                            }
+                        }
+                        (knownDynDispatchPath! and knownDynDispatchSource!) -> if {
+                            true => knownDynDispatchExpression!
+                            1 => expressionTypeOrigin!
+                            -1 => expressionTypeModule!
+                            2 => expressionTypeSymbol!
+                            0 => knownDynDispatchIntTypeSearch!
+                            knownDynDispatchIntTypeSearch! < (frozenRecursiveSemanticTypes -> len) -> while {
+                                frozenRecursiveSemanticTypes[knownDynDispatchIntTypeSearch!] => knownDynDispatchIntType
+                                (knownDynDispatchIntType.status == 0 and knownDynDispatchIntType.kind == 1 and knownDynDispatchIntType.origin == 1 and knownDynDispatchIntType.symbol == 2) -> if { knownDynDispatchIntTypeSearch! => recursiveExpressionTypeId! }
+                                knownDynDispatchIntTypeSearch! + 1 => knownDynDispatchIntTypeSearch!
+                            }
+                        }
                     }
                     knownPushExpression! -> if {
                         1 => expressionTypeOrigin!
@@ -1225,7 +1305,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 flags: expression.flags
                             })
                         } else {
-                            (expressionTypeIndex! >= 0 or recursiveExpressionTypeId! >= 0 or knownParameterReference! or knownPatternReference! or expression.kind == 37 or expression.kind == 41 or expression.kind == 56 or (expression.kind == 15 and expression.parent >= 0 and prepared.package.nodes[sourceRange.astStart + expression.parent].kind == 41) or knownBooleanExpression! or knownCallExpression! or knownNumericExpression! or knownPushExpression! or knownPutExpression! or knownMapTextExpression! or knownMapPathExpression! or knownBorrowTextExpression! or knownIndexAssignment! or knownMemberAssignment!) -> if {
+                            (expressionTypeIndex! >= 0 or recursiveExpressionTypeId! >= 0 or knownParameterReference! or knownPatternReference! or expression.kind == 37 or expression.kind == 41 or expression.kind == 56 or (expression.kind == 15 and expression.parent >= 0 and prepared.package.nodes[sourceRange.astStart + expression.parent].kind == 41) or knownBooleanExpression! or knownCallExpression! or knownNumericExpression! or knownPushExpression! or knownPutExpression! or knownMapTextExpression! or knownMapPathExpression! or knownBorrowTextExpression! or knownDynExpression! or knownDynDispatchExpression! or knownIndexAssignment! or knownMemberAssignment!) -> if {
                             9 => expressionKind!
                             expression.kind == 13 -> if { 2 => expressionKind! }
                             expression.kind == 14 -> if { 3 => expressionKind! }
@@ -1304,6 +1384,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 }
                             }
                             expression.kind == 10 -> if {
+                                knownDynExpression! -> if { -224 => expressionOpcode! }
                                 0 => intrinsicChildSearch!
                                 intrinsicChildSearch! < sourceRange.astCount -> while {
                                     prepared.package.nodes[sourceRange.astStart + intrinsicChildSearch!] => intrinsicChild
@@ -1311,7 +1392,95 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                         IntrinsicNameRequest { source: source, token: prepared.package.tokens[sourceRange.tokenStart + intrinsicChild.payloadToken] } -> intrinsicOpcode => expressionIntrinsicOpcode
                                         expressionIntrinsicOpcode <= -201 -> if { expressionIntrinsicOpcode => expressionOpcode! }
                                     }
-                                    intrinsicChildSearch! + 1 => intrinsicChildSearch!
+                                intrinsicChildSearch! + 1 => intrinsicChildSearch!
+                            }
+                                expressionOpcode! == -224 -> if {
+                                    -1 => dynTraitToken!
+                                    false => afterDynKeyword!
+                                    expression.firstToken => dynTokenSearch!
+                                    dynTokenSearch! < expression.firstToken + expression.tokenCount -> while {
+                                        prepared.package.tokens[sourceRange.tokenStart + dynTokenSearch!] => dynToken
+                                        (afterDynKeyword! and dynTraitToken! < 0 and dynToken.kind == grammar.tokenIdIdentifier) -> if {
+                                            dynTokenSearch! => dynTraitToken!
+                                        }
+                                        (dynToken.kind == grammar.tokenIdIdentifier and dynToken.span.length == UIntSize(3) and (source -> byte(dynToken.span.start)) == UInt8(100) and (source -> byte(dynToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(dynToken.span.start + UIntSize(2))) == UInt8(110)) -> if {
+                                            true => afterDynKeyword!
+                                        }
+                                        dynTokenSearch! + 1 => dynTokenSearch!
+                                    }
+                                    -1 => dynTraitSymbol!
+                                    0 => dynTraitSearch!
+                                    dynTraitSearch! < sourceRange.symbolCount -> while {
+                                        prepared.package.symbols[sourceRange.symbolStart + dynTraitSearch!] => dynTraitCandidate
+                                        (dynTraitCandidate.kind == 5 and dynTraitToken! >= 0) -> if {
+                                            prepared.package.tokens[sourceRange.tokenStart + dynTraitCandidate.nameToken] => dynDeclaredName
+                                            prepared.package.tokens[sourceRange.tokenStart + dynTraitToken!] => dynRequestedName
+                                            dynDeclaredName.span.length == dynRequestedName.span.length => dynNameEqual!
+                                            UIntSize(0) => dynNameByte!
+                                            (dynNameEqual! and dynNameByte! < dynDeclaredName.span.length) -> while {
+                                                (source -> byte(dynDeclaredName.span.start + dynNameByte!)) != (source -> byte(dynRequestedName.span.start + dynNameByte!)) -> if { false => dynNameEqual! }
+                                                dynNameByte! + UIntSize(1) => dynNameByte!
+                                            }
+                                            dynNameEqual! -> if { dynTraitSearch! => dynTraitSymbol! }
+                                        }
+                                        dynTraitSearch! + 1 => dynTraitSearch!
+                                    }
+                                    dynTraitSymbol! >= 0 -> if {
+                                        16 => expressionTypeOrigin!
+                                        sourceIndex! => expressionTypeModule!
+                                        dynTraitSymbol! => expressionTypeSymbol!
+                                        -1 => recursiveExpressionTypeId!
+                                    }
+                                } else {
+                                    expressionOpcode! == -1 -> if {
+                                        -1 => dispatchTraitToken!
+                                        -1 => dispatchMethodToken!
+                                        0 => dispatchPathSearch!
+                                        dispatchPathSearch! < sourceRange.astCount -> while {
+                                            prepared.package.nodes[sourceRange.astStart + dispatchPathSearch!] => dispatchPath
+                                            (dispatchPath.kind == 16 and dispatchPath.parent == expressionAstIndex!) -> if {
+                                                dispatchPath.firstToken => dispatchTokenSearch!
+                                                dispatchTokenSearch! < dispatchPath.firstToken + dispatchPath.tokenCount -> while {
+                                                    prepared.package.tokens[sourceRange.tokenStart + dispatchTokenSearch!] => dispatchToken
+                                                    dispatchToken.kind == grammar.tokenIdIdentifier -> if {
+                                                        dispatchTraitToken! < 0 -> if { dispatchTokenSearch! => dispatchTraitToken! } else { dispatchTokenSearch! => dispatchMethodToken! }
+                                                    }
+                                                    dispatchTokenSearch! + 1 => dispatchTokenSearch!
+                                                }
+                                            }
+                                            dispatchPathSearch! + 1 => dispatchPathSearch!
+                                        }
+                                        false => dispatchTraitFound!
+                                        0 => dispatchTraitSearch!
+                                        dispatchTraitSearch! < sourceRange.symbolCount -> while {
+                                            prepared.package.symbols[sourceRange.symbolStart + dispatchTraitSearch!] => dispatchTraitCandidate
+                                            (dispatchTraitCandidate.kind == 5 and dispatchTraitToken! >= 0) -> if {
+                                                prepared.package.tokens[sourceRange.tokenStart + dispatchTraitCandidate.nameToken] => dispatchDeclaredName
+                                                prepared.package.tokens[sourceRange.tokenStart + dispatchTraitToken!] => dispatchRequestedName
+                                                dispatchDeclaredName.span.length == dispatchRequestedName.span.length => dispatchNameEqual!
+                                                UIntSize(0) => dispatchNameByte!
+                                                (dispatchNameEqual! and dispatchNameByte! < dispatchDeclaredName.span.length) -> while {
+                                                    (source -> byte(dispatchDeclaredName.span.start + dispatchNameByte!)) != (source -> byte(dispatchRequestedName.span.start + dispatchNameByte!)) -> if { false => dispatchNameEqual! }
+                                                    dispatchNameByte! + UIntSize(1) => dispatchNameByte!
+                                                }
+                                                dispatchNameEqual! -> if { true => dispatchTraitFound! }
+                                            }
+                                            dispatchTraitSearch! + 1 => dispatchTraitSearch!
+                                        }
+                                        (dispatchTraitFound! and dispatchMethodToken! >= 0) -> if {
+                                            -225 => expressionOpcode!
+                                            1 => expressionTypeOrigin!
+                                            -1 => expressionTypeModule!
+                                            2 => expressionTypeSymbol!
+                                            -1 => recursiveExpressionTypeId!
+                                            0 => dispatchIntTypeSearch!
+                                            dispatchIntTypeSearch! < (frozenRecursiveSemanticTypes -> len) -> while {
+                                                frozenRecursiveSemanticTypes[dispatchIntTypeSearch!] => dispatchIntType
+                                                (dispatchIntType.status == 0 and dispatchIntType.kind == 1 and dispatchIntType.origin == 1 and dispatchIntType.symbol == 2) -> if { dispatchIntTypeSearch! => recursiveExpressionTypeId! }
+                                                dispatchIntTypeSearch! + 1 => dispatchIntTypeSearch!
+                                            }
+                                        }
+                                    }
                                 }
                                 knownPushExpression! -> if { -204 => expressionOpcode! }
                                 knownPutExpression! -> if { -223 => expressionOpcode! }
@@ -1376,6 +1545,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 frozenRecursiveSemanticTypes[recursiveExpressionTypeId!].kind => expressionTypeKind!
                                 recursiveTypeFlags[recursiveExpressionTypeId!] => expressionTypeFlags!
                             }
+                            expressionOpcode! == -224 -> if { 1 => expressionTypeFlags! }
                             results! -> push(TypedIrNode {
                                 kind: expressionKind!
                                 parent: returnIr
@@ -1422,7 +1592,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                 expressionIrStart => operandIrIndex!
                 operandIrIndex! < expressionIrEnd -> while {
                     results![operandIrIndex!] => operatorIr!
-                    (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213 or operatorIr!.opcode == -223)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22 or operatorIr!.kind == 23 or operatorIr!.kind == 24 or operatorIr!.kind == 25 or operatorIr!.kind == 26) -> if {
+                    (operatorIr!.kind == 6 or operatorIr!.kind == 7 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213 or operatorIr!.opcode == -223 or operatorIr!.opcode == -224 or operatorIr!.opcode == -225)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 13 or operatorIr!.kind == 15 or operatorIr!.kind == 17 or operatorIr!.kind == 22 or operatorIr!.kind == 23 or operatorIr!.kind == 24 or operatorIr!.kind == 25 or operatorIr!.kind == 26) -> if {
                         -1 => firstOperand!
                         -1 => secondOperand!
                         UIntSize(0) => firstStart!
@@ -1447,7 +1617,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             childIrIndex! + 1 => childIrIndex!
                         }
                         firstOperand! => operatorIr!.operand0
-                        (operatorIr!.kind == 6 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213 or operatorIr!.opcode == -223)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 15 or operatorIr!.kind == 24) -> if { secondOperand! => operatorIr!.operand1 }
+                        (operatorIr!.kind == 6 or operatorIr!.kind == 8 or (operatorIr!.kind == 9 and ((operatorIr!.opcode <= -201 and (operatorIr!.opcode >= -206 or operatorIr!.opcode == -213 or operatorIr!.opcode == -223 or operatorIr!.opcode == -224 or operatorIr!.opcode == -225)) or operatorIr!.opcode == -220 or operatorIr!.opcode == -221)) or operatorIr!.kind == 15 or operatorIr!.kind == 24) -> if { secondOperand! => operatorIr!.operand1 }
                         operatorIr!.kind == 22 -> if {
                             -1 => operatorIr!.operand0
                             firstOperand! => operatorIr!.operand1
@@ -2484,6 +2654,8 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                         false => knownEntryMapTextExpression!
                         false => knownEntryMapPathExpression!
                         false => knownEntryBorrowTextExpression!
+                        false => knownEntryDynExpression!
+                        false => knownEntryDynDispatchExpression!
                         entryExpression.kind == 53 => knownEntryIndexAssignment!
                         entryExpression.kind == 54 => knownEntryMemberAssignment!
                         entryExpression.kind == 10 -> if {
@@ -2493,6 +2665,83 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                             entryFlowOpcode == -205 -> if { true => knownEntryMapTextExpression! }
                             entryFlowOpcode == -214 -> if { true => knownEntryMapPathExpression! }
                             entryFlowOpcode == -206 -> if { true => knownEntryBorrowTextExpression! }
+                            entryFlowOpcode == -224 -> if { true => knownEntryDynExpression! }
+                            entryExpression.firstToken => knownEntryDynTokenSearch!
+                            knownEntryDynTokenSearch! < entryExpression.firstToken + entryExpression.tokenCount -> while {
+                                prepared.package.tokens[sourceRange.tokenStart + knownEntryDynTokenSearch!] => knownEntryDynToken
+                                (knownEntryDynToken.kind == grammar.tokenIdIdentifier and knownEntryDynToken.span.length == UIntSize(3) and (source -> byte(knownEntryDynToken.span.start)) == UInt8(100) and (source -> byte(knownEntryDynToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(knownEntryDynToken.span.start + UIntSize(2))) == UInt8(110)) -> if { true => knownEntryDynExpression! }
+                                knownEntryDynTokenSearch! + 1 => knownEntryDynTokenSearch!
+                            }
+                            false => knownEntryDynDispatchPath!
+                            0 => knownEntryDynDispatchPathSearch!
+                            knownEntryDynDispatchPathSearch! < sourceRange.astCount -> while {
+                                prepared.package.nodes[sourceRange.astStart + knownEntryDynDispatchPathSearch!] => knownEntryDynDispatchPath
+                                (knownEntryDynDispatchPath.kind == 16 and knownEntryDynDispatchPath.parent == entryExpressionAst!) -> if {
+                                    -1 => knownEntryDynDispatchTraitToken!
+                                    -1 => knownEntryDynDispatchMethodToken!
+                                    knownEntryDynDispatchPath.firstToken => knownEntryDynDispatchTokenSearch!
+                                    knownEntryDynDispatchTokenSearch! < knownEntryDynDispatchPath.firstToken + knownEntryDynDispatchPath.tokenCount -> while {
+                                        prepared.package.tokens[sourceRange.tokenStart + knownEntryDynDispatchTokenSearch!] => knownEntryDynDispatchToken
+                                        knownEntryDynDispatchToken.kind == grammar.tokenIdIdentifier -> if {
+                                            knownEntryDynDispatchTraitToken! < 0 -> if { knownEntryDynDispatchTokenSearch! => knownEntryDynDispatchTraitToken! } else { knownEntryDynDispatchTokenSearch! => knownEntryDynDispatchMethodToken! }
+                                        }
+                                        knownEntryDynDispatchTokenSearch! + 1 => knownEntryDynDispatchTokenSearch!
+                                    }
+                                    0 => knownEntryDynDispatchTraitSearch!
+                                    knownEntryDynDispatchTraitSearch! < sourceRange.symbolCount -> while {
+                                        prepared.package.symbols[sourceRange.symbolStart + knownEntryDynDispatchTraitSearch!] => knownEntryDynDispatchTrait
+                                        (knownEntryDynDispatchTrait.kind == 5 and knownEntryDynDispatchTraitToken! >= 0 and knownEntryDynDispatchMethodToken! >= 0) -> if {
+                                            prepared.package.tokens[sourceRange.tokenStart + knownEntryDynDispatchTrait.nameToken] => knownEntryDynDispatchDeclaredName
+                                            prepared.package.tokens[sourceRange.tokenStart + knownEntryDynDispatchTraitToken!] => knownEntryDynDispatchRequestedName
+                                            knownEntryDynDispatchDeclaredName.span.length == knownEntryDynDispatchRequestedName.span.length => knownEntryDynDispatchNameEqual!
+                                            UIntSize(0) => knownEntryDynDispatchNameByte!
+                                            (knownEntryDynDispatchNameEqual! and knownEntryDynDispatchNameByte! < knownEntryDynDispatchDeclaredName.span.length) -> while {
+                                                (source -> byte(knownEntryDynDispatchDeclaredName.span.start + knownEntryDynDispatchNameByte!)) != (source -> byte(knownEntryDynDispatchRequestedName.span.start + knownEntryDynDispatchNameByte!)) -> if { false => knownEntryDynDispatchNameEqual! }
+                                                knownEntryDynDispatchNameByte! + UIntSize(1) => knownEntryDynDispatchNameByte!
+                                            }
+                                            knownEntryDynDispatchNameEqual! -> if { true => knownEntryDynDispatchPath! }
+                                        }
+                                        knownEntryDynDispatchTraitSearch! + 1 => knownEntryDynDispatchTraitSearch!
+                                    }
+                                }
+                                knownEntryDynDispatchPathSearch! + 1 => knownEntryDynDispatchPathSearch!
+                            }
+                            -1 => knownEntryDynDispatchSourceSymbol!
+                            0 => knownEntryDynDispatchSourceSearch!
+                            knownEntryDynDispatchSourceSearch! < sourceRange.astCount -> while {
+                                prepared.package.nodes[sourceRange.astStart + knownEntryDynDispatchSourceSearch!] => knownEntryDynDispatchSource
+                                (knownEntryDynDispatchSource.kind == 15 and knownEntryDynDispatchSource.parent == entryExpressionAst!) -> if {
+                                    0 => knownEntryDynDispatchNameResolutionSearch!
+                                    knownEntryDynDispatchNameResolutionSearch! < (resolvedNames! -> len) -> while {
+                                        resolvedNames![knownEntryDynDispatchNameResolutionSearch!].astNode == knownEntryDynDispatchSourceSearch! -> if { resolvedNames![knownEntryDynDispatchNameResolutionSearch!].symbol => knownEntryDynDispatchSourceSymbol! }
+                                        knownEntryDynDispatchNameResolutionSearch! + 1 => knownEntryDynDispatchNameResolutionSearch!
+                                    }
+                                }
+                                knownEntryDynDispatchSourceSearch! + 1 => knownEntryDynDispatchSourceSearch!
+                            }
+                            false => knownEntryDynDispatchSource!
+                            knownEntryDynDispatchSourceSymbol! >= 0 -> if {
+                                prepared.package.symbols[sourceRange.symbolStart + knownEntryDynDispatchSourceSymbol!] => knownEntryDynDispatchSourceBinding
+                                prepared.package.nodes[sourceRange.astStart + knownEntryDynDispatchSourceBinding.astNode] => knownEntryDynDispatchSourceDeclaration
+                                knownEntryDynDispatchSourceDeclaration.firstToken => knownEntryDynDispatchSourceTokenSearch!
+                                knownEntryDynDispatchSourceTokenSearch! < knownEntryDynDispatchSourceDeclaration.firstToken + knownEntryDynDispatchSourceDeclaration.tokenCount -> while {
+                                    prepared.package.tokens[sourceRange.tokenStart + knownEntryDynDispatchSourceTokenSearch!] => knownEntryDynDispatchSourceToken
+                                    (knownEntryDynDispatchSourceToken.kind == grammar.tokenIdIdentifier and knownEntryDynDispatchSourceToken.span.length == UIntSize(3) and (source -> byte(knownEntryDynDispatchSourceToken.span.start)) == UInt8(100) and (source -> byte(knownEntryDynDispatchSourceToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(knownEntryDynDispatchSourceToken.span.start + UIntSize(2))) == UInt8(110)) -> if { true => knownEntryDynDispatchSource! }
+                                    knownEntryDynDispatchSourceTokenSearch! + 1 => knownEntryDynDispatchSourceTokenSearch!
+                                }
+                            }
+                            (knownEntryDynDispatchPath! and knownEntryDynDispatchSource!) -> if {
+                                true => knownEntryDynDispatchExpression!
+                                1 => entryExpressionTypeOrigin!
+                                -1 => entryExpressionTypeModule!
+                                2 => entryExpressionTypeSymbol!
+                                0 => knownEntryDynDispatchIntTypeSearch!
+                                knownEntryDynDispatchIntTypeSearch! < (frozenRecursiveSemanticTypes -> len) -> while {
+                                    frozenRecursiveSemanticTypes[knownEntryDynDispatchIntTypeSearch!] => knownEntryDynDispatchIntType
+                                    (knownEntryDynDispatchIntType.status == 0 and knownEntryDynDispatchIntType.kind == 1 and knownEntryDynDispatchIntType.origin == 1 and knownEntryDynDispatchIntType.symbol == 2) -> if { knownEntryDynDispatchIntTypeSearch! => recursiveEntryExpressionTypeId! }
+                                    knownEntryDynDispatchIntTypeSearch! + 1 => knownEntryDynDispatchIntTypeSearch!
+                                }
+                            }
                         }
                         knownEntryPushExpression! -> if {
                             1 => entryExpressionTypeOrigin!
@@ -2570,7 +2819,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                     flags: entryExpression.flags
                                 })
                             } else {
-                                (entryExpressionTypeIndex! >= 0 or recursiveEntryExpressionTypeId! >= 0 or knownEntryPatternReference! or entryExpression.kind == 37 or entryExpression.kind == 41 or entryExpression.kind == 56 or (entryExpression.kind == 15 and entryExpression.parent >= 0 and prepared.package.nodes[sourceRange.astStart + entryExpression.parent].kind == 41) or knownEntryBooleanExpression! or knownEntryCallExpression! or knownEntryNumericExpression! or knownEntryPushExpression! or knownEntryPutExpression! or knownEntryMapTextExpression! or knownEntryMapPathExpression! or knownEntryBorrowTextExpression! or knownEntryIndexAssignment! or knownEntryMemberAssignment!) -> if {
+                                (entryExpressionTypeIndex! >= 0 or recursiveEntryExpressionTypeId! >= 0 or knownEntryPatternReference! or entryExpression.kind == 37 or entryExpression.kind == 41 or entryExpression.kind == 56 or (entryExpression.kind == 15 and entryExpression.parent >= 0 and prepared.package.nodes[sourceRange.astStart + entryExpression.parent].kind == 41) or knownEntryBooleanExpression! or knownEntryCallExpression! or knownEntryNumericExpression! or knownEntryPushExpression! or knownEntryPutExpression! or knownEntryMapTextExpression! or knownEntryMapPathExpression! or knownEntryBorrowTextExpression! or knownEntryDynExpression! or knownEntryDynDispatchExpression! or knownEntryIndexAssignment! or knownEntryMemberAssignment!) -> if {
                                 9 => entryExpressionKind!
                                 entryExpression.kind == 13 -> if { 2 => entryExpressionKind! }
                                 entryExpression.kind == 14 -> if { 3 => entryExpressionKind! }
@@ -2648,6 +2897,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                     }
                                 }
                                 entryExpression.kind == 10 -> if {
+                                    knownEntryDynExpression! -> if { -224 => entryExpressionOpcode! }
                                     0 => entryIntrinsicChildSearch!
                                     entryIntrinsicChildSearch! < sourceRange.astCount -> while {
                                         prepared.package.nodes[sourceRange.astStart + entryIntrinsicChildSearch!] => entryIntrinsicChild
@@ -2656,6 +2906,90 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                             entryExpressionIntrinsicOpcode <= -201 -> if { entryExpressionIntrinsicOpcode => entryExpressionOpcode! }
                                         }
                                         entryIntrinsicChildSearch! + 1 => entryIntrinsicChildSearch!
+                                    }
+                                    entryExpressionOpcode! == -224 -> if {
+                                        -1 => entryDynTraitToken!
+                                        false => entryAfterDyn!
+                                        entryExpression.firstToken => entryDynTokenSearch!
+                                        entryDynTokenSearch! < entryExpression.firstToken + entryExpression.tokenCount -> while {
+                                            prepared.package.tokens[sourceRange.tokenStart + entryDynTokenSearch!] => entryDynToken
+                                            (entryAfterDyn! and entryDynTraitToken! < 0 and entryDynToken.kind == grammar.tokenIdIdentifier) -> if { entryDynTokenSearch! => entryDynTraitToken! }
+                                            (entryDynToken.kind == grammar.tokenIdIdentifier and entryDynToken.span.length == UIntSize(3) and (source -> byte(entryDynToken.span.start)) == UInt8(100) and (source -> byte(entryDynToken.span.start + UIntSize(1))) == UInt8(121) and (source -> byte(entryDynToken.span.start + UIntSize(2))) == UInt8(110)) -> if { true => entryAfterDyn! }
+                                            entryDynTokenSearch! + 1 => entryDynTokenSearch!
+                                        }
+                                        -1 => entryDynTraitSymbol!
+                                        0 => entryDynTraitSearch!
+                                        entryDynTraitSearch! < sourceRange.symbolCount -> while {
+                                            prepared.package.symbols[sourceRange.symbolStart + entryDynTraitSearch!] => entryDynTraitCandidate
+                                            (entryDynTraitCandidate.kind == 5 and entryDynTraitToken! >= 0) -> if {
+                                                prepared.package.tokens[sourceRange.tokenStart + entryDynTraitCandidate.nameToken] => entryDynDeclared
+                                                prepared.package.tokens[sourceRange.tokenStart + entryDynTraitToken!] => entryDynRequested
+                                                entryDynDeclared.span.length == entryDynRequested.span.length => entryDynEqual!
+                                                UIntSize(0) => entryDynByte!
+                                                (entryDynEqual! and entryDynByte! < entryDynDeclared.span.length) -> while {
+                                                    (source -> byte(entryDynDeclared.span.start + entryDynByte!)) != (source -> byte(entryDynRequested.span.start + entryDynByte!)) -> if { false => entryDynEqual! }
+                                                    entryDynByte! + UIntSize(1) => entryDynByte!
+                                                }
+                                                entryDynEqual! -> if { entryDynTraitSearch! => entryDynTraitSymbol! }
+                                            }
+                                            entryDynTraitSearch! + 1 => entryDynTraitSearch!
+                                        }
+                                        entryDynTraitSymbol! >= 0 -> if {
+                                            16 => entryExpressionTypeOrigin!
+                                            sourceIndex! => entryExpressionTypeModule!
+                                            entryDynTraitSymbol! => entryExpressionTypeSymbol!
+                                            -1 => recursiveEntryExpressionTypeId!
+                                        }
+                                    } else {
+                                        entryExpressionOpcode! == -1 -> if {
+                                            -1 => entryDispatchTraitToken!
+                                            -1 => entryDispatchMethodToken!
+                                            0 => entryDispatchPathSearch!
+                                            entryDispatchPathSearch! < sourceRange.astCount -> while {
+                                                prepared.package.nodes[sourceRange.astStart + entryDispatchPathSearch!] => entryDispatchPath
+                                                (entryDispatchPath.kind == 16 and entryDispatchPath.parent == entryExpressionAst!) -> if {
+                                                    entryDispatchPath.firstToken => entryDispatchTokenSearch!
+                                                    entryDispatchTokenSearch! < entryDispatchPath.firstToken + entryDispatchPath.tokenCount -> while {
+                                                        prepared.package.tokens[sourceRange.tokenStart + entryDispatchTokenSearch!] => entryDispatchToken
+                                                        entryDispatchToken.kind == grammar.tokenIdIdentifier -> if {
+                                                            entryDispatchTraitToken! < 0 -> if { entryDispatchTokenSearch! => entryDispatchTraitToken! } else { entryDispatchTokenSearch! => entryDispatchMethodToken! }
+                                                        }
+                                                        entryDispatchTokenSearch! + 1 => entryDispatchTokenSearch!
+                                                    }
+                                                }
+                                                entryDispatchPathSearch! + 1 => entryDispatchPathSearch!
+                                            }
+                                            false => entryDispatchTraitFound!
+                                            0 => entryDispatchTraitSearch!
+                                            entryDispatchTraitSearch! < sourceRange.symbolCount -> while {
+                                                prepared.package.symbols[sourceRange.symbolStart + entryDispatchTraitSearch!] => entryDispatchTraitCandidate
+                                                (entryDispatchTraitCandidate.kind == 5 and entryDispatchTraitToken! >= 0) -> if {
+                                                    prepared.package.tokens[sourceRange.tokenStart + entryDispatchTraitCandidate.nameToken] => entryDispatchDeclared
+                                                    prepared.package.tokens[sourceRange.tokenStart + entryDispatchTraitToken!] => entryDispatchRequested
+                                                    entryDispatchDeclared.span.length == entryDispatchRequested.span.length => entryDispatchEqual!
+                                                    UIntSize(0) => entryDispatchByte!
+                                                    (entryDispatchEqual! and entryDispatchByte! < entryDispatchDeclared.span.length) -> while {
+                                                        (source -> byte(entryDispatchDeclared.span.start + entryDispatchByte!)) != (source -> byte(entryDispatchRequested.span.start + entryDispatchByte!)) -> if { false => entryDispatchEqual! }
+                                                        entryDispatchByte! + UIntSize(1) => entryDispatchByte!
+                                                    }
+                                                    entryDispatchEqual! -> if { true => entryDispatchTraitFound! }
+                                                }
+                                                entryDispatchTraitSearch! + 1 => entryDispatchTraitSearch!
+                                            }
+                                            (entryDispatchTraitFound! and entryDispatchMethodToken! >= 0) -> if {
+                                                -225 => entryExpressionOpcode!
+                                                1 => entryExpressionTypeOrigin!
+                                                -1 => entryExpressionTypeModule!
+                                                2 => entryExpressionTypeSymbol!
+                                                -1 => recursiveEntryExpressionTypeId!
+                                                0 => entryDispatchIntSearch!
+                                                entryDispatchIntSearch! < (frozenRecursiveSemanticTypes -> len) -> while {
+                                                    frozenRecursiveSemanticTypes[entryDispatchIntSearch!] => entryDispatchIntType
+                                                    (entryDispatchIntType.status == 0 and entryDispatchIntType.kind == 1 and entryDispatchIntType.origin == 1 and entryDispatchIntType.symbol == 2) -> if { entryDispatchIntSearch! => recursiveEntryExpressionTypeId! }
+                                                    entryDispatchIntSearch! + 1 => entryDispatchIntSearch!
+                                                }
+                                            }
+                                        }
                                     }
                                     knownEntryPushExpression! -> if { -204 => entryExpressionOpcode! }
                                     knownEntryPutExpression! -> if { -223 => entryExpressionOpcode! }
@@ -2720,6 +3054,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                     frozenRecursiveSemanticTypes[recursiveEntryExpressionTypeId!].kind => entryExpressionTypeKind!
                                     recursiveTypeFlags[recursiveEntryExpressionTypeId!] => entryExpressionTypeFlags!
                                 }
+                                entryExpressionOpcode! == -224 -> if { 1 => entryExpressionTypeFlags! }
                                 results! -> push(TypedIrNode {
                                     kind: entryExpressionKind!
                                     parent: entryIr!
@@ -2762,7 +3097,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                     entryExpressionStart => entryOperandIr!
                     entryOperandIr! < entryExpressionEnd -> while {
                         results![entryOperandIr!] => entryOperator!
-                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213 or entryOperator!.opcode == -223)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 13 or entryOperator!.kind == 15 or entryOperator!.kind == 17 or entryOperator!.kind == 22 or entryOperator!.kind == 23 or entryOperator!.kind == 24 or entryOperator!.kind == 25 or entryOperator!.kind == 26) -> if {
+                        (entryOperator!.kind == 6 or entryOperator!.kind == 7 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213 or entryOperator!.opcode == -223 or entryOperator!.opcode == -224 or entryOperator!.opcode == -225)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 13 or entryOperator!.kind == 15 or entryOperator!.kind == 17 or entryOperator!.kind == 22 or entryOperator!.kind == 23 or entryOperator!.kind == 24 or entryOperator!.kind == 25 or entryOperator!.kind == 26) -> if {
                             -1 => entryFirstOperand!
                             -1 => entrySecondOperand!
                             UIntSize(0) => entryFirstStart!
@@ -2785,7 +3120,7 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 entryChildIr! + 1 => entryChildIr!
                             }
                             entryFirstOperand! => entryOperator!.operand0
-                            (entryOperator!.kind == 6 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213 or entryOperator!.opcode == -223)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 15 or entryOperator!.kind == 24) -> if { entrySecondOperand! => entryOperator!.operand1 }
+                            (entryOperator!.kind == 6 or entryOperator!.kind == 8 or (entryOperator!.kind == 9 and ((entryOperator!.opcode <= -201 and (entryOperator!.opcode >= -206 or entryOperator!.opcode == -213 or entryOperator!.opcode == -223 or entryOperator!.opcode == -224 or entryOperator!.opcode == -225)) or entryOperator!.opcode == -220 or entryOperator!.opcode == -221)) or entryOperator!.kind == 15 or entryOperator!.kind == 24) -> if { entrySecondOperand! => entryOperator!.operand1 }
                             entryOperator!.kind == 22 -> if {
                                 -1 => entryOperator!.operand0
                                 entryFirstOperand! => entryOperator!.operand1

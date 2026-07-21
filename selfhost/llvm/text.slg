@@ -401,7 +401,7 @@ writeTextLikeType node: typedIr.TypedIrNode -> Unit uses Console {
 }
 
 ownsType node: typedIr.TypedIrNode -> Bool {
-    (node.typeOrigin == 13 or node.typeOrigin == 14 or node.typeOrigin == 15) -> if { true } else {
+    (node.typeOrigin == 13 or node.typeOrigin == 14 or node.typeOrigin == 15 or node.typeOrigin == 16) -> if { true } else {
     node.typeId >= 0 -> if {
         node.typeFlags % 2 == 1
     } else {
@@ -2629,12 +2629,16 @@ emitCore context: EmitContext -> Unit uses Console {
         # can still carry a stale imported nominal module on region nodes, so
         # consulting it first reintroduces sys.file.SourceText as an unrelated
         # user struct even when typeId already names the canonical builtin.
+        node.typeOrigin == 16 -> if {
+            "%sollang.dyn" -> print
+        } else {
         node -> integerNodeWidth => effectiveIntegerWidth
         effectiveIntegerWidth > 0 -> if {
             "i$(effectiveIntegerWidth)" -> print
         } else {
             node -> effectiveTypeId => typeId
             typeId >= 0 -> if { typeId -> writeSemanticTypeId } else { node -> writeType }
+        }
         }
     }
     llvmType symbol: Int -> Text {
@@ -2742,6 +2746,7 @@ emitCore context: EmitContext -> Unit uses Console {
         selected
     }
     storageAlign node: typedIr.TypedIrNode -> Int {
+        node.typeOrigin == 16 -> if { context.pointerBitWidth / 8 } else {
         node -> effectiveTypeId => typeId
         typeId >= 0 -> if {
             typeId -> isNominalEnumType -> if { 8 } else {
@@ -2749,6 +2754,7 @@ emitCore context: EmitContext -> Unit uses Console {
             }
         } else {
             node.typeSymbol -> legacyStorageAlign
+        }
         }
     }
     enumVariantTag node: typedIr.TypedIrNode -> Int {
@@ -5516,6 +5522,19 @@ emitCore context: EmitContext -> Unit uses Console {
                 }
                 "  call void @free(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_values)" -> println
             }
+            (ownedDropBeforeEdge! and ownedDropIsRoot! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and ownedDropCandidate.typeId < 0 and ownedDropCandidate.typeOrigin == 16 and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
+                ownedDropCandidate.flags == 1 -> if {
+                    "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_current = load %sollang.dyn, ptr %slot$(ownedDropRoot!), align $(context.pointerBitWidth / 8)" -> println
+                    "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_data = extractvalue %sollang.dyn %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_current, 0" -> println
+                    "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_vtable = extractvalue %sollang.dyn %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_current, 1" -> println
+                } else {
+                    "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_data = extractvalue %sollang.dyn %v$(ownedDropCandidate.operand0), 0" -> println
+                    "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_vtable = extractvalue %sollang.dyn %v$(ownedDropCandidate.operand0), 1" -> println
+                }
+                "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_drop_slot = getelementptr ptr, ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_vtable, i64 0" -> println
+                "  %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_drop = load ptr, ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_drop_slot, align $(context.pointerBitWidth / 8)" -> println
+                "  call void %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_drop(ptr %cleanup$(request.edgeIndex)_b$(ownedDropIndex!)_data)" -> println
+            }
             (ownedDropBeforeEdge! and ownedDropIsRoot! and not ownedDropMoved! and ownedDropCandidate.kind == 17 and ownedDropCandidate.parent == request.regionIndex and (ownedDropCandidate.typeId < 0 or ownedDropHasPartialMoves!) and (ownedDropCandidate -> isGenericEnumType) and ownedDropCandidate.symbol != request.transferredSymbol) -> if {
                 0 => ownedEnumValueKind!
                 ownedDropCandidate.flags == 1 -> if { 2 => ownedEnumValueKind! }
@@ -6291,6 +6310,25 @@ emitCore context: EmitContext -> Unit uses Console {
                     regionMemberTokenIndex! + 1 => regionMemberTokenIndex!
                 }
                 }
+            }
+            (regionNode.kind == 9 and regionNode.opcode == -224 and regionNode.operand0 >= 0) -> if {
+                context.ir[regionNode.operand0] => regionDynConcrete
+                0 => regionDynSize!
+                (regionDynConcrete.typeId >= 0 and regionDynConcrete.typeId < (context.typeSizes -> len)) -> if { context.typeSizes[regionDynConcrete.typeId] => regionDynSize! }
+                "  %v$(regionNodeIndex!)_data = call ptr @malloc(i64 $(regionDynSize!))" -> println
+                "  store " -> print
+                regionDynConcrete -> writeIrType
+                " %v$(regionNode.operand0), ptr %v$(regionNodeIndex!)_data, align " -> print
+                regionDynConcrete -> storageAlign -> writeDecimalLine
+                "  %v$(regionNodeIndex!)_with_data = insertvalue %sollang.dyn poison, ptr %v$(regionNodeIndex!)_data, 0" -> println
+                "  %v$(regionNodeIndex!) = insertvalue %sollang.dyn %v$(regionNodeIndex!)_with_data, ptr @sollang_dyn_vtable_$(regionNodeIndex!), 1" -> println
+            }
+            (regionNode.kind == 9 and regionNode.opcode == -225 and regionNode.operand0 >= 0) -> if {
+                "  %v$(regionNodeIndex!)_data = extractvalue %sollang.dyn %v$(regionNode.operand0), 0" -> println
+                "  %v$(regionNodeIndex!)_vtable = extractvalue %sollang.dyn %v$(regionNode.operand0), 1" -> println
+                "  %v$(regionNodeIndex!)_slot = getelementptr ptr, ptr %v$(regionNodeIndex!)_vtable, i64 1" -> println
+                "  %v$(regionNodeIndex!)_method = load ptr, ptr %v$(regionNodeIndex!)_slot, align $(context.pointerBitWidth / 8)" -> println
+                "  %v$(regionNodeIndex!) = call i32 %v$(regionNodeIndex!)_method(ptr %v$(regionNodeIndex!)_data)" -> println
             }
             ((regionNode.kind == 9 or regionNode.kind == 6) and regionNode.opcode == -201 and regionNode.operand0 >= 0) -> if {
                 context.ir[regionNode.operand0] => regionLengthBase
@@ -7959,6 +7997,14 @@ emitCore context: EmitContext -> Unit uses Console {
                             (scheduleCallArgument! >= expressionStart and scheduleCallArgument! < functionEnd! and context.ir[scheduleCallArgument!].parent == scheduleCandidate!) -> while {
                                 not expressionScheduled![scheduleCallArgument! - expressionStart] -> if { false => scheduleReady! }
                                 context.ir[scheduleCallArgument!].nextOperand => scheduleCallArgument!
+                            }
+                        }
+                        (scheduleReady! and scheduleNode.kind == 6 and (scheduleNode.symbol == -101 or scheduleNode.symbol == -102)) -> if {
+                            expressionStart => schedulePrintBindingSearch!
+                            schedulePrintBindingSearch! < functionEnd! -> while {
+                                context.ir[schedulePrintBindingSearch!] => schedulePrintBinding
+                                (schedulePrintBinding.kind == 17 and schedulePrintBinding.operand0 >= expressionStart and schedulePrintBinding.operand0 < functionEnd! and (schedulePrintBinding -> sourceStart) < (scheduleNode -> sourceStart) and not expressionScheduled![schedulePrintBindingSearch! - expressionStart]) -> if { false => scheduleReady! }
+                                schedulePrintBindingSearch! + 1 => schedulePrintBindingSearch!
                             }
                         }
                         (scheduleReady! and (scheduleNode.kind == 9 or scheduleNode.kind == 6) and scheduleNode.opcode == -203 and scheduleNode.operand1 >= 0 and context.ir[scheduleNode.operand1].nextOperand >= expressionStart and context.ir[scheduleNode.operand1].nextOperand < functionEnd! and not expressionScheduled![context.ir[scheduleNode.operand1].nextOperand - expressionStart]) -> if { false => scheduleReady! }
@@ -10418,6 +10464,58 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         structTypeIndex! + 1 => structTypeIndex!
     }
+    false => usesDynTrait!
+    0 => dynTypeSearch!
+    dynTypeSearch! < (context.ir -> len) -> while {
+        context.ir[dynTypeSearch!] => dynTypeNode
+        (dynTypeNode.typeOrigin == 16 or dynTypeNode.opcode == -224 or dynTypeNode.opcode == -225) -> if { true => usesDynTrait! }
+        dynTypeSearch! + 1 => dynTypeSearch!
+    }
+    usesDynTrait! -> if {
+        "%sollang.dyn = type { ptr, ptr }" -> println
+        0 => dynTableIndex!
+        dynTableIndex! < (context.ir -> len) -> while {
+            context.ir[dynTableIndex!] => dynConversion
+            (dynConversion.kind == 9 and dynConversion.opcode == -224 and dynConversion.operand0 >= 0 and dynConversion.typeOrigin == 16) -> if {
+                context.ir[dynConversion.operand0] => dynConcrete
+                context.ranges[dynConversion.sourceModule] => dynSourceRange
+                context.symbols[dynSourceRange.symbolStart + dynConversion.typeSymbol] => dynTraitSymbol
+                context.sources[dynConversion.sourceModule] -> slice(context.tokens[dynSourceRange.tokenStart + dynTraitSymbol.nameToken].span.start, context.tokens[dynSourceRange.tokenStart + dynTraitSymbol.nameToken].span.length) => dynTraitName
+                -1 => dynTraitMethodSymbol!
+                0 => dynTraitMemberSearch!
+                dynTraitMemberSearch! < dynSourceRange.symbolCount -> while {
+                    context.symbols[dynSourceRange.symbolStart + dynTraitMemberSearch!] => dynTraitMember
+                    (dynTraitMember.kind == 29 and dynTraitMember.parent == dynConversion.typeSymbol and dynTraitMethodSymbol! < 0) -> if { dynTraitMemberSearch! => dynTraitMethodSymbol! }
+                    dynTraitMemberSearch! + 1 => dynTraitMemberSearch!
+                }
+                dynTraitMethodSymbol! >= 0 -> if {
+                    context.symbols[dynSourceRange.symbolStart + dynTraitMethodSymbol!] => dynTraitMethod
+                    context.sources[dynConversion.sourceModule] -> slice(context.tokens[dynSourceRange.tokenStart + dynTraitMethod.nameToken].span.start, context.tokens[dynSourceRange.tokenStart + dynTraitMethod.nameToken].span.length) => dynMethodName
+                    dynConcrete.typeId -> traitMethodSymbol(dynTraitName, dynMethodName) => dynImplementationSymbol
+                    dynImplementationSymbol >= 0 -> if {
+                        "@sollang_dyn_vtable_$(dynTableIndex!) = private constant [2 x ptr] [ptr @sollang_dyn_drop_$(dynTableIndex!), ptr @sollang_dyn_method_$(dynTableIndex!)]" -> println
+                        "define internal void @sollang_dyn_drop_$(dynTableIndex!)(ptr %data) {" -> println
+                        "entry:" -> println
+                        "  call void @free(ptr %data)" -> println
+                        "  ret void" -> println
+                        "}" -> println
+                        "define internal i32 @sollang_dyn_method_$(dynTableIndex!)(ptr %data) {" -> println
+                        "entry:" -> println
+                        "  %receiver = load " -> print
+                        dynConcrete -> writeIrType
+                        ", ptr %data, align " -> print
+                        dynConcrete -> storageAlign -> writeDecimalLine
+                        "  %result = call i32 @sollang_m$(dynConcrete.typeModule)_s$(dynImplementationSymbol)(" -> print
+                        dynConcrete -> writeIrType
+                        " %receiver)" -> println
+                        "  ret i32 %result" -> println
+                        "}" -> println
+                    }
+                }
+            }
+            dynTableIndex! + 1 => dynTableIndex!
+        }
+    }
     false => usesDynamicArray!
     false => usesArrayPush!
     0 => arrayTypeSearch!
@@ -10434,7 +10532,7 @@ emitCore context: EmitContext -> Unit uses Console {
     usesDynamicArray! -> if {
         "%sollang.array.i32 = type { ptr, i64, i64 }" -> println
     }
-    (usesDynamicArray! or usesSourceText! or usesComputePool or intrinsicRuntimeModule! >= 0 or usesOwnedDropRuntime! or usesDirectoryTraversal) -> if {
+    (usesDynamicArray! or usesSourceText! or usesComputePool or intrinsicRuntimeModule! >= 0 or usesOwnedDropRuntime! or usesDirectoryTraversal or usesDynTrait!) -> if {
         "declare ptr @malloc(i64)" -> println
         usesArrayPush! -> if { "declare ptr @realloc(ptr, i64)" -> println }
         "declare void @free(ptr)" -> println
@@ -10744,6 +10842,14 @@ emitCore context: EmitContext -> Unit uses Console {
                                 (entryScheduleCallArgument! > functionIndex! and entryScheduleCallArgument! < entryEnd! and context.ir[entryScheduleCallArgument!].parent == entryScheduleCandidate!) -> while {
                                     not entryScheduled![entryScheduleCallArgument! - functionIndex! - 1] -> if { false => entryScheduleReady! }
                                     context.ir[entryScheduleCallArgument!].nextOperand => entryScheduleCallArgument!
+                                }
+                            }
+                            (entryScheduleReady! and entryScheduleNode.kind == 6 and (entryScheduleNode.symbol == -101 or entryScheduleNode.symbol == -102)) -> if {
+                                functionIndex! + 1 => entrySchedulePrintBindingSearch!
+                                entrySchedulePrintBindingSearch! < entryEnd! -> while {
+                                    context.ir[entrySchedulePrintBindingSearch!] => entrySchedulePrintBinding
+                                    (entrySchedulePrintBinding.kind == 17 and entrySchedulePrintBinding.operand0 > functionIndex! and entrySchedulePrintBinding.operand0 < entryEnd! and (entrySchedulePrintBinding -> sourceStart) < (entryScheduleNode -> sourceStart) and not entryScheduled![entrySchedulePrintBindingSearch! - functionIndex! - 1]) -> if { false => entryScheduleReady! }
+                                    entrySchedulePrintBindingSearch! + 1 => entrySchedulePrintBindingSearch!
                                 }
                             }
                             (entryScheduleReady! and (entryScheduleNode.kind == 9 or entryScheduleNode.kind == 6) and entryScheduleNode.opcode == -203 and entryScheduleNode.operand1 >= 0 and context.ir[entryScheduleNode.operand1].nextOperand > functionIndex! and context.ir[entryScheduleNode.operand1].nextOperand < entryEnd! and not entryScheduled![context.ir[entryScheduleNode.operand1].nextOperand - functionIndex! - 1]) -> if { false => entryScheduleReady! }
@@ -11058,6 +11164,25 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                             }
                         }
+                    }
+                    (entryExpression.kind == 9 and entryExpression.opcode == -224 and entryExpression.operand0 >= 0) -> if {
+                        context.ir[entryExpression.operand0] => entryDynConcrete
+                        0 => entryDynSize!
+                        (entryDynConcrete.typeId >= 0 and entryDynConcrete.typeId < (context.typeSizes -> len)) -> if { context.typeSizes[entryDynConcrete.typeId] => entryDynSize! }
+                        "  %v$(entryExpressionIndex!)_data = call ptr @malloc(i64 $(entryDynSize!))" -> println
+                        "  store " -> print
+                        entryDynConcrete -> writeIrType
+                        " %v$(entryExpression.operand0), ptr %v$(entryExpressionIndex!)_data, align " -> print
+                        entryDynConcrete -> storageAlign -> writeDecimalLine
+                        "  %v$(entryExpressionIndex!)_with_data = insertvalue %sollang.dyn poison, ptr %v$(entryExpressionIndex!)_data, 0" -> println
+                        "  %v$(entryExpressionIndex!) = insertvalue %sollang.dyn %v$(entryExpressionIndex!)_with_data, ptr @sollang_dyn_vtable_$(entryExpressionIndex!), 1" -> println
+                    }
+                    (entryExpression.kind == 9 and entryExpression.opcode == -225 and entryExpression.operand0 >= 0) -> if {
+                        "  %v$(entryExpressionIndex!)_data = extractvalue %sollang.dyn %v$(entryExpression.operand0), 0" -> println
+                        "  %v$(entryExpressionIndex!)_vtable = extractvalue %sollang.dyn %v$(entryExpression.operand0), 1" -> println
+                        "  %v$(entryExpressionIndex!)_slot = getelementptr ptr, ptr %v$(entryExpressionIndex!)_vtable, i64 1" -> println
+                        "  %v$(entryExpressionIndex!)_method = load ptr, ptr %v$(entryExpressionIndex!)_slot, align $(context.pointerBitWidth / 8)" -> println
+                        "  %v$(entryExpressionIndex!) = call i32 %v$(entryExpressionIndex!)_method(ptr %v$(entryExpressionIndex!)_data)" -> println
                     }
                     ((entryExpression.kind == 9 or entryExpression.kind == 6) and entryExpression.opcode == -201 and entryExpression.operand0 >= 0) -> if {
                         context.ir[entryExpression.operand0] => entryLengthBase
