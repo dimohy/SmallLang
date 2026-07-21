@@ -186,10 +186,11 @@ entry:
   %v29 = load %sollang.dict, ptr %slot15, align 8
   %v35 = load %sollang.dict, ptr %slot15, align 8
   %v41 = load %sollang.dict, ptr %slot15, align 8
-  %v28_keys = extractvalue %sollang.dict %v29, 0
-  %v28_values = extractvalue %sollang.dict %v29, 1
-  %v28_length = extractvalue %sollang.dict %v29, 2
-  %v28_capacity = extractvalue %sollang.dict %v29, 3
+  %v28_dictionary = load %sollang.dict, ptr %slot15, align 8
+  %v28_keys = extractvalue %sollang.dict %v28_dictionary, 0
+  %v28_values = extractvalue %sollang.dict %v28_dictionary, 1
+  %v28_length = extractvalue %sollang.dict %v28_dictionary, 2
+  %v28_capacity = extractvalue %sollang.dict %v28_dictionary, 3
   %v28_control_offset = mul i64 %v28_capacity, 4
   %v28_controls = getelementptr i8, ptr %v28_keys, i64 %v28_control_offset
   %v28_hash_key = zext i32 1 to i64
@@ -282,10 +283,11 @@ dict28_missing:
 dict28_hit:
   %v28_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v28_values, i64 %v28_slot
   %v28 = load %sollang.struct.m0_s0, ptr %v28_value_ptr, align 8
-  %v34_keys = extractvalue %sollang.dict %v35, 0
-  %v34_values = extractvalue %sollang.dict %v35, 1
-  %v34_length = extractvalue %sollang.dict %v35, 2
-  %v34_capacity = extractvalue %sollang.dict %v35, 3
+  %v34_dictionary = load %sollang.dict, ptr %slot15, align 8
+  %v34_keys = extractvalue %sollang.dict %v34_dictionary, 0
+  %v34_values = extractvalue %sollang.dict %v34_dictionary, 1
+  %v34_length = extractvalue %sollang.dict %v34_dictionary, 2
+  %v34_capacity = extractvalue %sollang.dict %v34_dictionary, 3
   %v34_control_offset = mul i64 %v34_capacity, 4
   %v34_controls = getelementptr i8, ptr %v34_keys, i64 %v34_control_offset
   %v34_hash_key = zext i32 1 to i64
@@ -378,10 +380,11 @@ dict34_missing:
 dict34_hit:
   %v34_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v34_values, i64 %v34_slot
   %v34 = load %sollang.struct.m0_s0, ptr %v34_value_ptr, align 8
-  %v40_keys = extractvalue %sollang.dict %v41, 0
-  %v40_values = extractvalue %sollang.dict %v41, 1
-  %v40_length = extractvalue %sollang.dict %v41, 2
-  %v40_capacity = extractvalue %sollang.dict %v41, 3
+  %v40_dictionary = load %sollang.dict, ptr %slot15, align 8
+  %v40_keys = extractvalue %sollang.dict %v40_dictionary, 0
+  %v40_values = extractvalue %sollang.dict %v40_dictionary, 1
+  %v40_length = extractvalue %sollang.dict %v40_dictionary, 2
+  %v40_capacity = extractvalue %sollang.dict %v40_dictionary, 3
   %v40_control_offset = mul i64 %v40_capacity, 4
   %v40_controls = getelementptr i8, ptr %v40_keys, i64 %v40_control_offset
   %v40_hash_key = zext i32 1 to i64

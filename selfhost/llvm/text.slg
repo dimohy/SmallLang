@@ -3697,6 +3697,16 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         rootIndex!
     }
+    mutableStorageRoot bindingIndex: Int -> Int {
+        -1 => storageRoot!
+        bindingIndex >= 0 -> if {
+            bindingIndex -> mutableBindingRoot => candidateRoot
+            (candidateRoot >= 0 and context.ir[candidateRoot].kind == 17 and context.ir[candidateRoot].flags == 1) -> if {
+                candidateRoot => storageRoot!
+            }
+        }
+        storageRoot!
+    }
     bindingBelongsToOwner request: BindingOwnerRequest -> Bool {
         context.ir[request.bindingIndex].parent => bindingOwner!
         (bindingOwner! >= 0 and context.ir[bindingOwner!].kind != 0 and context.ir[bindingOwner!].kind != 11) -> while {
@@ -3781,6 +3791,177 @@ emitCore context: EmitContext -> Unit uses Console {
         "  %push$(pushIndex)_array1 = insertvalue %sollang.array.i32 %push$(pushIndex)_array0, i64 %push$(pushIndex)_new_length, 1" -> println
         "  %push$(pushIndex)_array2 = insertvalue %sollang.array.i32 %push$(pushIndex)_array1, i64 %push$(pushIndex)_append_capacity, 2" -> println
         "  store %sollang.array.i32 %push$(pushIndex)_array2, ptr %slot$(pushRoot), align 8" -> println
+    }
+    emitDictionaryPut request: WhileValueRequest -> Unit uses Console {
+        request.whileIndex => putIndex
+        context.ir[putIndex] => putNode
+        context.ir[putNode.operand0] => putSource
+        putNode.operand1 => putKeyIndex
+        context.ir[putKeyIndex] => putKey
+        putKey.nextOperand => putValueIndex
+        putValueIndex >= 0 -> if {
+            context.ir[putValueIndex] => putValue
+            putNode.operand0 -> mutableStorageRoot => putRoot
+            putSource -> isDictionaryType -> if {
+                "  %put$(putIndex)_dictionary = load %sollang.dict, ptr %slot$(putRoot), align 8" -> println
+                "  %put$(putIndex)_old_keys = extractvalue %sollang.dict %put$(putIndex)_dictionary, 0" -> println
+                "  %put$(putIndex)_old_values = extractvalue %sollang.dict %put$(putIndex)_dictionary, 1" -> println
+                "  %put$(putIndex)_old_length = extractvalue %sollang.dict %put$(putIndex)_dictionary, 2" -> println
+                "  %put$(putIndex)_old_capacity = extractvalue %sollang.dict %put$(putIndex)_dictionary, 3" -> println
+                "  %put$(putIndex)_capacity_base = add i64 %put$(putIndex)_old_capacity, 4" -> println
+                "  %put$(putIndex)_capacity_nonzero = icmp ult i64 %put$(putIndex)_old_capacity, 1" -> println
+                "  %put$(putIndex)_capacity = select i1 %put$(putIndex)_capacity_nonzero, i64 4, i64 %put$(putIndex)_capacity_base" -> println
+                "  %put$(putIndex)_key_bytes = mul i64 %put$(putIndex)_capacity, 4" -> println
+                "  %put$(putIndex)_key_allocation = add i64 %put$(putIndex)_key_bytes, %put$(putIndex)_capacity" -> println
+                "  %put$(putIndex)_keys = call ptr @malloc(i64 %put$(putIndex)_key_allocation)" -> println
+                "  %put$(putIndex)_controls = getelementptr i8, ptr %put$(putIndex)_keys, i64 %put$(putIndex)_key_bytes" -> println
+                "  call void @llvm.memset.p0.i64(ptr %put$(putIndex)_controls, i8 0, i64 %put$(putIndex)_capacity, i1 false)" -> println
+                "  %put$(putIndex)_value_bytes = mul i64 %put$(putIndex)_capacity, 4" -> println
+                "  %put$(putIndex)_values = call ptr @malloc(i64 %put$(putIndex)_value_bytes)" -> println
+                "  br label %put$(putIndex)_rehash_start" -> println
+                "put$(putIndex)_rehash_loop:" -> println
+                "  %put$(putIndex)_rehash_index = phi i64 [ 0, %put$(putIndex)_rehash_start ], [ %put$(putIndex)_rehash_next, %put$(putIndex)_rehash_advance ]" -> println
+                "  %put$(putIndex)_rehash_active = icmp ult i64 %put$(putIndex)_rehash_index, %put$(putIndex)_old_capacity" -> println
+                "  br i1 %put$(putIndex)_rehash_active, label %put$(putIndex)_rehash_check, label %put$(putIndex)_rehash_done" -> println
+                "put$(putIndex)_rehash_check:" -> println
+                "  %put$(putIndex)_old_control_offset = mul i64 %put$(putIndex)_old_capacity, 4" -> println
+                "  %put$(putIndex)_old_control_ptr = getelementptr i8, ptr %put$(putIndex)_old_keys, i64 %put$(putIndex)_old_control_offset" -> println
+                "  %put$(putIndex)_old_control_slot = getelementptr i8, ptr %put$(putIndex)_old_control_ptr, i64 %put$(putIndex)_rehash_index" -> println
+                "  %put$(putIndex)_old_control = load i8, ptr %put$(putIndex)_old_control_slot, align 1" -> println
+                "  %put$(putIndex)_rehash_occupied = icmp ne i8 %put$(putIndex)_old_control, 0" -> println
+                "  br i1 %put$(putIndex)_rehash_occupied, label %put$(putIndex)_rehash_copy, label %put$(putIndex)_rehash_advance" -> println
+                "put$(putIndex)_rehash_copy:" -> println
+                "  %put$(putIndex)_rehash_key_ptr = getelementptr i32, ptr %put$(putIndex)_old_keys, i64 %put$(putIndex)_rehash_index" -> println
+                "  %put$(putIndex)_rehash_key = load i32, ptr %put$(putIndex)_rehash_key_ptr, align 4" -> println
+                "  %put$(putIndex)_rehash_value_ptr = getelementptr i32, ptr %put$(putIndex)_old_values, i64 %put$(putIndex)_rehash_index" -> println
+                "  %put$(putIndex)_rehash_value = load i32, ptr %put$(putIndex)_rehash_value_ptr, align 4" -> println
+                "  %put$(putIndex)_rehash_key64 = zext i32 %put$(putIndex)_rehash_key to i64" -> println
+                "  %put$(putIndex)_rehash_hash_high = lshr i64 %put$(putIndex)_rehash_key64, 32" -> println
+                "  %put$(putIndex)_rehash_hash_fold = xor i64 %put$(putIndex)_rehash_key64, %put$(putIndex)_rehash_hash_high" -> println
+                "  %put$(putIndex)_rehash_hash = mul i64 %put$(putIndex)_rehash_hash_fold, -7046029254386353131" -> println
+                "  %put$(putIndex)_rehash_h2_shifted = lshr i64 %put$(putIndex)_rehash_hash, 57" -> println
+                "  %put$(putIndex)_rehash_h2_raw = and i64 %put$(putIndex)_rehash_h2_shifted, 127" -> println
+                "  %put$(putIndex)_rehash_h2_zero = icmp eq i64 %put$(putIndex)_rehash_h2_raw, 0" -> println
+                "  %put$(putIndex)_rehash_h2_value = select i1 %put$(putIndex)_rehash_h2_zero, i64 1, i64 %put$(putIndex)_rehash_h2_raw" -> println
+                "  %put$(putIndex)_rehash_h2 = trunc i64 %put$(putIndex)_rehash_h2_value to i8" -> println
+                "  %put$(putIndex)_rehash_start_slot = urem i64 %put$(putIndex)_rehash_hash, %put$(putIndex)_capacity" -> println
+                "  br label %put$(putIndex)_rehash_find_start" -> println
+                "put$(putIndex)_rehash_find_start:" -> println
+                "  br label %put$(putIndex)_rehash_find" -> println
+                "put$(putIndex)_rehash_find:" -> println
+                "  %put$(putIndex)_rehash_slot = phi i64 [ %put$(putIndex)_rehash_start_slot, %put$(putIndex)_rehash_find_start ], [ %put$(putIndex)_rehash_next_slot, %put$(putIndex)_rehash_find_advance ]" -> println
+                "  %put$(putIndex)_rehash_control_slot = getelementptr i8, ptr %put$(putIndex)_controls, i64 %put$(putIndex)_rehash_slot" -> println
+                "  %put$(putIndex)_rehash_control = load i8, ptr %put$(putIndex)_rehash_control_slot, align 1" -> println
+                "  %put$(putIndex)_rehash_empty = icmp eq i8 %put$(putIndex)_rehash_control, 0" -> println
+                "  br i1 %put$(putIndex)_rehash_empty, label %put$(putIndex)_rehash_store, label %put$(putIndex)_rehash_find_advance" -> println
+                "put$(putIndex)_rehash_find_advance:" -> println
+                "  %put$(putIndex)_rehash_next_unwrapped = add i64 %put$(putIndex)_rehash_slot, 1" -> println
+                "  %put$(putIndex)_rehash_next_slot = urem i64 %put$(putIndex)_rehash_next_unwrapped, %put$(putIndex)_capacity" -> println
+                "  br label %put$(putIndex)_rehash_find" -> println
+                "put$(putIndex)_rehash_store:" -> println
+                "  %put$(putIndex)_rehash_new_key_ptr = getelementptr i32, ptr %put$(putIndex)_keys, i64 %put$(putIndex)_rehash_slot" -> println
+                "  store i32 %put$(putIndex)_rehash_key, ptr %put$(putIndex)_rehash_new_key_ptr, align 4" -> println
+                "  %put$(putIndex)_rehash_new_value_ptr = getelementptr i32, ptr %put$(putIndex)_values, i64 %put$(putIndex)_rehash_slot" -> println
+                "  store i32 %put$(putIndex)_rehash_value, ptr %put$(putIndex)_rehash_new_value_ptr, align 4" -> println
+                "  store i8 %put$(putIndex)_rehash_h2, ptr %put$(putIndex)_rehash_control_slot, align 1" -> println
+                "  br label %put$(putIndex)_rehash_advance" -> println
+                "put$(putIndex)_rehash_advance:" -> println
+                "  %put$(putIndex)_rehash_next = add i64 %put$(putIndex)_rehash_index, 1" -> println
+                "  br label %put$(putIndex)_rehash_loop" -> println
+                "put$(putIndex)_rehash_start:" -> println
+                "  br label %put$(putIndex)_rehash_loop" -> println
+                "put$(putIndex)_rehash_done:" -> println
+                "  call void @free(ptr %put$(putIndex)_old_keys)" -> println
+                "  call void @free(ptr %put$(putIndex)_old_values)" -> println
+                "  %put$(putIndex)_length = add i64 0, %put$(putIndex)_old_length" -> println
+                "  %put$(putIndex)_key64 = " -> print
+                (putKey.kind == 3 or putKey.kind == 4) -> if {
+                    "add i64 0, " -> print
+                    putKey -> sourceToken => putKeyToken
+                    putKey.kind == 3 -> if { context.sources[putKey.sourceModule] -> slice(putKeyToken.span.start, putKeyToken.span.length) -> print } else { "0" -> print }
+                    "" -> println
+                } else {
+                    "zext i32 %v$(putKeyIndex) to i64" -> println
+                }
+                "  %put$(putIndex)_hash_high = lshr i64 %put$(putIndex)_key64, 32" -> println
+                "  %put$(putIndex)_hash_fold = xor i64 %put$(putIndex)_key64, %put$(putIndex)_hash_high" -> println
+                "  %put$(putIndex)_hash = mul i64 %put$(putIndex)_hash_fold, -7046029254386353131" -> println
+                "  %put$(putIndex)_h2_shifted = lshr i64 %put$(putIndex)_hash, 57" -> println
+                "  %put$(putIndex)_h2_raw = and i64 %put$(putIndex)_h2_shifted, 127" -> println
+                "  %put$(putIndex)_h2_zero = icmp eq i64 %put$(putIndex)_h2_raw, 0" -> println
+                "  %put$(putIndex)_h2_value = select i1 %put$(putIndex)_h2_zero, i64 1, i64 %put$(putIndex)_h2_raw" -> println
+                "  %put$(putIndex)_h2 = trunc i64 %put$(putIndex)_h2_value to i8" -> println
+                "  %put$(putIndex)_start = urem i64 %put$(putIndex)_hash, %put$(putIndex)_capacity" -> println
+                "  br label %put$(putIndex)_loop_entry" -> println
+                "put$(putIndex)_loop:" -> println
+                "  %put$(putIndex)_slot = phi i64 [ %put$(putIndex)_start, %put$(putIndex)_loop_entry ], [ %put$(putIndex)_next, %put$(putIndex)_advance ]" -> println
+                "  %put$(putIndex)_probe = phi i64 [ 0, %put$(putIndex)_loop_entry ], [ %put$(putIndex)_probe_next, %put$(putIndex)_advance ]" -> println
+                "  %put$(putIndex)_active = icmp ult i64 %put$(putIndex)_probe, %put$(putIndex)_capacity" -> println
+                "  br i1 %put$(putIndex)_active, label %put$(putIndex)_check, label %put$(putIndex)_missing" -> println
+                "put$(putIndex)_check:" -> println
+                "  %put$(putIndex)_control_ptr = getelementptr i8, ptr %put$(putIndex)_controls, i64 0" -> println
+                "  %put$(putIndex)_control_slot = getelementptr i8, ptr %put$(putIndex)_control_ptr, i64 %put$(putIndex)_slot" -> println
+                "  %put$(putIndex)_control = load i8, ptr %put$(putIndex)_control_slot, align 1" -> println
+                "  %put$(putIndex)_empty = icmp eq i8 %put$(putIndex)_control, 0" -> println
+                "  br i1 %put$(putIndex)_empty, label %put$(putIndex)_insert, label %put$(putIndex)_compare_h2" -> println
+                "put$(putIndex)_compare_h2:" -> println
+                "  %put$(putIndex)_h2_match = icmp eq i8 %put$(putIndex)_control, %put$(putIndex)_h2" -> println
+                "  br i1 %put$(putIndex)_h2_match, label %put$(putIndex)_compare_key, label %put$(putIndex)_advance" -> println
+                "put$(putIndex)_compare_key:" -> println
+                "  %put$(putIndex)_key_ptr = getelementptr i32, ptr %put$(putIndex)_keys, i64 %put$(putIndex)_slot" -> println
+                "  %put$(putIndex)_stored_key = load i32, ptr %put$(putIndex)_key_ptr, align 4" -> println
+                "  %put$(putIndex)_found = icmp eq i32 %put$(putIndex)_stored_key, " -> print
+                (putKey.kind == 3 or putKey.kind == 4) -> if {
+                    putKey -> sourceToken => putKeyCompareToken
+                    putKey.kind == 3 -> if { context.sources[putKey.sourceModule] -> slice(putKeyCompareToken.span.start, putKeyCompareToken.span.length) -> println } else { "0" -> println }
+                } else { "%v$(putKeyIndex)" -> println }
+                "  br i1 %put$(putIndex)_found, label %put$(putIndex)_update, label %put$(putIndex)_advance" -> println
+                "put$(putIndex)_advance:" -> println
+                "  %put$(putIndex)_next_unwrapped = add i64 %put$(putIndex)_slot, 1" -> println
+                "  %put$(putIndex)_next = urem i64 %put$(putIndex)_next_unwrapped, %put$(putIndex)_capacity" -> println
+                "  %put$(putIndex)_probe_next = add i64 %put$(putIndex)_probe, 1" -> println
+                "  br label %put$(putIndex)_loop" -> println
+                "put$(putIndex)_insert:" -> println
+                "  %put$(putIndex)_insert_key_ptr = getelementptr i32, ptr %put$(putIndex)_keys, i64 %put$(putIndex)_slot" -> println
+                "  store i32 " -> print
+                (putKey.kind == 3 or putKey.kind == 4) -> if {
+                    putKey -> sourceToken => putKeyStoreToken
+                    putKey.kind == 3 -> if { context.sources[putKey.sourceModule] -> slice(putKeyStoreToken.span.start, putKeyStoreToken.span.length) -> print } else { "0" -> print }
+                } else { "%v$(putKeyIndex)" -> print }
+                ", ptr %put$(putIndex)_insert_key_ptr, align 4" -> println
+                "  %put$(putIndex)_insert_value_ptr = getelementptr i32, ptr %put$(putIndex)_values, i64 %put$(putIndex)_slot" -> println
+                "  store i32 " -> print
+                (putValue.kind == 3 or putValue.kind == 4) -> if {
+                    putValue -> sourceToken => putValueStoreToken
+                    putValue.kind == 3 -> if { context.sources[putValue.sourceModule] -> slice(putValueStoreToken.span.start, putValueStoreToken.span.length) -> print } else { "0" -> print }
+                } else { "%v$(putValueIndex)" -> print }
+                ", ptr %put$(putIndex)_insert_value_ptr, align 4" -> println
+                "  store i8 %put$(putIndex)_h2, ptr %put$(putIndex)_control_slot, align 1" -> println
+                "  %put$(putIndex)_insert_length = add i64 %put$(putIndex)_length, 1" -> println
+                "  br label %put$(putIndex)_done" -> println
+                "put$(putIndex)_update:" -> println
+                "  %put$(putIndex)_update_ptr = getelementptr i32, ptr %put$(putIndex)_values, i64 %put$(putIndex)_slot" -> println
+                "  store i32 " -> print
+                (putValue.kind == 3 or putValue.kind == 4) -> if {
+                    putValue -> sourceToken => putValueUpdateToken
+                    putValue.kind == 3 -> if { context.sources[putValue.sourceModule] -> slice(putValueUpdateToken.span.start, putValueUpdateToken.span.length) -> print } else { "0" -> print }
+                } else { "%v$(putValueIndex)" -> print }
+                ", ptr %put$(putIndex)_update_ptr, align 4" -> println
+                "  br label %put$(putIndex)_done" -> println
+                "put$(putIndex)_missing:" -> println
+                "  call void @llvm.trap()" -> println
+                "  unreachable" -> println
+                "put$(putIndex)_loop_entry:" -> println
+                "  br label %put$(putIndex)_loop" -> println
+                "put$(putIndex)_done:" -> println
+                "  %put$(putIndex)_new_length = phi i64 [ %put$(putIndex)_insert_length, %put$(putIndex)_insert ], [ %put$(putIndex)_length, %put$(putIndex)_update ]" -> println
+                "  %put$(putIndex)_result0 = insertvalue %sollang.dict poison, ptr %put$(putIndex)_keys, 0" -> println
+                "  %put$(putIndex)_result1 = insertvalue %sollang.dict %put$(putIndex)_result0, ptr %put$(putIndex)_values, 1" -> println
+                "  %put$(putIndex)_result2 = insertvalue %sollang.dict %put$(putIndex)_result1, i64 %put$(putIndex)_new_length, 2" -> println
+                "  %put$(putIndex)_result3 = insertvalue %sollang.dict %put$(putIndex)_result2, i64 %put$(putIndex)_capacity, 3" -> println
+                "  store %sollang.dict %put$(putIndex)_result3, ptr %slot$(putRoot), align 8" -> println
+            }
+        }
     }
     emitTake request: WhileValueRequest -> Unit uses Console {
         request.whileIndex => takeIndex
@@ -5721,6 +5902,9 @@ emitCore context: EmitContext -> Unit uses Console {
             (regionNode.kind == 9 and regionNode.opcode == -204 and regionNode.operand0 >= 0 and regionNode.operand1 >= 0) -> if {
                 WhileValueRequest { whileIndex: regionNodeIndex!, ownerIndex: ownerIndex!, nodeIndex: 0 } -> emitArrayPush
             }
+            (regionNode.kind == 9 and regionNode.opcode == -223 and regionNode.operand0 >= 0 and regionNode.operand1 >= 0) -> if {
+                WhileValueRequest { whileIndex: regionNodeIndex!, ownerIndex: ownerIndex!, nodeIndex: 0 } -> emitDictionaryPut
+            }
             (regionNode.kind == 9 and regionNode.opcode == -213 and regionNode.operand0 >= 0 and regionNode.operand1 >= 0) -> if {
                 WhileValueRequest { whileIndex: regionNodeIndex!, ownerIndex: ownerIndex!, nodeIndex: 0 } -> emitTake
             }
@@ -5931,6 +6115,8 @@ emitCore context: EmitContext -> Unit uses Console {
                     ")" -> println
                 } else {
                     regionIndexedValue.typeOrigin == 15 -> if {
+                        regionNode.operand0 -> mutableStorageRoot => regionIndexedMutableRoot
+                        regionIndexedMutableRoot >= 0 -> if { "  %v$(regionNodeIndex!)_dictionary = load %sollang.dict, ptr %slot$(regionIndexedMutableRoot), align 8" -> println }
                         -1 => regionIndexedDictionaryKeyTypeId!
                         -1 => regionIndexedDictionaryValueTypeId!
                         regionIndexedValue.typeId >= 0 -> if {
@@ -5941,16 +6127,16 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                         }
                         "  %v$(regionNodeIndex!)_keys = extractvalue %sollang.dict " -> print
-                        (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        regionIndexedMutableRoot >= 0 -> if { "%v$(regionNodeIndex!)_dictionary" -> print } else { (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print } }
                         ", 0" -> println
                         "  %v$(regionNodeIndex!)_values = extractvalue %sollang.dict " -> print
-                        (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        regionIndexedMutableRoot >= 0 -> if { "%v$(regionNodeIndex!)_dictionary" -> print } else { (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print } }
                         ", 1" -> println
                         "  %v$(regionNodeIndex!)_length = extractvalue %sollang.dict " -> print
-                        (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        regionIndexedMutableRoot >= 0 -> if { "%v$(regionNodeIndex!)_dictionary" -> print } else { (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print } }
                         ", 2" -> println
                         "  %v$(regionNodeIndex!)_capacity = extractvalue %sollang.dict " -> print
-                        (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print }
+                        regionIndexedMutableRoot >= 0 -> if { "%v$(regionNodeIndex!)_dictionary" -> print } else { (regionIndexedValue.kind == 5 and ownerIndex! >= 0 and context.ir[ownerIndex!].kind == 0 and context.ir[ownerIndex!].operand1 >= 0 and regionIndexedValue.symbol == context.ir[context.ir[ownerIndex!].operand1].symbol) -> if { "%arg" -> print } else { "%v$(regionNode.operand0)" -> print } }
                         ", 3" -> println
                         -1 => regionIndexedDictionaryKeyStorageSize!
                         regionIndexedDictionaryKeyTypeId! >= 0 -> if { context.typeSizes[regionIndexedDictionaryKeyTypeId!] => regionIndexedDictionaryKeyStorageSize! }
@@ -7343,13 +7529,13 @@ emitCore context: EmitContext -> Unit uses Console {
                                 expressionStart => earlierEffectSearch!
                                 earlierEffectSearch! < functionEnd! -> while {
                                     context.ir[earlierEffectSearch!] => earlierEffect
-                                (not expressionScheduled![earlierEffectSearch! - expressionStart] and (earlierEffect.kind == 6 or earlierEffect.kind == 18 or earlierEffect.kind == 20 or earlierEffect.kind == 24 or earlierEffect.kind == 25 or (earlierEffect.kind == 17 and earlierEffect.flags == 1) or (earlierEffect.kind == 9 and (earlierEffect.opcode == -204 or earlierEffect.opcode == -205 or earlierEffect.opcode == -213))) and (earlierEffect -> sourceStart) < (scheduleNode -> sourceStart)) -> if {
+                                (not expressionScheduled![earlierEffectSearch! - expressionStart] and (earlierEffect.kind == 6 or earlierEffect.kind == 18 or earlierEffect.kind == 20 or earlierEffect.kind == 24 or earlierEffect.kind == 25 or (earlierEffect.kind == 17 and earlierEffect.flags == 1) or (earlierEffect.kind == 9 and (earlierEffect.opcode == -204 or earlierEffect.opcode == -213))) and (earlierEffect -> sourceStart) < (scheduleNode -> sourceStart)) -> if {
                                         earlierEffect.parent => earlierEffectAncestor!
                                         true => earlierRootEffect!
                                         false => earlierInsideRegion!
                                         (earlierEffectAncestor! >= expressionStart and earlierRootEffect! and not earlierInsideRegion!) -> while {
                                             (context.ir[earlierEffectAncestor!].kind == 19 or context.ir[earlierEffectAncestor!].kind == 20) -> if { true => earlierInsideRegion! } else {
-                                            (context.ir[earlierEffectAncestor!].kind == 6 or context.ir[earlierEffectAncestor!].kind == 18 or context.ir[earlierEffectAncestor!].kind == 20 or context.ir[earlierEffectAncestor!].kind == 24 or context.ir[earlierEffectAncestor!].kind == 25 or (context.ir[earlierEffectAncestor!].kind == 17 and context.ir[earlierEffectAncestor!].flags == 1) or (context.ir[earlierEffectAncestor!].kind == 9 and (context.ir[earlierEffectAncestor!].opcode == -204 or context.ir[earlierEffectAncestor!].opcode == -205 or context.ir[earlierEffectAncestor!].opcode == -213 or context.ir[earlierEffectAncestor!].opcode == -220 or context.ir[earlierEffectAncestor!].opcode == -221))) -> if { false => earlierRootEffect! } else { context.ir[earlierEffectAncestor!].parent => earlierEffectAncestor! }
+                                            (context.ir[earlierEffectAncestor!].kind == 6 or context.ir[earlierEffectAncestor!].kind == 18 or context.ir[earlierEffectAncestor!].kind == 20 or context.ir[earlierEffectAncestor!].kind == 24 or context.ir[earlierEffectAncestor!].kind == 25 or (context.ir[earlierEffectAncestor!].kind == 17 and context.ir[earlierEffectAncestor!].flags == 1) or (context.ir[earlierEffectAncestor!].kind == 9 and (context.ir[earlierEffectAncestor!].opcode == -204 or context.ir[earlierEffectAncestor!].opcode == -213 or context.ir[earlierEffectAncestor!].opcode == -220 or context.ir[earlierEffectAncestor!].opcode == -221))) -> if { false => earlierRootEffect! } else { context.ir[earlierEffectAncestor!].parent => earlierEffectAncestor! }
                                             }
                                         }
                                         (earlierRootEffect! and not earlierInsideRegion!) -> if { false => scheduleReady! }
@@ -7470,6 +7656,9 @@ emitCore context: EmitContext -> Unit uses Console {
                 }
                 (expression.kind == 9 and expression.opcode == -204 and expression.operand0 >= 0 and expression.operand1 >= 0) -> if {
                     WhileValueRequest { whileIndex: expressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitArrayPush
+                }
+                (expression.kind == 9 and expression.opcode == -223 and expression.operand0 >= 0 and expression.operand1 >= 0) -> if {
+                    WhileValueRequest { whileIndex: expressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitDictionaryPut
                 }
                 (expression.kind == 9 and expression.opcode == -213 and expression.operand0 >= 0 and expression.operand1 >= 0) -> if {
                     WhileValueRequest { whileIndex: expressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitTake
@@ -7995,6 +8184,8 @@ emitCore context: EmitContext -> Unit uses Console {
                         ")" -> println
                     } else {
                     indexedArray.typeOrigin == 15 -> if {
+                        expression.operand0 -> mutableStorageRoot => indexedMutableRoot
+                        indexedMutableRoot >= 0 -> if { "  %v$(expressionIndex!)_dictionary = load %sollang.dict, ptr %slot$(indexedMutableRoot), align 8" -> println }
                         -1 => indexedDictionaryKeyTypeId!
                         -1 => indexedDictionaryValueTypeId!
                         indexedArray.typeId >= 0 -> if {
@@ -8005,16 +8196,16 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                         }
                         "  %v$(expressionIndex!)_keys = extractvalue %sollang.dict " -> print
-                        (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
+                        indexedMutableRoot >= 0 -> if { "%v$(expressionIndex!)_dictionary" -> print } else { (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print } }
                         ", 0" -> println
                         "  %v$(expressionIndex!)_values = extractvalue %sollang.dict " -> print
-                        (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
+                        indexedMutableRoot >= 0 -> if { "%v$(expressionIndex!)_dictionary" -> print } else { (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print } }
                         ", 1" -> println
                         "  %v$(expressionIndex!)_length = extractvalue %sollang.dict " -> print
-                        (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
+                        indexedMutableRoot >= 0 -> if { "%v$(expressionIndex!)_dictionary" -> print } else { (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print } }
                          ", 2" -> println
                          "  %v$(expressionIndex!)_capacity = extractvalue %sollang.dict " -> print
-                         (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print }
+                         indexedMutableRoot >= 0 -> if { "%v$(expressionIndex!)_dictionary" -> print } else { (indexedArray.kind == 5 and function.operand1 >= 0 and indexedArray.symbol == context.ir[function.operand1].symbol) -> if { "%arg" -> print } else { "%v$(expression.operand0)" -> print } }
                          ", 3" -> println
                          -1 => indexedDictionaryKeyStorageSize!
                          indexedDictionaryKeyTypeId! >= 0 -> if { context.typeSizes[indexedDictionaryKeyTypeId!] => indexedDictionaryKeyStorageSize! }
@@ -9934,19 +10125,19 @@ emitCore context: EmitContext -> Unit uses Console {
                                 true => entryRootEffect!
                                 entryScheduleNode.parent => entryEffectAncestor!
                                 (entryEffectAncestor! > functionIndex! and entryRootEffect!) -> while {
-                                    (context.ir[entryEffectAncestor!].kind == 6 or context.ir[entryEffectAncestor!].kind == 18 or context.ir[entryEffectAncestor!].kind == 20 or context.ir[entryEffectAncestor!].kind == 24 or context.ir[entryEffectAncestor!].kind == 25 or (context.ir[entryEffectAncestor!].kind == 17 and context.ir[entryEffectAncestor!].flags == 1) or (context.ir[entryEffectAncestor!].kind == 9 and (context.ir[entryEffectAncestor!].opcode == -204 or context.ir[entryEffectAncestor!].opcode == -205 or context.ir[entryEffectAncestor!].opcode == -213))) -> if { false => entryRootEffect! } else { context.ir[entryEffectAncestor!].parent => entryEffectAncestor! }
+                                        (context.ir[entryEffectAncestor!].kind == 6 or context.ir[entryEffectAncestor!].kind == 18 or context.ir[entryEffectAncestor!].kind == 20 or context.ir[entryEffectAncestor!].kind == 24 or context.ir[entryEffectAncestor!].kind == 25 or (context.ir[entryEffectAncestor!].kind == 17 and context.ir[entryEffectAncestor!].flags == 1) or (context.ir[entryEffectAncestor!].kind == 9 and (context.ir[entryEffectAncestor!].opcode == -204 or context.ir[entryEffectAncestor!].opcode == -205 or context.ir[entryEffectAncestor!].opcode == -213))) -> if { false => entryRootEffect! } else { context.ir[entryEffectAncestor!].parent => entryEffectAncestor! }
                                 }
                                 entryRootEffect! -> if {
                                     functionIndex! + 1 => entryEarlierEffectSearch!
                                     entryEarlierEffectSearch! < entryEnd! -> while {
                                         context.ir[entryEarlierEffectSearch!] => entryEarlierEffect
-                                        (not entryScheduled![entryEarlierEffectSearch! - functionIndex! - 1] and (entryEarlierEffect.kind == 6 or entryEarlierEffect.kind == 18 or entryEarlierEffect.kind == 20 or entryEarlierEffect.kind == 24 or entryEarlierEffect.kind == 25 or (entryEarlierEffect.kind == 17 and entryEarlierEffect.flags == 1) or (entryEarlierEffect.kind == 9 and (entryEarlierEffect.opcode == -204 or entryEarlierEffect.opcode == -205 or entryEarlierEffect.opcode == -213))) and (entryEarlierEffect -> sourceStart) < (entryScheduleNode -> sourceStart)) -> if {
+                                        (not entryScheduled![entryEarlierEffectSearch! - functionIndex! - 1] and (entryEarlierEffect.kind == 6 or entryEarlierEffect.kind == 18 or entryEarlierEffect.kind == 20 or entryEarlierEffect.kind == 24 or entryEarlierEffect.kind == 25 or (entryEarlierEffect.kind == 17 and entryEarlierEffect.flags == 1) or (entryEarlierEffect.kind == 9 and (entryEarlierEffect.opcode == -204 or entryEarlierEffect.opcode == -213))) and (entryEarlierEffect -> sourceStart) < (entryScheduleNode -> sourceStart)) -> if {
                                             entryEarlierEffect.parent => entryEarlierEffectAncestor!
                                             true => entryEarlierRootEffect!
                                             false => entryEarlierInsideRegion!
                                             (entryEarlierEffectAncestor! > functionIndex! and entryEarlierRootEffect! and not entryEarlierInsideRegion!) -> while {
                                                 (context.ir[entryEarlierEffectAncestor!].kind == 19 or context.ir[entryEarlierEffectAncestor!].kind == 20) -> if { true => entryEarlierInsideRegion! } else {
-                                                    (context.ir[entryEarlierEffectAncestor!].kind == 6 or context.ir[entryEarlierEffectAncestor!].kind == 18 or context.ir[entryEarlierEffectAncestor!].kind == 20 or context.ir[entryEarlierEffectAncestor!].kind == 24 or context.ir[entryEarlierEffectAncestor!].kind == 25 or (context.ir[entryEarlierEffectAncestor!].kind == 17 and context.ir[entryEarlierEffectAncestor!].flags == 1) or (context.ir[entryEarlierEffectAncestor!].kind == 9 and (context.ir[entryEarlierEffectAncestor!].opcode == -204 or context.ir[entryEarlierEffectAncestor!].opcode == -205 or context.ir[entryEarlierEffectAncestor!].opcode == -213))) -> if { false => entryEarlierRootEffect! } else { context.ir[entryEarlierEffectAncestor!].parent => entryEarlierEffectAncestor! }
+                                                    (context.ir[entryEarlierEffectAncestor!].kind == 6 or context.ir[entryEarlierEffectAncestor!].kind == 18 or context.ir[entryEarlierEffectAncestor!].kind == 20 or context.ir[entryEarlierEffectAncestor!].kind == 24 or context.ir[entryEarlierEffectAncestor!].kind == 25 or (context.ir[entryEarlierEffectAncestor!].kind == 17 and context.ir[entryEarlierEffectAncestor!].flags == 1) or (context.ir[entryEarlierEffectAncestor!].kind == 9 and (context.ir[entryEarlierEffectAncestor!].opcode == -204 or context.ir[entryEarlierEffectAncestor!].opcode == -213))) -> if { false => entryEarlierRootEffect! } else { context.ir[entryEarlierEffectAncestor!].parent => entryEarlierEffectAncestor! }
                                                 }
                                             }
                                             (entryEarlierRootEffect! and not entryEarlierInsideRegion!) -> if { false => entryScheduleReady! }
@@ -10242,6 +10433,9 @@ emitCore context: EmitContext -> Unit uses Console {
                     (entryExpression.kind == 9 and entryExpression.opcode == -204 and entryExpression.operand0 >= 0 and entryExpression.operand1 >= 0) -> if {
                         WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitArrayPush
                     }
+                    (entryExpression.kind == 9 and entryExpression.opcode == -223 and entryExpression.operand0 >= 0 and entryExpression.operand1 >= 0) -> if {
+                        WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitDictionaryPut
+                    }
                     (entryExpression.kind == 9 and entryExpression.opcode == -213 and entryExpression.operand0 >= 0 and entryExpression.operand1 >= 0) -> if {
                         WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: 0 } -> emitTake
                     }
@@ -10456,6 +10650,8 @@ emitCore context: EmitContext -> Unit uses Console {
                             ")" -> println
                         } else {
                             entryIndexedValue.typeOrigin == 15 -> if {
+                                entryExpression.operand0 -> mutableStorageRoot => entryIndexedMutableRoot
+                                entryIndexedMutableRoot >= 0 -> if { "  %v$(entryExpressionIndex!)_dictionary = load %sollang.dict, ptr %slot$(entryIndexedMutableRoot), align 8" -> println }
                                 -1 => entryIndexedDictionaryKeyTypeId!
                                 -1 => entryIndexedDictionaryValueTypeId!
                                 entryIndexedValue.typeId >= 0 -> if {
@@ -10465,10 +10661,18 @@ emitCore context: EmitContext -> Unit uses Console {
                                         entryIndexedDictionaryType.second => entryIndexedDictionaryValueTypeId!
                                     }
                                 }
-                                "  %v$(entryExpressionIndex!)_keys = extractvalue %sollang.dict %v$(entryExpression.operand0), 0" -> println
-                                "  %v$(entryExpressionIndex!)_values = extractvalue %sollang.dict %v$(entryExpression.operand0), 1" -> println
-                                 "  %v$(entryExpressionIndex!)_length = extractvalue %sollang.dict %v$(entryExpression.operand0), 2" -> println
-                                 "  %v$(entryExpressionIndex!)_capacity = extractvalue %sollang.dict %v$(entryExpression.operand0), 3" -> println
+                                "  %v$(entryExpressionIndex!)_keys = extractvalue %sollang.dict " -> print
+                                entryIndexedMutableRoot >= 0 -> if { "%v$(entryExpressionIndex!)_dictionary" -> print } else { "%v$(entryExpression.operand0)" -> print }
+                                ", 0" -> println
+                                "  %v$(entryExpressionIndex!)_values = extractvalue %sollang.dict " -> print
+                                entryIndexedMutableRoot >= 0 -> if { "%v$(entryExpressionIndex!)_dictionary" -> print } else { "%v$(entryExpression.operand0)" -> print }
+                                ", 1" -> println
+                                 "  %v$(entryExpressionIndex!)_length = extractvalue %sollang.dict " -> print
+                                 entryIndexedMutableRoot >= 0 -> if { "%v$(entryExpressionIndex!)_dictionary" -> print } else { "%v$(entryExpression.operand0)" -> print }
+                                 ", 2" -> println
+                                 "  %v$(entryExpressionIndex!)_capacity = extractvalue %sollang.dict " -> print
+                                 entryIndexedMutableRoot >= 0 -> if { "%v$(entryExpressionIndex!)_dictionary" -> print } else { "%v$(entryExpression.operand0)" -> print }
+                                 ", 3" -> println
                                  -1 => entryIndexedDictionaryKeyStorageSize!
                                  entryIndexedDictionaryKeyTypeId! >= 0 -> if { context.typeSizes[entryIndexedDictionaryKeyTypeId!] => entryIndexedDictionaryKeyStorageSize! }
                                  entryIndexedDictionaryKeyStorageSize! < 0 -> if { entryIndexedValue.typeModule -> storageSize => entryIndexedDictionaryKeyStorageSize! }

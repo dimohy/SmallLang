@@ -266,10 +266,11 @@ entry:
   %v25_1 = insertvalue %sollang.dict %v25_0, ptr %v25_values, 1
   %v25_2 = insertvalue %sollang.dict %v25_1, i64 1, 2
   %v25 = insertvalue %sollang.dict %v25_2, i64 1, 3
-  %v20_keys = extractvalue %sollang.dict %v22, 0
-  %v20_values = extractvalue %sollang.dict %v22, 1
-  %v20_length = extractvalue %sollang.dict %v22, 2
-  %v20_capacity = extractvalue %sollang.dict %v22, 3
+  %v20_dictionary = load %sollang.dict, ptr %slot7, align 8
+  %v20_keys = extractvalue %sollang.dict %v20_dictionary, 0
+  %v20_values = extractvalue %sollang.dict %v20_dictionary, 1
+  %v20_length = extractvalue %sollang.dict %v20_dictionary, 2
+  %v20_capacity = extractvalue %sollang.dict %v20_dictionary, 3
   %v20_control_offset = mul i64 %v20_capacity, 4
   %v20_controls = getelementptr i8, ptr %v20_keys, i64 %v20_control_offset
   %v20_hash_key = zext i32 1 to i64
@@ -369,10 +370,11 @@ dict20_hit:
   %v18 = call i32 @sollang_m0_s7(i32 %v19)
   store %sollang.dict %v25, ptr %slot9, align 8
   %v36 = load %sollang.dict, ptr %slot9, align 8
-  %v33_keys = extractvalue %sollang.dict %v36, 0
-  %v33_values = extractvalue %sollang.dict %v36, 1
-  %v33_length = extractvalue %sollang.dict %v36, 2
-  %v33_capacity = extractvalue %sollang.dict %v36, 3
+  %v33_dictionary = load %sollang.dict, ptr %slot9, align 8
+  %v33_keys = extractvalue %sollang.dict %v33_dictionary, 0
+  %v33_values = extractvalue %sollang.dict %v33_dictionary, 1
+  %v33_length = extractvalue %sollang.dict %v33_dictionary, 2
+  %v33_capacity = extractvalue %sollang.dict %v33_dictionary, 3
   %v33_control_offset = mul i64 %v33_capacity, 4
   %v33_controls = getelementptr i8, ptr %v33_keys, i64 %v33_control_offset
   %v33_hash_key = zext i32 1 to i64

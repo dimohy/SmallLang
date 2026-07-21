@@ -190,10 +190,11 @@ entry:
 if31_then:
   %v34 = load %sollang.dict, ptr %slot11, align 8
   %v35 = load %sollang.struct.m0_s0, ptr %slot12, align 8
-  %v33_keys = extractvalue %sollang.dict %v34, 0
-  %v33_values = extractvalue %sollang.dict %v34, 1
-  %v33_length = extractvalue %sollang.dict %v34, 2
-  %v33_capacity = extractvalue %sollang.dict %v34, 3
+  %v33_dictionary = load %sollang.dict, ptr %slot11, align 8
+  %v33_keys = extractvalue %sollang.dict %v33_dictionary, 0
+  %v33_values = extractvalue %sollang.dict %v33_dictionary, 1
+  %v33_length = extractvalue %sollang.dict %v33_dictionary, 2
+  %v33_capacity = extractvalue %sollang.dict %v33_dictionary, 3
   %v33_control_offset = mul i64 %v33_capacity, 32
   %v33_controls = getelementptr i8, ptr %v33_keys, i64 %v33_control_offset
   %v33_h2 = add i8 0, 1
@@ -334,10 +335,11 @@ assign44_done:
   %v53 = load %sollang.dict, ptr %slot11, align 8
   %v54 = load %sollang.struct.m0_s0, ptr %slot12, align 8
   %v47 = extractvalue %sollang.struct.m0_s0 %v48, 0
-  %v49_keys = extractvalue %sollang.dict %v50, 0
-  %v49_values = extractvalue %sollang.dict %v50, 1
-  %v49_length = extractvalue %sollang.dict %v50, 2
-  %v49_capacity = extractvalue %sollang.dict %v50, 3
+  %v49_dictionary = load %sollang.dict, ptr %slot11, align 8
+  %v49_keys = extractvalue %sollang.dict %v49_dictionary, 0
+  %v49_values = extractvalue %sollang.dict %v49_dictionary, 1
+  %v49_length = extractvalue %sollang.dict %v49_dictionary, 2
+  %v49_capacity = extractvalue %sollang.dict %v49_dictionary, 3
   %v49_control_offset = mul i64 %v49_capacity, 32
   %v49_controls = getelementptr i8, ptr %v49_keys, i64 %v49_control_offset
   %v49_h2 = add i8 0, 1

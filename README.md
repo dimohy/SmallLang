@@ -348,19 +348,18 @@ selects the newest compatible non-yanked release. See the
 
 ## Self-Hosting Progress
 
-The measured roadmap is currently **53/60 gates (88.3%)**:
-
-- **49 complete**
-- **8 partial**
-- **3 missing**
-- **7 equivalent gates remaining**
+The measured roadmap is currently **54/60 equivalent gates (90.0%)**, with
+**6 equivalent gates remaining**.
 
 The Sollang-written compiler is split into lexer, parser/CST/AST, semantic,
 typed-IR, ownership, module-cache, and LLVM modules. It builds a native Stage 2
 compiler and passes Windows and Linux differential gates. The latest ownership
 checkpoint infers readonly-reference origins stored in
-user structs, enum payloads, and fixed/growable array elements; dictionary
-element storage is the next open vertical. Local package
+user structs, enum payloads, fixed/growable array elements, and dictionary
+values. The self-host LLVM backend now uses control bytes, integer H2 hashes,
+wrapped eight-slot group scans, and a first `Int` dictionary `put` path that
+inserts, updates, grows, and rehashes mutable dictionaries. General key/value
+families and production growth policy remain open. Local package
 identities, SemVer requirements, content-pinned Git dependencies, shared
 deterministic workspace locks, and self-host parsers for both versions and
 lock manifests and registry-index selection are implemented. Exact

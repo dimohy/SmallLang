@@ -2996,3 +2996,22 @@ This is the grouped-probe foundation, not the complete Swiss-table mutation
 algorithm: direct candidate selection, one-byte/non-integer hashing,
 insertion, growth, and rehashing remain open. Formal progress stays
 **54/60 (90.0%)**.
+
+## D237/example 553 - Integer Dictionary Put
+
+The self-host typed IR recognizes dictionary `put` as opcode `-223`. The LLVM
+backend now lowers a first `Int`-key/`Int`-value mutation vertical across the
+normal, region, and entry paths: it reloads the current mutable dictionary,
+allocates a larger control-byte table, rehashes occupied entries, inserts or
+updates the requested key, frees the replaced buffers, and stores the new
+aggregate back into the canonical mutable slot. Mutable dictionary lookup also
+reloads that slot at its execution point, preserving sequential semantics
+after one or more mutations without introducing a global scheduling barrier.
+
+Example 553 proves insertion and replacement by printing `30` and `222`.
+Windows and Linux LLVM assembly, linking, and execution pass, and the complete
+Windows self-host suite passes **342/342**. The current implementation grows on
+every `put` and is intentionally limited to the first `Int`/`Int` vertical;
+load-factor growth, direct grouped-candidate selection, generic key/value
+lowering, and one-byte/non-integer hashing remain. Formal progress therefore
+stays **54/60 (90.0%)**, with **6 equivalent gates remaining**.

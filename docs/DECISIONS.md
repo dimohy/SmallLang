@@ -9349,3 +9349,29 @@ growth, rehashing, and one-byte/non-integer hashing remain pending.
 Examples 548 and 550 pass self-host LLVM verification on Windows and Linux;
 the full self-host suite passes **341/341**. The formal score remains
 **54/60 (90.0%)** until the mutation and remaining key-family gates are proven.
+
+## D237 - Self-host Integer Dictionary Put
+
+The self-host typed IR now recognizes mutable dictionary `put` as intrinsic
+opcode `-223`, and all three LLVM emission paths lower the operation for
+`Int` keys and values. The first mutation vertical allocates a larger table,
+rehashes each occupied entry with the existing H2 layout, inserts a missing
+key or replaces an existing value, releases the old buffers, and stores the
+new dictionary aggregate back into its mutable slot.
+
+Sequential mutation must observe the latest aggregate rather than a binding
+value loaded before an earlier effect. `put` and mutable dictionary indexing
+therefore load the dictionary from its canonical slot at their execution
+point. This avoids both lost updates and use-after-free when two `put`
+operations appear in one expression region, without making `put` a global
+scheduler barrier.
+
+Example 553 inserts `3: 30`, updates `2` to `222`, and prints both values.
+LLVM assembly, linking, and execution pass on Windows and Linux. The mutable
+dictionary lookup snapshots in examples 452, 454, 457, 459, and 461 were
+updated for the explicit slot load, and the complete Windows self-host suite
+passes **342/342**. This remains a first vertical: it currently specializes
+`Int`/`Int`, grows on every mutation, and uses scalar insertion/rehashing.
+Threshold-based growth, direct grouped-candidate selection, and the remaining
+one-byte/non-integer key families stay open, so formal progress remains
+**54/60 (90.0%)**.
