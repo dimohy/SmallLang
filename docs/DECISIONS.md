@@ -9289,3 +9289,15 @@ assembles, links, and prints `observed=40` on Windows and Linux, and the C# /
 self-host differential checks agree on both targets. The formal score remains
 **53/60 (88.3%)** because Swiss-table entry addressing and the complete
 dictionary ownership gate still require broader coverage.
+
+## D232 - Direct Dictionary Call Type Recovery
+
+The self-host expression-type resolver now treats a dictionary's direct child
+expression as a valid nearest candidate. Previously, a value such as
+`{1: owner -> same}` skipped the call node itself and selected the nested
+`value` parameter, flattening the dictionary value from `ref Int` to `Int`.
+The initial and deferred dictionary passes now cover both key and value sides.
+Example 551 asserts the recovered value type is kind 8 (`ref`) and passes with
+the reference compiler and self-host compiler. This repairs type identity but
+does not advance the broader Swiss-table entry-addressing or ownership gates;
+formal progress remains **53/60 (88.3%)**.

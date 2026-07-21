@@ -1,0 +1,31 @@
+import sollang.compiler.semantic.expression_type_ids as expressionTypeIds
+import sollang.compiler.ast as ast
+
+# Verifies that an inferred dictionary value keeps the callable ref type.
+main {
+    [
+        """
+        same value: ref Int -> ref Int { value }
+        main {
+            40 => owner!
+            {1: owner -> same} => stored
+            stored[1] -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> expressionTypeIds.resolve => resolved!
+    sources![0] -> ast.lower => nodes!
+    0 => dictionaries!
+    0 => indexes!
+    0 => referenceValues!
+    resolved!.expressions -> each expression {
+        nodes![expression.astNode].kind == 38 -> if {
+            dictionaries! + 1 => dictionaries!
+            resolved!.types[expression.typeId].second => valueType!
+            (valueType! >= 0 and resolved!.types[valueType!].kind == 8) -> if { referenceValues! + 1 => referenceValues! }
+        }
+        nodes![expression.astNode].kind == 41 -> if { indexes! + 1 => indexes! }
+    }
+    "dictionary=$(dictionaries!),index=$(indexes!),reference=$(referenceValues!)" -> println
+}

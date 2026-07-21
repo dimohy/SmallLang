@@ -2947,6 +2947,13 @@ Windows/Linux LLVM that executes as `observed=40`. Swiss-table entry
 addressing and complete dictionary ownership remain open, so the formal score
 stays **53/60 (88.3%)**.
 
+D232/example 551 fixes the remaining nearest-candidate hole in self-host
+dictionary type recovery: a direct value call such as `{1: owner -> same}` is
+now selected before its nested parameter expression, preserving `ref Int`
+instead of flattening to `Int`. The reference/self-host checks pass, while
+Swiss-table entry addressing and complete dictionary ownership remain open;
+formal progress stays **53/60 (88.3%)**.
+
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
    (implemented after example 52).

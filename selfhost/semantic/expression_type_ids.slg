@@ -973,12 +973,13 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
                             1000000 => directDictionaryDistance!
                             0 => directDictionaryCandidateSearch!
                             directDictionaryCandidateSearch! < (expressions! -> len) -> while {
-                                expressions![directDictionaryCandidateSearch!] => directDictionaryCandidate
-                                directDictionaryCandidate.sourceModule == compositeSourceIndex! -> if {
-                                    prepared.package.nodes[compositeRange.astStart + directDictionaryCandidate.astNode].parent => directDictionaryAncestor!
-                                    1 => directDictionaryCandidateDistance!
-                                    false => directDictionaryBelongs!
-                                    (directDictionaryAncestor! >= 0 and not directDictionaryBelongs!) -> while {
+                                 expressions![directDictionaryCandidateSearch!] => directDictionaryCandidate
+                                 directDictionaryCandidate.sourceModule == compositeSourceIndex! -> if {
+                                     prepared.package.nodes[compositeRange.astStart + directDictionaryCandidate.astNode].parent => directDictionaryAncestor!
+                                     1 => directDictionaryCandidateDistance!
+                                     false => directDictionaryBelongs!
+                                     directDictionaryCandidate.astNode == directDictionaryFirstChild! -> if { true => directDictionaryBelongs! }
+                                     (directDictionaryAncestor! >= 0 and not directDictionaryBelongs!) -> while {
                                         directDictionaryAncestor! == directDictionaryFirstChild! -> if { true => directDictionaryBelongs! } else {
                                             prepared.package.nodes[compositeRange.astStart + directDictionaryAncestor!].parent => directDictionaryAncestor!
                                             directDictionaryCandidateDistance! + 1 => directDictionaryCandidateDistance!
@@ -996,12 +997,13 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
                             1000000 => directDictionaryDistance!
                             0 => directDictionaryCandidateSearch!
                             directDictionaryCandidateSearch! < (expressions! -> len) -> while {
-                                expressions![directDictionaryCandidateSearch!] => directDictionaryCandidate
-                                directDictionaryCandidate.sourceModule == compositeSourceIndex! -> if {
-                                    prepared.package.nodes[compositeRange.astStart + directDictionaryCandidate.astNode].parent => directDictionaryAncestor!
-                                    1 => directDictionaryCandidateDistance!
-                                    false => directDictionaryBelongs!
-                                    (directDictionaryAncestor! >= 0 and not directDictionaryBelongs!) -> while {
+                                 expressions![directDictionaryCandidateSearch!] => directDictionaryCandidate
+                                 directDictionaryCandidate.sourceModule == compositeSourceIndex! -> if {
+                                     prepared.package.nodes[compositeRange.astStart + directDictionaryCandidate.astNode].parent => directDictionaryAncestor!
+                                     1 => directDictionaryCandidateDistance!
+                                     false => directDictionaryBelongs!
+                                     directDictionaryCandidate.astNode == directDictionarySecondChild! -> if { true => directDictionaryBelongs! }
+                                     (directDictionaryAncestor! >= 0 and not directDictionaryBelongs!) -> while {
                                         directDictionaryAncestor! == directDictionarySecondChild! -> if { true => directDictionaryBelongs! } else {
                                             prepared.package.nodes[compositeRange.astStart + directDictionaryAncestor!].parent => directDictionaryAncestor!
                                             directDictionaryCandidateDistance! + 1 => directDictionaryCandidateDistance!
@@ -1922,6 +1924,7 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
                             prepared.package.nodes[lateDictionaryRange.astStart + lateDictionaryCandidate.astNode].parent => lateDictionaryAncestor!
                             1 => lateDictionaryCandidateDistance!
                             false => lateDictionaryBelongs!
+                            lateDictionaryCandidate.astNode == lateDictionaryFirstChild! -> if { true => lateDictionaryBelongs! }
                             (lateDictionaryAncestor! >= 0 and not lateDictionaryBelongs!) -> while {
                                 lateDictionaryAncestor! == lateDictionaryFirstChild! -> if { true => lateDictionaryBelongs! } else {
                                     prepared.package.nodes[lateDictionaryRange.astStart + lateDictionaryAncestor!].parent => lateDictionaryAncestor!
@@ -1945,6 +1948,7 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
                             prepared.package.nodes[lateDictionaryRange.astStart + lateDictionaryCandidate.astNode].parent => lateDictionaryAncestor!
                             1 => lateDictionaryCandidateDistance!
                             false => lateDictionaryBelongs!
+                            lateDictionaryCandidate.astNode == lateDictionarySecondChild! -> if { true => lateDictionaryBelongs! }
                             (lateDictionaryAncestor! >= 0 and not lateDictionaryBelongs!) -> while {
                                 lateDictionaryAncestor! == lateDictionarySecondChild! -> if { true => lateDictionaryBelongs! } else {
                                     prepared.package.nodes[lateDictionaryRange.astStart + lateDictionaryAncestor!].parent => lateDictionaryAncestor!
