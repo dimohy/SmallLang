@@ -182,11 +182,12 @@ typedNodeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot, t
                 }
             }
         }
+        (not contains! and candidate.kind == 6 and candidate.typeKind == 8) -> if { true => contains! }
         # A collection literal may reach this check before its recursive
         # collection type id is repaired. Inspect its direct element nodes as
         # a fallback; enum constructors and reference-bearing calls already
         # carry their concrete element type ids at this point.
-        (not contains! and (candidate.kind == 12 or candidate.kind == 14 or candidate.kind == 16 or candidate.typeKind == 5)) -> if {
+        (not contains! and (candidate.kind == 12 or candidate.kind == 14 or candidate.kind == 16 or candidate.kind == 26 or candidate.typeKind == 5 or (candidate.kind == 6 and candidate.typeKind == 8))) -> if {
             0 => aggregateChildIndex!
             (not contains! and aggregateChildIndex! < (typed -> len)) -> while {
                 typed[aggregateChildIndex!].parent == nodeIndex -> if {
@@ -1104,6 +1105,20 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
             typed[referenceBindingValueIr!] => referenceBindingValue
             (referenceBindingValue.typeId >= 0 and referenceBindingValue.typeId < (prepared.semantic.types -> len)) -> if { referenceBindingValue.typeId => referenceBindingCarrierType! }
             prepared -> typedNodeContainsReadonlyReference(typed, referenceBindingValueIr!) -> if { true => referenceBindingIsReadonlyReference! }
+            (not referenceBindingIsReadonlyReference! and referenceBindingValue.kind == 26 and referenceBindingValue.operand0 >= 0 and referenceBindingValue.operand0 < (typed -> len)) -> if {
+                typed[referenceBindingValue.operand0].kind == 6 and typed[referenceBindingValue.operand0].typeKind == 8 -> if { true => referenceBindingIsReadonlyReference! }
+            }
+            (not referenceBindingIsReadonlyReference! and referenceBindingValue.kind == 16) -> if {
+                0 => referenceBindingChildIndex!
+                (not referenceBindingIsReadonlyReference! and referenceBindingChildIndex! < (typed -> len)) -> while {
+                    typed[referenceBindingChildIndex!].parent == referenceBindingValueIr! -> if {
+                        typed[referenceBindingChildIndex!].kind == 26 and typed[referenceBindingChildIndex!].operand0 >= 0 and typed[referenceBindingChildIndex!].operand0 < (typed -> len) -> if {
+                            typed[typed[referenceBindingChildIndex!].operand0].kind == 6 and typed[typed[referenceBindingChildIndex!].operand0].typeKind == 8 -> if { true => referenceBindingIsReadonlyReference! }
+                        }
+                    }
+                    referenceBindingChildIndex! + 1 => referenceBindingChildIndex!
+                }
+            }
         }
         referenceBindingIsReadonlyReference! -> if {
             0 => referenceCarrierCallIndex!

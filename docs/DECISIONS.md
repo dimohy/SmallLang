@@ -9252,3 +9252,15 @@ the Windows and Linux checks both pass.
 This closes type preservation only. The ownership analyzer still needs to
 recognize the dictionary carrier as the owner of that payload before the
 formal stored-reference gate can advance beyond 53/60 (88.3%).
+
+## D229 - Self-host Dictionary Carrier Ownership Recognition
+
+The self-host ownership pass now recognizes a dictionary constructor carrying
+an enum payload reference even when the recursive dictionary type ID is not yet
+present in the semantic type arena. Its fallback follows the typed-IR shape
+(`dictionary -> enum constructor -> reference call`) and recognizes the
+reference call's `typeKind == 8` directly. Example 545 verifies E23: replacing
+the owner after storing the reference and before matching the dictionary
+payload reports exactly one conflict. Examples 545, 546, 536, and 547 pass on
+Windows. LLVM entry-pointer lowering and Linux dictionary ownership coverage
+remain open, so the formal score stays **53/60 (88.3%)**.

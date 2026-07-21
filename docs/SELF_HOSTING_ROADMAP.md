@@ -2924,6 +2924,13 @@ subject comes from a dictionary index. The typed-IR check passes on Windows and
 Linux. Dictionary-carrier ownership recognition remains the next open step,
 so the formal score stays **53/60 (88.3%)**.
 
+D229/example 545 now recognizes the recovered dictionary carrier in the
+self-host ownership pass. The typed-IR fallback follows a dictionary value's
+enum constructor to its `ref` call and preserves E23 when the owner is replaced
+before the later dictionary pattern match. Windows examples 545, 546, 536, and
+547 pass together; dictionary LLVM entry-pointer lowering and Linux ownership
+coverage are still pending, so the formal score remains **53/60 (88.3%)**.
+
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
    (implemented after example 52).

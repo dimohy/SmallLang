@@ -1,0 +1,37 @@
+import sollang.compiler.semantic.ownership_check as ownershipCheck
+
+main {
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+
+        same value: ref Int -> ref Int {
+            value
+        }
+
+        read value: ref Int -> Int {
+            value
+        }
+
+        main {
+            10 => owner!
+            { 1: IntView.Ref(owner! -> same) } => stored
+            20 => owner!
+            stored![1] -> when {
+                Empty => 0
+                Ref(value) => value -> read
+            } -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> ownershipCheck.analyze => diagnostics!
+    0 => conflicts!
+    diagnostics! -> each diagnostic {
+        diagnostic.code == 23 -> if { conflicts! + 1 => conflicts! }
+    }
+    "conflicts=$(conflicts!)" -> println
+}
