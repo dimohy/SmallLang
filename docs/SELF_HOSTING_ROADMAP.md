@@ -2940,6 +2940,13 @@ addressing, and the complete ownership gate are still pending. The reference
 C# emitter and self-host emitter now agree on the direct reference path on both
 targets, so the formal score remains **53/60 (88.3%)**.
 
+D231/example 550 verifies inferred dictionary enum payload references through
+the complete self-host LLVM path. `IntView.Ref(ref Int)` survives dictionary
+indexing and `when` payload extraction, and both compilers produce matching
+Windows/Linux LLVM that executes as `observed=40`. Swiss-table entry
+addressing and complete dictionary ownership remain open, so the formal score
+stays **53/60 (88.3%)**.
+
 1. Multi-file compilation (implemented by example 52).
 2. Import-driven file discovery with cycle and duplicate-module diagnostics
    (implemented after example 52).

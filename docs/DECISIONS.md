@@ -9279,3 +9279,13 @@ Windows/Linux differential checks pass. Enum payload projection,
 Swiss-table entry addressing, and complete dictionary ownership remain open, so
 the formal score remains **53/60
 (88.3%)**.
+
+## D231 - Self-host LLVM Dictionary Enum Reference Payloads
+
+Example 550 proves the next dictionary slice end to end: an inferred
+`{1: IntView.Ref(owner! -> same)}` value is indexed, matched as `Ref(value)`,
+and read through the stored reference payload. The self-host LLVM output
+assembles, links, and prints `observed=40` on Windows and Linux, and the C# /
+self-host differential checks agree on both targets. The formal score remains
+**53/60 (88.3%)** because Swiss-table entry addressing and the complete
+dictionary ownership gate still require broader coverage.

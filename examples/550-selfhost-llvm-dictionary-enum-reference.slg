@@ -1,0 +1,28 @@
+import sollang.compiler.llvm.text as llvm
+
+main {
+    [
+        """
+        enum IntView {
+            Empty
+            Ref(ref Int)
+        }
+        same value: ref Int -> ref Int { value }
+        read value: ref Int -> Int { value }
+        inspect view: IntView -> Int {
+            view -> when {
+                Empty => 0
+                Ref(value) => value -> read
+            }
+        }
+        main {
+            40 => owner!
+            {1: IntView.Ref(owner! -> same)} => values
+            values[1] -> inspect => observed
+            "observed=$(observed)" -> println
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emit
+}
