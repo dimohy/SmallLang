@@ -3115,6 +3115,8 @@ deterministic. Other non-integer key families and generic mutation remain open,
 so formal progress stays **54/60 (90.0%)**, with **6 equivalent gates
 remaining**.
 
+The complete self-host suite passes **347/347** on Windows and Linux.
+
 ## D244/example 558 - Fixed-width Integer Dictionary Mutation
 
 The self-host `put` path now derives key/value LLVM types, sizes, alignments,

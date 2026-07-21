@@ -9512,8 +9512,9 @@ process entropy today.
 
 Example 557 proves Text-key literals and lookups in function, entry, and region
 paths. LLVM validation, link, execution, and C# versus self-host differential
-verification pass on Windows and Linux. Other non-integer key families and
-generic mutation remain open, so formal progress stays **54/60 (90.0%)**.
+verification pass on Windows and Linux. The complete self-host suite passes
+**347/347** on both targets. Other non-integer key families and generic mutation
+remain open, so formal progress stays **54/60 (90.0%)**.
 
 Research basis:
 
