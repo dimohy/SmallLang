@@ -258,6 +258,16 @@ dict28_check:
   %v28_group_match0123 = or i1 %v28_group_match01, %v28_group_match23
   %v28_group_match4567 = or i1 %v28_group_match45, %v28_group_match67
   %v28_group_has_match = or i1 %v28_group_match0123, %v28_group_match4567
+  %v28_group_candidate_offset7 = select i1 %v28_group_match7, i64 7, i64 0
+  %v28_group_candidate_offset6 = select i1 %v28_group_match6, i64 6, i64 %v28_group_candidate_offset7
+  %v28_group_candidate_offset5 = select i1 %v28_group_match5, i64 5, i64 %v28_group_candidate_offset6
+  %v28_group_candidate_offset4 = select i1 %v28_group_match4, i64 4, i64 %v28_group_candidate_offset5
+  %v28_group_candidate_offset3 = select i1 %v28_group_match3, i64 3, i64 %v28_group_candidate_offset4
+  %v28_group_candidate_offset2 = select i1 %v28_group_match2, i64 2, i64 %v28_group_candidate_offset3
+  %v28_group_candidate_offset1 = select i1 %v28_group_match1, i64 1, i64 %v28_group_candidate_offset2
+  %v28_group_candidate_offset = select i1 %v28_group_match0, i64 0, i64 %v28_group_candidate_offset1
+  %v28_group_candidate_unwrapped = add i64 %v28_slot, %v28_group_candidate_offset
+  %v28_group_candidate_slot = urem i64 %v28_group_candidate_unwrapped, %v28_capacity
   br i1 %v28_group_has_match, label %dict28_h2_check, label %dict28_group_advance
 dict28_group_advance:
   %v28_group_next_unwrapped = add i64 %v28_slot, 8
@@ -265,10 +275,9 @@ dict28_group_advance:
   %v28_group_probe_next = add i64 %v28_probe, 8
   br label %dict28_loop
 dict28_h2_check:
-  %v28_h2_match = icmp eq i8 %v28_control, %v28_h2
-  br i1 %v28_h2_match, label %dict28_key_check, label %dict28_advance
+  br label %dict28_key_check
 dict28_key_check:
-  %v28_key_ptr = getelementptr i32, ptr %v28_keys, i64 %v28_slot
+  %v28_key_ptr = getelementptr i32, ptr %v28_keys, i64 %v28_group_candidate_slot
   %v28_key = load i32, ptr %v28_key_ptr, align 4
   %v28_found = icmp eq i32 %v28_key, 1
   br i1 %v28_found, label %dict28_hit, label %dict28_advance
@@ -281,7 +290,7 @@ dict28_missing:
   call void @llvm.trap()
   unreachable
 dict28_hit:
-  %v28_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v28_values, i64 %v28_slot
+  %v28_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v28_values, i64 %v28_group_candidate_slot
   %v28 = load %sollang.struct.m0_s0, ptr %v28_value_ptr, align 8
   %v34_dictionary = load %sollang.dict, ptr %slot15, align 8
   %v34_keys = extractvalue %sollang.dict %v34_dictionary, 0
@@ -355,6 +364,16 @@ dict34_check:
   %v34_group_match0123 = or i1 %v34_group_match01, %v34_group_match23
   %v34_group_match4567 = or i1 %v34_group_match45, %v34_group_match67
   %v34_group_has_match = or i1 %v34_group_match0123, %v34_group_match4567
+  %v34_group_candidate_offset7 = select i1 %v34_group_match7, i64 7, i64 0
+  %v34_group_candidate_offset6 = select i1 %v34_group_match6, i64 6, i64 %v34_group_candidate_offset7
+  %v34_group_candidate_offset5 = select i1 %v34_group_match5, i64 5, i64 %v34_group_candidate_offset6
+  %v34_group_candidate_offset4 = select i1 %v34_group_match4, i64 4, i64 %v34_group_candidate_offset5
+  %v34_group_candidate_offset3 = select i1 %v34_group_match3, i64 3, i64 %v34_group_candidate_offset4
+  %v34_group_candidate_offset2 = select i1 %v34_group_match2, i64 2, i64 %v34_group_candidate_offset3
+  %v34_group_candidate_offset1 = select i1 %v34_group_match1, i64 1, i64 %v34_group_candidate_offset2
+  %v34_group_candidate_offset = select i1 %v34_group_match0, i64 0, i64 %v34_group_candidate_offset1
+  %v34_group_candidate_unwrapped = add i64 %v34_slot, %v34_group_candidate_offset
+  %v34_group_candidate_slot = urem i64 %v34_group_candidate_unwrapped, %v34_capacity
   br i1 %v34_group_has_match, label %dict34_h2_check, label %dict34_group_advance
 dict34_group_advance:
   %v34_group_next_unwrapped = add i64 %v34_slot, 8
@@ -362,10 +381,9 @@ dict34_group_advance:
   %v34_group_probe_next = add i64 %v34_probe, 8
   br label %dict34_loop
 dict34_h2_check:
-  %v34_h2_match = icmp eq i8 %v34_control, %v34_h2
-  br i1 %v34_h2_match, label %dict34_key_check, label %dict34_advance
+  br label %dict34_key_check
 dict34_key_check:
-  %v34_key_ptr = getelementptr i32, ptr %v34_keys, i64 %v34_slot
+  %v34_key_ptr = getelementptr i32, ptr %v34_keys, i64 %v34_group_candidate_slot
   %v34_key = load i32, ptr %v34_key_ptr, align 4
   %v34_found = icmp eq i32 %v34_key, 1
   br i1 %v34_found, label %dict34_hit, label %dict34_advance
@@ -378,7 +396,7 @@ dict34_missing:
   call void @llvm.trap()
   unreachable
 dict34_hit:
-  %v34_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v34_values, i64 %v34_slot
+  %v34_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v34_values, i64 %v34_group_candidate_slot
   %v34 = load %sollang.struct.m0_s0, ptr %v34_value_ptr, align 8
   %v40_dictionary = load %sollang.dict, ptr %slot15, align 8
   %v40_keys = extractvalue %sollang.dict %v40_dictionary, 0
@@ -452,6 +470,16 @@ dict40_check:
   %v40_group_match0123 = or i1 %v40_group_match01, %v40_group_match23
   %v40_group_match4567 = or i1 %v40_group_match45, %v40_group_match67
   %v40_group_has_match = or i1 %v40_group_match0123, %v40_group_match4567
+  %v40_group_candidate_offset7 = select i1 %v40_group_match7, i64 7, i64 0
+  %v40_group_candidate_offset6 = select i1 %v40_group_match6, i64 6, i64 %v40_group_candidate_offset7
+  %v40_group_candidate_offset5 = select i1 %v40_group_match5, i64 5, i64 %v40_group_candidate_offset6
+  %v40_group_candidate_offset4 = select i1 %v40_group_match4, i64 4, i64 %v40_group_candidate_offset5
+  %v40_group_candidate_offset3 = select i1 %v40_group_match3, i64 3, i64 %v40_group_candidate_offset4
+  %v40_group_candidate_offset2 = select i1 %v40_group_match2, i64 2, i64 %v40_group_candidate_offset3
+  %v40_group_candidate_offset1 = select i1 %v40_group_match1, i64 1, i64 %v40_group_candidate_offset2
+  %v40_group_candidate_offset = select i1 %v40_group_match0, i64 0, i64 %v40_group_candidate_offset1
+  %v40_group_candidate_unwrapped = add i64 %v40_slot, %v40_group_candidate_offset
+  %v40_group_candidate_slot = urem i64 %v40_group_candidate_unwrapped, %v40_capacity
   br i1 %v40_group_has_match, label %dict40_h2_check, label %dict40_group_advance
 dict40_group_advance:
   %v40_group_next_unwrapped = add i64 %v40_slot, 8
@@ -459,10 +487,9 @@ dict40_group_advance:
   %v40_group_probe_next = add i64 %v40_probe, 8
   br label %dict40_loop
 dict40_h2_check:
-  %v40_h2_match = icmp eq i8 %v40_control, %v40_h2
-  br i1 %v40_h2_match, label %dict40_key_check, label %dict40_advance
+  br label %dict40_key_check
 dict40_key_check:
-  %v40_key_ptr = getelementptr i32, ptr %v40_keys, i64 %v40_slot
+  %v40_key_ptr = getelementptr i32, ptr %v40_keys, i64 %v40_group_candidate_slot
   %v40_key = load i32, ptr %v40_key_ptr, align 4
   %v40_found = icmp eq i32 %v40_key, 1
   br i1 %v40_found, label %dict40_hit, label %dict40_advance
@@ -475,7 +502,7 @@ dict40_missing:
   call void @llvm.trap()
   unreachable
 dict40_hit:
-  %v40_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v40_values, i64 %v40_slot
+  %v40_value_ptr = getelementptr %sollang.struct.m0_s0, ptr %v40_values, i64 %v40_group_candidate_slot
   %v40 = load %sollang.struct.m0_s0, ptr %v40_value_ptr, align 8
   %v27 = extractvalue %sollang.struct.m0_s0 %v28, 1
   %v33 = extractvalue %sollang.struct.m0_s0 %v34, 1

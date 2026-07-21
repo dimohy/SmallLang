@@ -9404,3 +9404,29 @@ Research basis:
 - [Abseil container guide](https://abseil.io/docs/cpp/guides/container)
 - [Abseil Performance Tip #90](https://abseil.io/fast/90)
 - [hashbrown `HashTable::reserve`](https://docs.rs/hashbrown/latest/hashbrown/struct.HashTable.html#method.reserve)
+
+## D239 - Direct Group Candidate Selection
+
+The self-host dictionary lookup paths now carry an eight-control H2 match all
+the way to the candidate entry. Each normal, region, and entry lookup builds a
+lowest-match offset from the eight comparison bits, wraps `probe + offset` by
+the dictionary capacity, and uses that candidate slot for both key equality
+and value access. A false key equality returns to the existing scalar advance,
+so a later entry with the same H2 fingerprint remains reachable.
+
+This replaces the D236 transitional behavior that detected a match somewhere
+in the group but still tested only the group's first slot. Existing example
+190 exercises a wrapped nonzero candidate offset, while examples 548 and 550
+prove pointer and enum-reference values through the same lookup. Examples 190,
+548, 550, 553, and 554 assemble, link, and execute on Windows and Linux, and
+the complete Windows self-host suite passes **343/343**.
+
+Sollang currently materializes the eight comparison bits and candidate
+selection as scalar LLVM operations; later target optimization may combine
+them, while a future wider control-group ABI may expose a native mask directly.
+Tombstones, generic key/value mutation, and one-byte/non-integer hashing remain
+open, so formal progress stays **54/60 (90.0%)**.
+
+Research basis:
+
+- [Abseil Swiss Tables Design Notes](https://abseil.io/about/design/swisstables)

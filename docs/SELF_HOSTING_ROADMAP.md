@@ -3032,3 +3032,20 @@ complete Windows self-host suite passes **343/343**. Generic key/value lowering,
 group-match candidate selection, tombstones, and one-byte/non-integer hashing
 remain open. Formal progress stays **54/60 (90.0%)**, with **6 equivalent gates
 remaining**.
+
+## D239/examples 190, 548, and 550 - Direct Group Candidates
+
+Normal, region, and entry dictionary lookup now convert the eight H2 comparison
+bits into the lowest matching wrapped candidate slot and use that slot directly
+for key equality and value loading. If equality fails, scalar probing resumes
+without skipping later entries that share the same seven-bit fingerprint.
+This completes the direct-candidate step left open by D236 while preserving the
+four-field dictionary ABI.
+
+Example 190 exercises a nonzero wrapped candidate offset; examples 548 and 550
+cover direct-reference and enum-reference values. Together with mutation
+examples 553 and 554, all five assemble, link, and execute on Windows and Linux.
+The complete Windows self-host suite passes **343/343**. Native mask lowering,
+tombstones, generic key/value mutation, and one-byte/non-integer hashing remain,
+so formal progress stays **54/60 (90.0%)**, with **6 equivalent gates
+remaining**.

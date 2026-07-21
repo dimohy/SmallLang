@@ -6280,6 +6280,16 @@ emitCore context: EmitContext -> Unit uses Console {
                         "  %v$(regionNodeIndex!)_group_match0123 = or i1 %v$(regionNodeIndex!)_group_match01, %v$(regionNodeIndex!)_group_match23" -> println
                         "  %v$(regionNodeIndex!)_group_match4567 = or i1 %v$(regionNodeIndex!)_group_match45, %v$(regionNodeIndex!)_group_match67" -> println
                         "  %v$(regionNodeIndex!)_group_has_match = or i1 %v$(regionNodeIndex!)_group_match0123, %v$(regionNodeIndex!)_group_match4567" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset7 = select i1 %v$(regionNodeIndex!)_group_match7, i64 7, i64 0" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset6 = select i1 %v$(regionNodeIndex!)_group_match6, i64 6, i64 %v$(regionNodeIndex!)_group_candidate_offset7" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset5 = select i1 %v$(regionNodeIndex!)_group_match5, i64 5, i64 %v$(regionNodeIndex!)_group_candidate_offset6" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset4 = select i1 %v$(regionNodeIndex!)_group_match4, i64 4, i64 %v$(regionNodeIndex!)_group_candidate_offset5" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset3 = select i1 %v$(regionNodeIndex!)_group_match3, i64 3, i64 %v$(regionNodeIndex!)_group_candidate_offset4" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset2 = select i1 %v$(regionNodeIndex!)_group_match2, i64 2, i64 %v$(regionNodeIndex!)_group_candidate_offset3" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset1 = select i1 %v$(regionNodeIndex!)_group_match1, i64 1, i64 %v$(regionNodeIndex!)_group_candidate_offset2" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_offset = select i1 %v$(regionNodeIndex!)_group_match0, i64 0, i64 %v$(regionNodeIndex!)_group_candidate_offset1" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_unwrapped = add i64 %v$(regionNodeIndex!)_slot, %v$(regionNodeIndex!)_group_candidate_offset" -> println
+                        "  %v$(regionNodeIndex!)_group_candidate_slot = urem i64 %v$(regionNodeIndex!)_group_candidate_unwrapped, %v$(regionNodeIndex!)_capacity" -> println
                         "  br i1 %v$(regionNodeIndex!)_group_has_match, label %dict$(regionNodeIndex!)_h2_check, label %dict$(regionNodeIndex!)_group_advance" -> println
                         "dict$(regionNodeIndex!)_group_advance:" -> println
                         "  %v$(regionNodeIndex!)_group_next_unwrapped = add i64 %v$(regionNodeIndex!)_slot, 8" -> println
@@ -6287,12 +6297,11 @@ emitCore context: EmitContext -> Unit uses Console {
                         "  %v$(regionNodeIndex!)_group_probe_next = add i64 %v$(regionNodeIndex!)_probe, 8" -> println
                         "  br label %dict$(regionNodeIndex!)_loop" -> println
                         "dict$(regionNodeIndex!)_h2_check:" -> println
-                        "  %v$(regionNodeIndex!)_h2_match = icmp eq i8 %v$(regionNodeIndex!)_control, %v$(regionNodeIndex!)_h2" -> println
-                        "  br i1 %v$(regionNodeIndex!)_h2_match, label %dict$(regionNodeIndex!)_key_check, label %dict$(regionNodeIndex!)_advance" -> println
+                        "  br label %dict$(regionNodeIndex!)_key_check" -> println
                         "dict$(regionNodeIndex!)_key_check:" -> println
                         "  %v$(regionNodeIndex!)_key_ptr = getelementptr " -> print
                         regionIndexedDictionaryKeyTypeId! >= 0 -> if { regionIndexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { regionIndexedValue.typeModule -> llvmType -> print }
-                        ", ptr %v$(regionNodeIndex!)_keys, i64 %v$(regionNodeIndex!)_slot" -> println
+                        ", ptr %v$(regionNodeIndex!)_keys, i64 %v$(regionNodeIndex!)_group_candidate_slot" -> println
                         "  %v$(regionNodeIndex!)_key = load " -> print
                         regionIndexedDictionaryKeyTypeId! >= 0 -> if { regionIndexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { regionIndexedValue.typeModule -> llvmType -> print }
                         ", ptr %v$(regionNodeIndex!)_key_ptr, align " -> print
@@ -6337,7 +6346,7 @@ emitCore context: EmitContext -> Unit uses Console {
                         "dict$(regionNodeIndex!)_hit:" -> println
                         "  %v$(regionNodeIndex!)_value_ptr = getelementptr " -> print
                         regionIndexedDictionaryValueTypeId! >= 0 -> if { regionIndexedDictionaryValueTypeId! -> writeSemanticTypeId } else { regionIndexedValue.typeSymbol -> llvmType -> print }
-                        ", ptr %v$(regionNodeIndex!)_values, i64 %v$(regionNodeIndex!)_slot" -> println
+                        ", ptr %v$(regionNodeIndex!)_values, i64 %v$(regionNodeIndex!)_group_candidate_slot" -> println
                         "  %v$(regionNodeIndex!) = load " -> print
                         regionIndexedDictionaryValueTypeId! >= 0 -> if { regionIndexedDictionaryValueTypeId! -> writeSemanticTypeId } else { regionIndexedValue.typeSymbol -> llvmType -> print }
                         ", ptr %v$(regionNodeIndex!)_value_ptr, align " -> print
@@ -8349,6 +8358,16 @@ emitCore context: EmitContext -> Unit uses Console {
                          "  %v$(expressionIndex!)_group_match0123 = or i1 %v$(expressionIndex!)_group_match01, %v$(expressionIndex!)_group_match23" -> println
                          "  %v$(expressionIndex!)_group_match4567 = or i1 %v$(expressionIndex!)_group_match45, %v$(expressionIndex!)_group_match67" -> println
                          "  %v$(expressionIndex!)_group_has_match = or i1 %v$(expressionIndex!)_group_match0123, %v$(expressionIndex!)_group_match4567" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset7 = select i1 %v$(expressionIndex!)_group_match7, i64 7, i64 0" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset6 = select i1 %v$(expressionIndex!)_group_match6, i64 6, i64 %v$(expressionIndex!)_group_candidate_offset7" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset5 = select i1 %v$(expressionIndex!)_group_match5, i64 5, i64 %v$(expressionIndex!)_group_candidate_offset6" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset4 = select i1 %v$(expressionIndex!)_group_match4, i64 4, i64 %v$(expressionIndex!)_group_candidate_offset5" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset3 = select i1 %v$(expressionIndex!)_group_match3, i64 3, i64 %v$(expressionIndex!)_group_candidate_offset4" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset2 = select i1 %v$(expressionIndex!)_group_match2, i64 2, i64 %v$(expressionIndex!)_group_candidate_offset3" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset1 = select i1 %v$(expressionIndex!)_group_match1, i64 1, i64 %v$(expressionIndex!)_group_candidate_offset2" -> println
+                         "  %v$(expressionIndex!)_group_candidate_offset = select i1 %v$(expressionIndex!)_group_match0, i64 0, i64 %v$(expressionIndex!)_group_candidate_offset1" -> println
+                         "  %v$(expressionIndex!)_group_candidate_unwrapped = add i64 %v$(expressionIndex!)_slot, %v$(expressionIndex!)_group_candidate_offset" -> println
+                         "  %v$(expressionIndex!)_group_candidate_slot = urem i64 %v$(expressionIndex!)_group_candidate_unwrapped, %v$(expressionIndex!)_capacity" -> println
                          "  br i1 %v$(expressionIndex!)_group_has_match, label %dict$(expressionIndex!)_h2_check, label %dict$(expressionIndex!)_group_advance" -> println
                          "dict$(expressionIndex!)_group_advance:" -> println
                          "  %v$(expressionIndex!)_group_next_unwrapped = add i64 %v$(expressionIndex!)_slot, 8" -> println
@@ -8356,12 +8375,11 @@ emitCore context: EmitContext -> Unit uses Console {
                          "  %v$(expressionIndex!)_group_probe_next = add i64 %v$(expressionIndex!)_probe, 8" -> println
                          "  br label %dict$(expressionIndex!)_loop" -> println
                          "dict$(expressionIndex!)_h2_check:" -> println
-                         "  %v$(expressionIndex!)_h2_match = icmp eq i8 %v$(expressionIndex!)_control, %v$(expressionIndex!)_h2" -> println
-                         "  br i1 %v$(expressionIndex!)_h2_match, label %dict$(expressionIndex!)_key_check, label %dict$(expressionIndex!)_advance" -> println
+                         "  br label %dict$(expressionIndex!)_key_check" -> println
                          "dict$(expressionIndex!)_key_check:" -> println
                         "  %v$(expressionIndex!)_key_ptr = getelementptr " -> print
                         indexedDictionaryKeyTypeId! >= 0 -> if { indexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { indexedArray.typeModule -> llvmType -> print }
-                        ", ptr %v$(expressionIndex!)_keys, i64 %v$(expressionIndex!)_slot" -> println
+                        ", ptr %v$(expressionIndex!)_keys, i64 %v$(expressionIndex!)_group_candidate_slot" -> println
                         "  %v$(expressionIndex!)_key = load " -> print
                         indexedDictionaryKeyTypeId! >= 0 -> if { indexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { indexedArray.typeModule -> llvmType -> print }
                         ", ptr %v$(expressionIndex!)_key_ptr, align " -> print
@@ -8406,7 +8424,7 @@ emitCore context: EmitContext -> Unit uses Console {
                         "dict$(expressionIndex!)_hit:" -> println
                         "  %v$(expressionIndex!)_value_ptr = getelementptr " -> print
                         indexedDictionaryValueTypeId! >= 0 -> if { indexedDictionaryValueTypeId! -> writeSemanticTypeId } else { indexedArray.typeSymbol -> llvmType -> print }
-                        ", ptr %v$(expressionIndex!)_values, i64 %v$(expressionIndex!)_slot" -> println
+                        ", ptr %v$(expressionIndex!)_values, i64 %v$(expressionIndex!)_group_candidate_slot" -> println
                         "  %v$(expressionIndex!) = load " -> print
                         indexedDictionaryValueTypeId! >= 0 -> if { indexedDictionaryValueTypeId! -> writeSemanticTypeId } else { indexedArray.typeSymbol -> llvmType -> print }
                         ", ptr %v$(expressionIndex!)_value_ptr, align " -> print
@@ -10816,6 +10834,16 @@ emitCore context: EmitContext -> Unit uses Console {
                                  "  %v$(entryExpressionIndex!)_group_match0123 = or i1 %v$(entryExpressionIndex!)_group_match01, %v$(entryExpressionIndex!)_group_match23" -> println
                                  "  %v$(entryExpressionIndex!)_group_match4567 = or i1 %v$(entryExpressionIndex!)_group_match45, %v$(entryExpressionIndex!)_group_match67" -> println
                                  "  %v$(entryExpressionIndex!)_group_has_match = or i1 %v$(entryExpressionIndex!)_group_match0123, %v$(entryExpressionIndex!)_group_match4567" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset7 = select i1 %v$(entryExpressionIndex!)_group_match7, i64 7, i64 0" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset6 = select i1 %v$(entryExpressionIndex!)_group_match6, i64 6, i64 %v$(entryExpressionIndex!)_group_candidate_offset7" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset5 = select i1 %v$(entryExpressionIndex!)_group_match5, i64 5, i64 %v$(entryExpressionIndex!)_group_candidate_offset6" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset4 = select i1 %v$(entryExpressionIndex!)_group_match4, i64 4, i64 %v$(entryExpressionIndex!)_group_candidate_offset5" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset3 = select i1 %v$(entryExpressionIndex!)_group_match3, i64 3, i64 %v$(entryExpressionIndex!)_group_candidate_offset4" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset2 = select i1 %v$(entryExpressionIndex!)_group_match2, i64 2, i64 %v$(entryExpressionIndex!)_group_candidate_offset3" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset1 = select i1 %v$(entryExpressionIndex!)_group_match1, i64 1, i64 %v$(entryExpressionIndex!)_group_candidate_offset2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_offset = select i1 %v$(entryExpressionIndex!)_group_match0, i64 0, i64 %v$(entryExpressionIndex!)_group_candidate_offset1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_unwrapped = add i64 %v$(entryExpressionIndex!)_slot, %v$(entryExpressionIndex!)_group_candidate_offset" -> println
+                                 "  %v$(entryExpressionIndex!)_group_candidate_slot = urem i64 %v$(entryExpressionIndex!)_group_candidate_unwrapped, %v$(entryExpressionIndex!)_capacity" -> println
                                  "  br i1 %v$(entryExpressionIndex!)_group_has_match, label %dict$(entryExpressionIndex!)_h2_check, label %dict$(entryExpressionIndex!)_group_advance" -> println
                                  "dict$(entryExpressionIndex!)_group_advance:" -> println
                                  "  %v$(entryExpressionIndex!)_group_next_unwrapped = add i64 %v$(entryExpressionIndex!)_slot, 8" -> println
@@ -10823,12 +10851,11 @@ emitCore context: EmitContext -> Unit uses Console {
                                  "  %v$(entryExpressionIndex!)_group_probe_next = add i64 %v$(entryExpressionIndex!)_probe, 8" -> println
                                  "  br label %dict$(entryExpressionIndex!)_loop" -> println
                                  "dict$(entryExpressionIndex!)_h2_check:" -> println
-                                 "  %v$(entryExpressionIndex!)_h2_match = icmp eq i8 %v$(entryExpressionIndex!)_control, %v$(entryExpressionIndex!)_h2" -> println
-                                 "  br i1 %v$(entryExpressionIndex!)_h2_match, label %dict$(entryExpressionIndex!)_key_check, label %dict$(entryExpressionIndex!)_advance" -> println
+                                 "  br label %dict$(entryExpressionIndex!)_key_check" -> println
                                  "dict$(entryExpressionIndex!)_key_check:" -> println
                                 "  %v$(entryExpressionIndex!)_key_ptr = getelementptr " -> print
                                 entryIndexedDictionaryKeyTypeId! >= 0 -> if { entryIndexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { entryIndexedValue.typeModule -> llvmType -> print }
-                                ", ptr %v$(entryExpressionIndex!)_keys, i64 %v$(entryExpressionIndex!)_slot" -> println
+                                ", ptr %v$(entryExpressionIndex!)_keys, i64 %v$(entryExpressionIndex!)_group_candidate_slot" -> println
                                 "  %v$(entryExpressionIndex!)_key = load " -> print
                                 entryIndexedDictionaryKeyTypeId! >= 0 -> if { entryIndexedDictionaryKeyTypeId! -> writeSemanticTypeId } else { entryIndexedValue.typeModule -> llvmType -> print }
                                 ", ptr %v$(entryExpressionIndex!)_key_ptr, align " -> print
@@ -10869,7 +10896,7 @@ emitCore context: EmitContext -> Unit uses Console {
                                 "dict$(entryExpressionIndex!)_hit:" -> println
                                 "  %v$(entryExpressionIndex!)_value_ptr = getelementptr " -> print
                                 entryIndexedDictionaryValueTypeId! >= 0 -> if { entryIndexedDictionaryValueTypeId! -> writeSemanticTypeId } else { entryIndexedValue.typeSymbol -> llvmType -> print }
-                                ", ptr %v$(entryExpressionIndex!)_values, i64 %v$(entryExpressionIndex!)_slot" -> println
+                                ", ptr %v$(entryExpressionIndex!)_values, i64 %v$(entryExpressionIndex!)_group_candidate_slot" -> println
                                 "  %v$(entryExpressionIndex!) = load " -> print
                                 entryIndexedDictionaryValueTypeId! >= 0 -> if { entryIndexedDictionaryValueTypeId! -> writeSemanticTypeId } else { entryIndexedValue.typeSymbol -> llvmType -> print }
                                 ", ptr %v$(entryExpressionIndex!)_value_ptr, align " -> print

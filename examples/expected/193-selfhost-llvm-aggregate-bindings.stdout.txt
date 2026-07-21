@@ -165,6 +165,16 @@ dict24_check:
   %v24_group_match0123 = or i1 %v24_group_match01, %v24_group_match23
   %v24_group_match4567 = or i1 %v24_group_match45, %v24_group_match67
   %v24_group_has_match = or i1 %v24_group_match0123, %v24_group_match4567
+  %v24_group_candidate_offset7 = select i1 %v24_group_match7, i64 7, i64 0
+  %v24_group_candidate_offset6 = select i1 %v24_group_match6, i64 6, i64 %v24_group_candidate_offset7
+  %v24_group_candidate_offset5 = select i1 %v24_group_match5, i64 5, i64 %v24_group_candidate_offset6
+  %v24_group_candidate_offset4 = select i1 %v24_group_match4, i64 4, i64 %v24_group_candidate_offset5
+  %v24_group_candidate_offset3 = select i1 %v24_group_match3, i64 3, i64 %v24_group_candidate_offset4
+  %v24_group_candidate_offset2 = select i1 %v24_group_match2, i64 2, i64 %v24_group_candidate_offset3
+  %v24_group_candidate_offset1 = select i1 %v24_group_match1, i64 1, i64 %v24_group_candidate_offset2
+  %v24_group_candidate_offset = select i1 %v24_group_match0, i64 0, i64 %v24_group_candidate_offset1
+  %v24_group_candidate_unwrapped = add i64 %v24_slot, %v24_group_candidate_offset
+  %v24_group_candidate_slot = urem i64 %v24_group_candidate_unwrapped, %v24_capacity
   br i1 %v24_group_has_match, label %dict24_h2_check, label %dict24_group_advance
 dict24_group_advance:
   %v24_group_next_unwrapped = add i64 %v24_slot, 8
@@ -172,10 +182,9 @@ dict24_group_advance:
   %v24_group_probe_next = add i64 %v24_probe, 8
   br label %dict24_loop
 dict24_h2_check:
-  %v24_h2_match = icmp eq i8 %v24_control, %v24_h2
-  br i1 %v24_h2_match, label %dict24_key_check, label %dict24_advance
+  br label %dict24_key_check
 dict24_key_check:
-  %v24_key_ptr = getelementptr i32, ptr %v24_keys, i64 %v24_slot
+  %v24_key_ptr = getelementptr i32, ptr %v24_keys, i64 %v24_group_candidate_slot
   %v24_key = load i32, ptr %v24_key_ptr, align 4
   %v24_found = icmp eq i32 %v24_key, 2
   br i1 %v24_found, label %dict24_hit, label %dict24_advance
@@ -188,7 +197,7 @@ dict24_missing:
   call void @llvm.trap()
   unreachable
 dict24_hit:
-  %v24_value_ptr = getelementptr i32, ptr %v24_values, i64 %v24_slot
+  %v24_value_ptr = getelementptr i32, ptr %v24_values, i64 %v24_group_candidate_slot
   %v24 = load i32, ptr %v24_value_ptr, align 4
   call void @sollang_drop_t28(%sollang.dict %v19)
   ret i32 %v24

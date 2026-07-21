@@ -357,7 +357,8 @@ compiler and passes Windows and Linux differential gates. The latest ownership
 checkpoint infers readonly-reference origins stored in
 user structs, enum payloads, fixed/growable array elements, and dictionary
 values. The self-host LLVM backend now uses control bytes, integer H2 hashes,
-wrapped eight-slot group scans, and an `Int` dictionary `put` path that updates
+wrapped eight-slot group scans with direct candidate selection, and an `Int`
+dictionary `put` path that updates
 existing keys in place, inserts into available slots, and doubles and rehashes
 only when the next insertion would exceed 87.5% load. General key/value
 families remain open. Local package

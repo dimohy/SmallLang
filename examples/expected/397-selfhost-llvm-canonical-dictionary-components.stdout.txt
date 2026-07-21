@@ -257,6 +257,16 @@ dict10_check:
   %v10_group_match0123 = or i1 %v10_group_match01, %v10_group_match23
   %v10_group_match4567 = or i1 %v10_group_match45, %v10_group_match67
   %v10_group_has_match = or i1 %v10_group_match0123, %v10_group_match4567
+  %v10_group_candidate_offset7 = select i1 %v10_group_match7, i64 7, i64 0
+  %v10_group_candidate_offset6 = select i1 %v10_group_match6, i64 6, i64 %v10_group_candidate_offset7
+  %v10_group_candidate_offset5 = select i1 %v10_group_match5, i64 5, i64 %v10_group_candidate_offset6
+  %v10_group_candidate_offset4 = select i1 %v10_group_match4, i64 4, i64 %v10_group_candidate_offset5
+  %v10_group_candidate_offset3 = select i1 %v10_group_match3, i64 3, i64 %v10_group_candidate_offset4
+  %v10_group_candidate_offset2 = select i1 %v10_group_match2, i64 2, i64 %v10_group_candidate_offset3
+  %v10_group_candidate_offset1 = select i1 %v10_group_match1, i64 1, i64 %v10_group_candidate_offset2
+  %v10_group_candidate_offset = select i1 %v10_group_match0, i64 0, i64 %v10_group_candidate_offset1
+  %v10_group_candidate_unwrapped = add i64 %v10_slot, %v10_group_candidate_offset
+  %v10_group_candidate_slot = urem i64 %v10_group_candidate_unwrapped, %v10_capacity
   br i1 %v10_group_has_match, label %dict10_h2_check, label %dict10_group_advance
 dict10_group_advance:
   %v10_group_next_unwrapped = add i64 %v10_slot, 8
@@ -264,10 +274,9 @@ dict10_group_advance:
   %v10_group_probe_next = add i64 %v10_probe, 8
   br label %dict10_loop
 dict10_h2_check:
-  %v10_h2_match = icmp eq i8 %v10_control, %v10_h2
-  br i1 %v10_h2_match, label %dict10_key_check, label %dict10_advance
+  br label %dict10_key_check
 dict10_key_check:
-  %v10_key_ptr = getelementptr i16, ptr %v10_keys, i64 %v10_slot
+  %v10_key_ptr = getelementptr i16, ptr %v10_keys, i64 %v10_group_candidate_slot
   %v10_key = load i16, ptr %v10_key_ptr, align 2
   %v10_found = icmp eq i16 %v10_key, %v12
   br i1 %v10_found, label %dict10_hit, label %dict10_advance
@@ -280,7 +289,7 @@ dict10_missing:
   call void @llvm.trap()
   unreachable
 dict10_hit:
-  %v10_value_ptr = getelementptr i64, ptr %v10_values, i64 %v10_slot
+  %v10_value_ptr = getelementptr i64, ptr %v10_values, i64 %v10_group_candidate_slot
   %v10 = load i64, ptr %v10_value_ptr, align 8
   ret i64 %v10
 }

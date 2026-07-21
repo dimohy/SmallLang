@@ -143,6 +143,16 @@ dict14_check:
   %v14_group_match0123 = or i1 %v14_group_match01, %v14_group_match23
   %v14_group_match4567 = or i1 %v14_group_match45, %v14_group_match67
   %v14_group_has_match = or i1 %v14_group_match0123, %v14_group_match4567
+  %v14_group_candidate_offset7 = select i1 %v14_group_match7, i64 7, i64 0
+  %v14_group_candidate_offset6 = select i1 %v14_group_match6, i64 6, i64 %v14_group_candidate_offset7
+  %v14_group_candidate_offset5 = select i1 %v14_group_match5, i64 5, i64 %v14_group_candidate_offset6
+  %v14_group_candidate_offset4 = select i1 %v14_group_match4, i64 4, i64 %v14_group_candidate_offset5
+  %v14_group_candidate_offset3 = select i1 %v14_group_match3, i64 3, i64 %v14_group_candidate_offset4
+  %v14_group_candidate_offset2 = select i1 %v14_group_match2, i64 2, i64 %v14_group_candidate_offset3
+  %v14_group_candidate_offset1 = select i1 %v14_group_match1, i64 1, i64 %v14_group_candidate_offset2
+  %v14_group_candidate_offset = select i1 %v14_group_match0, i64 0, i64 %v14_group_candidate_offset1
+  %v14_group_candidate_unwrapped = add i64 %v14_slot, %v14_group_candidate_offset
+  %v14_group_candidate_slot = urem i64 %v14_group_candidate_unwrapped, %v14_capacity
   br i1 %v14_group_has_match, label %dict14_h2_check, label %dict14_group_advance
 dict14_group_advance:
   %v14_group_next_unwrapped = add i64 %v14_slot, 8
@@ -150,10 +160,9 @@ dict14_group_advance:
   %v14_group_probe_next = add i64 %v14_probe, 8
   br label %dict14_loop
 dict14_h2_check:
-  %v14_h2_match = icmp eq i8 %v14_control, %v14_h2
-  br i1 %v14_h2_match, label %dict14_key_check, label %dict14_advance
+  br label %dict14_key_check
 dict14_key_check:
-  %v14_key_ptr = getelementptr i32, ptr %v14_keys, i64 %v14_slot
+  %v14_key_ptr = getelementptr i32, ptr %v14_keys, i64 %v14_group_candidate_slot
   %v14_key = load i32, ptr %v14_key_ptr, align 4
   %v14_found = icmp eq i32 %v14_key, 2
   br i1 %v14_found, label %dict14_hit, label %dict14_advance
@@ -166,7 +175,7 @@ dict14_missing:
   call void @llvm.trap()
   unreachable
 dict14_hit:
-  %v14_value_ptr = getelementptr i32, ptr %v14_values, i64 %v14_slot
+  %v14_value_ptr = getelementptr i32, ptr %v14_values, i64 %v14_group_candidate_slot
   %v14 = load i32, ptr %v14_value_ptr, align 4
   ret i32 %v14
 }

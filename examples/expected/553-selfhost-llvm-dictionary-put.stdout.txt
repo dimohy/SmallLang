@@ -523,6 +523,16 @@ dict17_check:
   %v17_group_match0123 = or i1 %v17_group_match01, %v17_group_match23
   %v17_group_match4567 = or i1 %v17_group_match45, %v17_group_match67
   %v17_group_has_match = or i1 %v17_group_match0123, %v17_group_match4567
+  %v17_group_candidate_offset7 = select i1 %v17_group_match7, i64 7, i64 0
+  %v17_group_candidate_offset6 = select i1 %v17_group_match6, i64 6, i64 %v17_group_candidate_offset7
+  %v17_group_candidate_offset5 = select i1 %v17_group_match5, i64 5, i64 %v17_group_candidate_offset6
+  %v17_group_candidate_offset4 = select i1 %v17_group_match4, i64 4, i64 %v17_group_candidate_offset5
+  %v17_group_candidate_offset3 = select i1 %v17_group_match3, i64 3, i64 %v17_group_candidate_offset4
+  %v17_group_candidate_offset2 = select i1 %v17_group_match2, i64 2, i64 %v17_group_candidate_offset3
+  %v17_group_candidate_offset1 = select i1 %v17_group_match1, i64 1, i64 %v17_group_candidate_offset2
+  %v17_group_candidate_offset = select i1 %v17_group_match0, i64 0, i64 %v17_group_candidate_offset1
+  %v17_group_candidate_unwrapped = add i64 %v17_slot, %v17_group_candidate_offset
+  %v17_group_candidate_slot = urem i64 %v17_group_candidate_unwrapped, %v17_capacity
   br i1 %v17_group_has_match, label %dict17_h2_check, label %dict17_group_advance
 dict17_group_advance:
   %v17_group_next_unwrapped = add i64 %v17_slot, 8
@@ -530,10 +540,9 @@ dict17_group_advance:
   %v17_group_probe_next = add i64 %v17_probe, 8
   br label %dict17_loop
 dict17_h2_check:
-  %v17_h2_match = icmp eq i8 %v17_control, %v17_h2
-  br i1 %v17_h2_match, label %dict17_key_check, label %dict17_advance
+  br label %dict17_key_check
 dict17_key_check:
-  %v17_key_ptr = getelementptr i32, ptr %v17_keys, i64 %v17_slot
+  %v17_key_ptr = getelementptr i32, ptr %v17_keys, i64 %v17_group_candidate_slot
   %v17_key = load i32, ptr %v17_key_ptr, align 4
   %v17_found = icmp eq i32 %v17_key, 3
   br i1 %v17_found, label %dict17_hit, label %dict17_advance
@@ -546,7 +555,7 @@ dict17_missing:
   call void @llvm.trap()
   unreachable
 dict17_hit:
-  %v17_value_ptr = getelementptr i32, ptr %v17_values, i64 %v17_slot
+  %v17_value_ptr = getelementptr i32, ptr %v17_values, i64 %v17_group_candidate_slot
   %v17 = load i32, ptr %v17_value_ptr, align 4
   %v16 = icmp eq i32 %v17, 30
   br i1 %v16, label %if21_then, label %if21_merge
@@ -629,6 +638,16 @@ dict27_check:
   %v27_group_match0123 = or i1 %v27_group_match01, %v27_group_match23
   %v27_group_match4567 = or i1 %v27_group_match45, %v27_group_match67
   %v27_group_has_match = or i1 %v27_group_match0123, %v27_group_match4567
+  %v27_group_candidate_offset7 = select i1 %v27_group_match7, i64 7, i64 0
+  %v27_group_candidate_offset6 = select i1 %v27_group_match6, i64 6, i64 %v27_group_candidate_offset7
+  %v27_group_candidate_offset5 = select i1 %v27_group_match5, i64 5, i64 %v27_group_candidate_offset6
+  %v27_group_candidate_offset4 = select i1 %v27_group_match4, i64 4, i64 %v27_group_candidate_offset5
+  %v27_group_candidate_offset3 = select i1 %v27_group_match3, i64 3, i64 %v27_group_candidate_offset4
+  %v27_group_candidate_offset2 = select i1 %v27_group_match2, i64 2, i64 %v27_group_candidate_offset3
+  %v27_group_candidate_offset1 = select i1 %v27_group_match1, i64 1, i64 %v27_group_candidate_offset2
+  %v27_group_candidate_offset = select i1 %v27_group_match0, i64 0, i64 %v27_group_candidate_offset1
+  %v27_group_candidate_unwrapped = add i64 %v27_slot, %v27_group_candidate_offset
+  %v27_group_candidate_slot = urem i64 %v27_group_candidate_unwrapped, %v27_capacity
   br i1 %v27_group_has_match, label %dict27_h2_check, label %dict27_group_advance
 dict27_group_advance:
   %v27_group_next_unwrapped = add i64 %v27_slot, 8
@@ -636,10 +655,9 @@ dict27_group_advance:
   %v27_group_probe_next = add i64 %v27_probe, 8
   br label %dict27_loop
 dict27_h2_check:
-  %v27_h2_match = icmp eq i8 %v27_control, %v27_h2
-  br i1 %v27_h2_match, label %dict27_key_check, label %dict27_advance
+  br label %dict27_key_check
 dict27_key_check:
-  %v27_key_ptr = getelementptr i32, ptr %v27_keys, i64 %v27_slot
+  %v27_key_ptr = getelementptr i32, ptr %v27_keys, i64 %v27_group_candidate_slot
   %v27_key = load i32, ptr %v27_key_ptr, align 4
   %v27_found = icmp eq i32 %v27_key, 2
   br i1 %v27_found, label %dict27_hit, label %dict27_advance
@@ -652,7 +670,7 @@ dict27_missing:
   call void @llvm.trap()
   unreachable
 dict27_hit:
-  %v27_value_ptr = getelementptr i32, ptr %v27_values, i64 %v27_slot
+  %v27_value_ptr = getelementptr i32, ptr %v27_values, i64 %v27_group_candidate_slot
   %v27 = load i32, ptr %v27_value_ptr, align 4
   %v26 = icmp eq i32 %v27, 222
   br i1 %v26, label %if31_then, label %if31_merge

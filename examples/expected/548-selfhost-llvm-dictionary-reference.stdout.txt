@@ -230,6 +230,16 @@ dict11_check:
   %v11_group_match0123 = or i1 %v11_group_match01, %v11_group_match23
   %v11_group_match4567 = or i1 %v11_group_match45, %v11_group_match67
   %v11_group_has_match = or i1 %v11_group_match0123, %v11_group_match4567
+  %v11_group_candidate_offset7 = select i1 %v11_group_match7, i64 7, i64 0
+  %v11_group_candidate_offset6 = select i1 %v11_group_match6, i64 6, i64 %v11_group_candidate_offset7
+  %v11_group_candidate_offset5 = select i1 %v11_group_match5, i64 5, i64 %v11_group_candidate_offset6
+  %v11_group_candidate_offset4 = select i1 %v11_group_match4, i64 4, i64 %v11_group_candidate_offset5
+  %v11_group_candidate_offset3 = select i1 %v11_group_match3, i64 3, i64 %v11_group_candidate_offset4
+  %v11_group_candidate_offset2 = select i1 %v11_group_match2, i64 2, i64 %v11_group_candidate_offset3
+  %v11_group_candidate_offset1 = select i1 %v11_group_match1, i64 1, i64 %v11_group_candidate_offset2
+  %v11_group_candidate_offset = select i1 %v11_group_match0, i64 0, i64 %v11_group_candidate_offset1
+  %v11_group_candidate_unwrapped = add i64 %v11_slot, %v11_group_candidate_offset
+  %v11_group_candidate_slot = urem i64 %v11_group_candidate_unwrapped, %v11_capacity
   br i1 %v11_group_has_match, label %dict11_h2_check, label %dict11_group_advance
 dict11_group_advance:
   %v11_group_next_unwrapped = add i64 %v11_slot, 8
@@ -237,10 +247,9 @@ dict11_group_advance:
   %v11_group_probe_next = add i64 %v11_probe, 8
   br label %dict11_loop
 dict11_h2_check:
-  %v11_h2_match = icmp eq i8 %v11_control, %v11_h2
-  br i1 %v11_h2_match, label %dict11_key_check, label %dict11_advance
+  br label %dict11_key_check
 dict11_key_check:
-  %v11_key_ptr = getelementptr i32, ptr %v11_keys, i64 %v11_slot
+  %v11_key_ptr = getelementptr i32, ptr %v11_keys, i64 %v11_group_candidate_slot
   %v11_key = load i32, ptr %v11_key_ptr, align 4
   %v11_found = icmp eq i32 %v11_key, 1
   br i1 %v11_found, label %dict11_hit, label %dict11_advance
@@ -253,7 +262,7 @@ dict11_missing:
   call void @llvm.trap()
   unreachable
 dict11_hit:
-  %v11_value_ptr = getelementptr ptr, ptr %v11_values, i64 %v11_slot
+  %v11_value_ptr = getelementptr ptr, ptr %v11_values, i64 %v11_group_candidate_slot
   %v11 = load ptr, ptr %v11_value_ptr, align 8
   ret ptr %v11
 }

@@ -288,6 +288,16 @@ dict30_check:
   %v30_group_match0123 = or i1 %v30_group_match01, %v30_group_match23
   %v30_group_match4567 = or i1 %v30_group_match45, %v30_group_match67
   %v30_group_has_match = or i1 %v30_group_match0123, %v30_group_match4567
+  %v30_group_candidate_offset7 = select i1 %v30_group_match7, i64 7, i64 0
+  %v30_group_candidate_offset6 = select i1 %v30_group_match6, i64 6, i64 %v30_group_candidate_offset7
+  %v30_group_candidate_offset5 = select i1 %v30_group_match5, i64 5, i64 %v30_group_candidate_offset6
+  %v30_group_candidate_offset4 = select i1 %v30_group_match4, i64 4, i64 %v30_group_candidate_offset5
+  %v30_group_candidate_offset3 = select i1 %v30_group_match3, i64 3, i64 %v30_group_candidate_offset4
+  %v30_group_candidate_offset2 = select i1 %v30_group_match2, i64 2, i64 %v30_group_candidate_offset3
+  %v30_group_candidate_offset1 = select i1 %v30_group_match1, i64 1, i64 %v30_group_candidate_offset2
+  %v30_group_candidate_offset = select i1 %v30_group_match0, i64 0, i64 %v30_group_candidate_offset1
+  %v30_group_candidate_unwrapped = add i64 %v30_slot, %v30_group_candidate_offset
+  %v30_group_candidate_slot = urem i64 %v30_group_candidate_unwrapped, %v30_capacity
   br i1 %v30_group_has_match, label %dict30_h2_check, label %dict30_group_advance
 dict30_group_advance:
   %v30_group_next_unwrapped = add i64 %v30_slot, 8
@@ -295,10 +305,9 @@ dict30_group_advance:
   %v30_group_probe_next = add i64 %v30_probe, 8
   br label %dict30_loop
 dict30_h2_check:
-  %v30_h2_match = icmp eq i8 %v30_control, %v30_h2
-  br i1 %v30_h2_match, label %dict30_key_check, label %dict30_advance
+  br label %dict30_key_check
 dict30_key_check:
-  %v30_key_ptr = getelementptr i32, ptr %v30_keys, i64 %v30_slot
+  %v30_key_ptr = getelementptr i32, ptr %v30_keys, i64 %v30_group_candidate_slot
   %v30_key = load i32, ptr %v30_key_ptr, align 4
   %v30_found = icmp eq i32 %v30_key, 1
   br i1 %v30_found, label %dict30_hit, label %dict30_advance
@@ -311,7 +320,7 @@ dict30_missing:
   call void @llvm.trap()
   unreachable
 dict30_hit:
-  %v30_value_ptr = getelementptr %sollang.enum.t25, ptr %v30_values, i64 %v30_slot
+  %v30_value_ptr = getelementptr %sollang.enum.t25, ptr %v30_values, i64 %v30_group_candidate_slot
   %v30 = load %sollang.enum.t25, ptr %v30_value_ptr, align 8
   %v29 = call i32 @sollang_m0_s5(%sollang.enum.t25 %v30)
   %v33_expression_literal0 = getelementptr i8, ptr @sollang_str_34, i64 0
