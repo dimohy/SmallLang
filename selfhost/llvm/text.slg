@@ -5829,6 +5829,8 @@ emitCore context: EmitContext -> Unit uses Console {
                 regionDictionaryValueTypeId! >= 0 -> if { regionDictionaryLength * context.typeSizes[regionDictionaryValueTypeId!] => regionDictionaryValueByteLength! }
                 regionDictionaryKeyByteLength! + regionDictionaryLength => regionDictionaryAllocationByteLength
                 regionNode.operand0 => regionDictionaryFirstKeyIndex!
+                -1 => regionControlHashStorageSize
+                regionDictionaryKeyByteLength! / (regionDictionaryItemCount! / 2) => regionControlHashStorageSize!
                 -1 => regionControlHashWidth
                 false => regionControlHashSigned
                 (regionDictionaryFirstKeyIndex! >= 0 and context.ir[regionDictionaryFirstKeyIndex!].nextOperand >= 0) -> if {
@@ -5865,13 +5867,11 @@ emitCore context: EmitContext -> Unit uses Console {
                     (regionDictionaryItem.typeKind == 8 or (regionDictionaryItem.typeId >= 0 and context.types[regionDictionaryItem.typeId].kind == 8)) -> if { context.pointerBitWidth / 8 -> writeDecimalLine } else { regionDictionaryItemTypeId >= 0 -> if { context.typeAligns[regionDictionaryItemTypeId] -> writeDecimalLine } else { regionDictionaryItemSymbol -> legacyStorageAlign -> writeDecimalLine } }
                     regionDictionaryItemPosition! % 2 == 0 -> if {
                         "  %v$(regionNodeIndex!)_control_ptr$(regionDictionaryEntryPosition) = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 $(regionDictionaryEntryPosition)" -> println
-                            regionDictionaryKeyTypeId! >= 0 -> if {
-                                context.typeSizes[regionDictionaryKeyTypeId!] * 8 => regionControlHashWidth!
-                                false => regionControlHashSigned!
-                            } else {
-                                regionDictionaryItemSymbol -> integerWidth => regionControlHashWidth!
-                                regionDictionaryItemSymbol -> integerSigned => regionControlHashSigned!
-                            }
+                            regionDictionaryKeyByteLength! / (regionDictionaryItemCount! / 2) == 1 -> if { -1 => regionControlHashWidth! }
+                            regionDictionaryKeyByteLength! / (regionDictionaryItemCount! / 2) == 2 -> if { 16 => regionControlHashWidth! }
+                            regionDictionaryKeyByteLength! / (regionDictionaryItemCount! / 2) == 4 -> if { 32 => regionControlHashWidth! }
+                            regionDictionaryKeyByteLength! / (regionDictionaryItemCount! / 2) == 8 -> if { 64 => regionControlHashWidth! }
+                            false => regionControlHashSigned!
                         (regionControlHashWidth > 0 and regionControlHashWidth <= 64) -> if {
                             "  %v$(regionNodeIndex!)_control_hash_loaded$(regionDictionaryEntryPosition) = load " -> print
                             "i$(regionControlHashWidth)" -> print
@@ -5945,9 +5945,15 @@ emitCore context: EmitContext -> Unit uses Console {
                         regionIndexedDictionaryKeyStorageSize! < 0 -> if { regionIndexedValue.typeModule -> storageSize => regionIndexedDictionaryKeyStorageSize! }
                         "  %v$(regionNodeIndex!)_control_offset = mul i64 %v$(regionNodeIndex!)_capacity, $(regionIndexedDictionaryKeyStorageSize!)" -> println
                         "  %v$(regionNodeIndex!)_controls = getelementptr i8, ptr %v$(regionNodeIndex!)_keys, i64 %v$(regionNodeIndex!)_control_offset" -> println
-                        regionIndexValue -> integerNodeWidth => regionIndexedDictionaryHashWidth
-                        regionIndexValue -> integerNodeSigned => regionIndexedDictionaryHashSigned
-                        false -> if {
+                        (regionIndexedDictionaryKeyStorageSize! == 1) -> if { 8 } else {
+                            (regionIndexedDictionaryKeyStorageSize! == 2) -> if { 16 } else {
+                                (regionIndexedDictionaryKeyStorageSize! == 4) -> if { 32 } else {
+                                    (regionIndexedDictionaryKeyStorageSize! == 8) -> if { 64 } else { -1 }
+                                }
+                            }
+                        } => regionIndexedDictionaryHashWidth
+                        false => regionIndexedDictionaryHashSigned
+                        (regionIndexedDictionaryHashWidth > 0 and regionIndexedDictionaryHashWidth <= 64) -> if {
                             "  %v$(regionNodeIndex!)_hash_key = " -> print
                             regionIndexedDictionaryHashWidth == 64 -> if { "add i64 0, " -> print } else {
                                 regionIndexedDictionaryHashSigned -> if { "sext " -> print } else { "zext " -> print }
@@ -7831,7 +7837,13 @@ emitCore context: EmitContext -> Unit uses Console {
                     "  %v$(expressionIndex!)_values = call ptr @malloc(i64 $dictionaryValueByteLength)" -> println
                     expression.operand0 => dictionaryItemIndex!
                     0 => dictionaryItemPosition!
-                    -1 => dictionaryControlHashWidth
+                    (dictionaryKeyByteLength! / (dictionaryItemCount! / 2) == 1) -> if { -1 } else {
+                        (dictionaryKeyByteLength! / (dictionaryItemCount! / 2) == 2) -> if { 16 } else {
+                            (dictionaryKeyByteLength! / (dictionaryItemCount! / 2) == 4) -> if { 32 } else {
+                                (dictionaryKeyByteLength! / (dictionaryItemCount! / 2) == 8) -> if { 64 } else { -1 }
+                            }
+                        }
+                    } => dictionaryControlHashWidth
                     false => dictionaryControlHashSigned
                     dictionaryItemIndex! >= 0 -> while {
                         context.ir[dictionaryItemIndex!] => dictionaryItem
@@ -7859,13 +7871,7 @@ emitCore context: EmitContext -> Unit uses Console {
                         (dictionaryItem.typeKind == 8 or (dictionaryItem.typeId >= 0 and context.types[dictionaryItem.typeId].kind == 8)) -> if { context.pointerBitWidth / 8 -> writeDecimalLine } else { dictionaryItemTypeId >= 0 -> if { context.typeAligns[dictionaryItemTypeId] -> writeDecimalLine } else { dictionaryItemSymbol -> legacyStorageAlign -> writeDecimalLine } }
                         dictionaryItemPosition! % 2 == 0 -> if {
                             "  %v$(expressionIndex!)_control_ptr$(dictionaryEntryPosition) = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 $(dictionaryEntryPosition)" -> println
-                            dictionaryKeyTypeId! >= 0 -> if {
-                                context.typeSizes[dictionaryKeyTypeId!] * 8 => dictionaryControlHashWidth!
-                                false => dictionaryControlHashSigned!
-                            } else {
-                                dictionaryItemSymbol -> integerWidth => dictionaryControlHashWidth!
-                                dictionaryItemSymbol -> integerSigned => dictionaryControlHashSigned!
-                            }
+                            false => dictionaryControlHashSigned!
                             (dictionaryControlHashWidth > 0 and dictionaryControlHashWidth <= 64) -> if {
                                 "  %v$(expressionIndex!)_control_hash_loaded$(dictionaryEntryPosition) = load " -> print
                                 "i$(dictionaryControlHashWidth)" -> print
@@ -7950,9 +7956,15 @@ emitCore context: EmitContext -> Unit uses Console {
                          indexedDictionaryKeyStorageSize! < 0 -> if { indexedArray.typeModule -> storageSize => indexedDictionaryKeyStorageSize! }
                          "  %v$(expressionIndex!)_control_offset = mul i64 %v$(expressionIndex!)_capacity, $(indexedDictionaryKeyStorageSize!)" -> println
                          "  %v$(expressionIndex!)_controls = getelementptr i8, ptr %v$(expressionIndex!)_keys, i64 %v$(expressionIndex!)_control_offset" -> println
-                         arrayIndex -> integerNodeWidth => indexedDictionaryHashWidth
-                         arrayIndex -> integerNodeSigned => indexedDictionaryHashSigned
-                         false -> if {
+                         (indexedDictionaryKeyStorageSize! == 1) -> if { -1 } else {
+                             (indexedDictionaryKeyStorageSize! == 2) -> if { 16 } else {
+                                 (indexedDictionaryKeyStorageSize! == 4) -> if { 32 } else {
+                                     (indexedDictionaryKeyStorageSize! == 8) -> if { 64 } else { -1 }
+                                 }
+                             }
+                         } => indexedDictionaryHashWidth
+                         false => indexedDictionaryHashSigned
+                         (indexedDictionaryHashWidth > 0 and indexedDictionaryHashWidth <= 64) -> if {
                              "  %v$(expressionIndex!)_hash_key = " -> print
                              indexedDictionaryHashWidth == 64 -> if { "add i64 0, " -> print } else {
                                  indexedDictionaryHashSigned -> if { "sext " -> print } else { "zext " -> print }
@@ -10202,7 +10214,13 @@ emitCore context: EmitContext -> Unit uses Console {
                         "  %v$(entryExpressionIndex!)_values = call ptr @malloc(i64 $entryDictionaryValueByteLength)" -> println
                         entryExpression.operand0 => entryDictionaryItemIndex!
                         0 => entryDictionaryItemPosition!
-                        -1 => entryDictionaryControlHashWidth
+                        (entryDictionaryKeyByteLength! / (entryDictionaryItemCount! / 2) == 1) -> if { -1 } else {
+                            (entryDictionaryKeyByteLength! / (entryDictionaryItemCount! / 2) == 2) -> if { 16 } else {
+                                (entryDictionaryKeyByteLength! / (entryDictionaryItemCount! / 2) == 4) -> if { 32 } else {
+                                    (entryDictionaryKeyByteLength! / (entryDictionaryItemCount! / 2) == 8) -> if { 64 } else { -1 }
+                                }
+                            }
+                        } => entryDictionaryControlHashWidth
                         false => entryDictionaryControlHashSigned
                         entryDictionaryItemIndex! >= 0 -> while {
                             context.ir[entryDictionaryItemIndex!] => entryDictionaryItem
@@ -10228,13 +10246,7 @@ emitCore context: EmitContext -> Unit uses Console {
                              (entryDictionaryItem.typeKind == 8 or (entryDictionaryItem.typeId >= 0 and context.types[entryDictionaryItem.typeId].kind == 8)) -> if { context.pointerBitWidth / 8 -> writeDecimalLine } else { entryDictionaryItemTypeId >= 0 -> if { context.typeAligns[entryDictionaryItemTypeId] -> writeDecimalLine } else { entryDictionaryItemSymbol -> legacyStorageAlign -> writeDecimalLine } }
                              entryDictionaryItemPosition! % 2 == 0 -> if {
                                  "  %v$(entryExpressionIndex!)_control_ptr$(entryDictionaryEntryPosition) = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 $(entryDictionaryEntryPosition)" -> println
-                                     entryDictionaryKeyTypeId! >= 0 -> if {
-                                         context.typeSizes[entryDictionaryKeyTypeId!] * 8 => entryDictionaryControlHashWidth!
-                                         false => entryDictionaryControlHashSigned!
-                                     } else {
-                                         entryDictionaryItemSymbol -> integerWidth => entryDictionaryControlHashWidth!
-                                         entryDictionaryItemSymbol -> integerSigned => entryDictionaryControlHashSigned!
-                                     }
+                                     false => entryDictionaryControlHashSigned!
                                  (entryDictionaryControlHashWidth > 0 and entryDictionaryControlHashWidth <= 64) -> if {
                                      "  %v$(entryExpressionIndex!)_control_hash_loaded$(entryDictionaryEntryPosition) = load " -> print
                                      "i$(entryDictionaryControlHashWidth)" -> print
@@ -10345,9 +10357,15 @@ emitCore context: EmitContext -> Unit uses Console {
                                  "  %v$(entryExpressionIndex!)_control_offset = mul i64 %v$(entryExpressionIndex!)_capacity, $(entryIndexedDictionaryKeyStorageSize!)" -> println
                                  "  %v$(entryExpressionIndex!)_controls = getelementptr i8, ptr %v$(entryExpressionIndex!)_keys, i64 %v$(entryExpressionIndex!)_control_offset" -> println
                                  context.ir[entryExpression.operand1] => entryDictionaryIndexNode
-                                 entryDictionaryIndexNode -> integerNodeWidth => entryIndexedDictionaryHashWidth
-                                 entryDictionaryIndexNode -> integerNodeSigned => entryIndexedDictionaryHashSigned
-                                     false -> if {
+                                 (entryIndexedDictionaryKeyStorageSize! == 1) -> if { -1 } else {
+                                     (entryIndexedDictionaryKeyStorageSize! == 2) -> if { 16 } else {
+                                         (entryIndexedDictionaryKeyStorageSize! == 4) -> if { 32 } else {
+                                             (entryIndexedDictionaryKeyStorageSize! == 8) -> if { 64 } else { -1 }
+                                         }
+                                     }
+                                 } => entryIndexedDictionaryHashWidth
+                                 false => entryIndexedDictionaryHashSigned
+                                     (entryIndexedDictionaryHashWidth > 0 and entryIndexedDictionaryHashWidth <= 64) -> if {
                                      "  %v$(entryExpressionIndex!)_hash_key = " -> print
                                      entryIndexedDictionaryHashWidth == 64 -> if { "add i64 0, " -> print } else {
                                          entryIndexedDictionaryHashSigned -> if { "sext " -> print } else { "zext " -> print }

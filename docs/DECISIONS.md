@@ -9320,6 +9320,15 @@ before loading a key during indexed lookup. The existing four-field dictionary
 ABI remains unchanged, so values and drop/free ownership continue to work.
 Examples 548 and 550 produce, assemble, link, and execute on Windows and
 Linux with the new layout. This is the first self-host Swiss-table storage
-slice, not the complete algorithm: H2 hashing, grouped probing, insertion,
-growth, and rehashing remain open; formal progress stays
+slice, not the complete algorithm: grouped probing, insertion, growth, and
+rehashing remain open; formal progress stays
 **53/60 (88.3%)**.
+
+## D235 - Self-host Integer H2 Probing
+
+Self-host dictionary literals and indexed lookup now use the key storage width
+to emit matching H2 fingerprints and hash-based start slots for 16-, 32-, and
+64-bit integer keys. One-byte keys remain on the conservative marker-1 path
+because the current ABI does not distinguish `Bool` from `UInt8` by storage
+width alone. Probing is bounded and wraps scalarly; grouped probing,
+insertion, growth, and rehashing remain open.

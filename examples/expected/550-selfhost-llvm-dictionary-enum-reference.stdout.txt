@@ -198,7 +198,17 @@ entry:
   %v24_keys_ptr0 = getelementptr i32, ptr %v24_keys, i64 0
   store i32 1, ptr %v24_keys_ptr0, align 4
   %v24_control_ptr0 = getelementptr i8, ptr %v24_controls, i64 0
-  store i8 1, ptr %v24_control_ptr0, align 1
+  %v24_control_hash_loaded0 = load i32, ptr %v24_keys_ptr0, align 4
+  %v24_control_hash_key0 = zext i32 %v24_control_hash_loaded0 to i64
+  %v24_control_hash_high0 = lshr i64 %v24_control_hash_key0, 32
+  %v24_control_hash_fold0 = xor i64 %v24_control_hash_key0, %v24_control_hash_high0
+  %v24_control_hash0 = mul i64 %v24_control_hash_fold0, -7046029254386353131
+  %v24_control_h2_shifted0 = lshr i64 %v24_control_hash0, 57
+  %v24_control_h2_raw0 = and i64 %v24_control_h2_shifted0, 127
+  %v24_control_h2_zero0 = icmp eq i64 %v24_control_h2_raw0, 0
+  %v24_control_h2_value0 = select i1 %v24_control_h2_zero0, i64 1, i64 %v24_control_h2_raw0
+  %v24_control_h20 = trunc i64 %v24_control_h2_value0 to i8
+  store i8 %v24_control_h20, ptr %v24_control_ptr0, align 1
   %v24_values_ptr0 = getelementptr %sollang.enum.t25, ptr %v24_values, i64 0
   store %sollang.enum.t25 %v26, ptr %v24_values_ptr0, align 8
   %v24_0 = insertvalue %sollang.dict poison, ptr %v24_keys, 0
@@ -212,8 +222,16 @@ entry:
   %v30_capacity = extractvalue %sollang.dict %v31, 3
   %v30_control_offset = mul i64 %v30_capacity, 4
   %v30_controls = getelementptr i8, ptr %v30_keys, i64 %v30_control_offset
-  %v30_h2 = add i8 0, 1
-  %v30_start_slot = add i64 0, 0
+  %v30_hash_key = zext i32 1 to i64
+  %v30_hash_high = lshr i64 %v30_hash_key, 32
+  %v30_hash_fold = xor i64 %v30_hash_key, %v30_hash_high
+  %v30_hash = mul i64 %v30_hash_fold, -7046029254386353131
+  %v30_h2_shifted = lshr i64 %v30_hash, 57
+  %v30_h2_raw = and i64 %v30_h2_shifted, 127
+  %v30_h2_zero = icmp eq i64 %v30_h2_raw, 0
+  %v30_h2_value = select i1 %v30_h2_zero, i64 1, i64 %v30_h2_raw
+  %v30_h2 = trunc i64 %v30_h2_value to i8
+  %v30_start_slot = urem i64 %v30_hash, %v30_capacity
   br label %dict30_start
 dict30_start:
   br label %dict30_loop

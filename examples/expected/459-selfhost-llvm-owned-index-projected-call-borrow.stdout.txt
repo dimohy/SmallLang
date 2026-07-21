@@ -164,7 +164,17 @@ entry:
   %v19_keys_ptr0 = getelementptr i32, ptr %v19_keys, i64 0
   store i32 1, ptr %v19_keys_ptr0, align 4
   %v19_control_ptr0 = getelementptr i8, ptr %v19_controls, i64 0
-  store i8 1, ptr %v19_control_ptr0, align 1
+  %v19_control_hash_loaded0 = load i32, ptr %v19_keys_ptr0, align 4
+  %v19_control_hash_key0 = zext i32 %v19_control_hash_loaded0 to i64
+  %v19_control_hash_high0 = lshr i64 %v19_control_hash_key0, 32
+  %v19_control_hash_fold0 = xor i64 %v19_control_hash_key0, %v19_control_hash_high0
+  %v19_control_hash0 = mul i64 %v19_control_hash_fold0, -7046029254386353131
+  %v19_control_h2_shifted0 = lshr i64 %v19_control_hash0, 57
+  %v19_control_h2_raw0 = and i64 %v19_control_h2_shifted0, 127
+  %v19_control_h2_zero0 = icmp eq i64 %v19_control_h2_raw0, 0
+  %v19_control_h2_value0 = select i1 %v19_control_h2_zero0, i64 1, i64 %v19_control_h2_raw0
+  %v19_control_h20 = trunc i64 %v19_control_h2_value0 to i8
+  store i8 %v19_control_h20, ptr %v19_control_ptr0, align 1
   %v19_values_ptr0 = getelementptr %sollang.struct.m0_s0, ptr %v19_values, i64 0
   store %sollang.struct.m0_s0 %v21, ptr %v19_values_ptr0, align 8
   %v19_0 = insertvalue %sollang.dict poison, ptr %v19_keys, 0
@@ -181,8 +191,16 @@ entry:
   %v28_capacity = extractvalue %sollang.dict %v29, 3
   %v28_control_offset = mul i64 %v28_capacity, 4
   %v28_controls = getelementptr i8, ptr %v28_keys, i64 %v28_control_offset
-  %v28_h2 = add i8 0, 1
-  %v28_start_slot = add i64 0, 0
+  %v28_hash_key = zext i32 1 to i64
+  %v28_hash_high = lshr i64 %v28_hash_key, 32
+  %v28_hash_fold = xor i64 %v28_hash_key, %v28_hash_high
+  %v28_hash = mul i64 %v28_hash_fold, -7046029254386353131
+  %v28_h2_shifted = lshr i64 %v28_hash, 57
+  %v28_h2_raw = and i64 %v28_h2_shifted, 127
+  %v28_h2_zero = icmp eq i64 %v28_h2_raw, 0
+  %v28_h2_value = select i1 %v28_h2_zero, i64 1, i64 %v28_h2_raw
+  %v28_h2 = trunc i64 %v28_h2_value to i8
+  %v28_start_slot = urem i64 %v28_hash, %v28_capacity
   br label %dict28_start
 dict28_start:
   br label %dict28_loop
@@ -221,8 +239,16 @@ dict28_hit:
   %v34_capacity = extractvalue %sollang.dict %v35, 3
   %v34_control_offset = mul i64 %v34_capacity, 4
   %v34_controls = getelementptr i8, ptr %v34_keys, i64 %v34_control_offset
-  %v34_h2 = add i8 0, 1
-  %v34_start_slot = add i64 0, 0
+  %v34_hash_key = zext i32 1 to i64
+  %v34_hash_high = lshr i64 %v34_hash_key, 32
+  %v34_hash_fold = xor i64 %v34_hash_key, %v34_hash_high
+  %v34_hash = mul i64 %v34_hash_fold, -7046029254386353131
+  %v34_h2_shifted = lshr i64 %v34_hash, 57
+  %v34_h2_raw = and i64 %v34_h2_shifted, 127
+  %v34_h2_zero = icmp eq i64 %v34_h2_raw, 0
+  %v34_h2_value = select i1 %v34_h2_zero, i64 1, i64 %v34_h2_raw
+  %v34_h2 = trunc i64 %v34_h2_value to i8
+  %v34_start_slot = urem i64 %v34_hash, %v34_capacity
   br label %dict34_start
 dict34_start:
   br label %dict34_loop
@@ -261,8 +287,16 @@ dict34_hit:
   %v40_capacity = extractvalue %sollang.dict %v41, 3
   %v40_control_offset = mul i64 %v40_capacity, 4
   %v40_controls = getelementptr i8, ptr %v40_keys, i64 %v40_control_offset
-  %v40_h2 = add i8 0, 1
-  %v40_start_slot = add i64 0, 0
+  %v40_hash_key = zext i32 1 to i64
+  %v40_hash_high = lshr i64 %v40_hash_key, 32
+  %v40_hash_fold = xor i64 %v40_hash_key, %v40_hash_high
+  %v40_hash = mul i64 %v40_hash_fold, -7046029254386353131
+  %v40_h2_shifted = lshr i64 %v40_hash, 57
+  %v40_h2_raw = and i64 %v40_h2_shifted, 127
+  %v40_h2_zero = icmp eq i64 %v40_h2_raw, 0
+  %v40_h2_value = select i1 %v40_h2_zero, i64 1, i64 %v40_h2_raw
+  %v40_h2 = trunc i64 %v40_h2_value to i8
+  %v40_start_slot = urem i64 %v40_hash, %v40_capacity
   br label %dict40_start
 dict40_start:
   br label %dict40_loop
