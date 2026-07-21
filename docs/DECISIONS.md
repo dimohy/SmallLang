@@ -9490,3 +9490,59 @@ Release-runner invocations of example 410 both pass. The Release solution build
 completes with zero warnings and zero errors, and the mutex-enabled Windows
 self-host suite passes **345/345**. This reliability checkpoint does not change
 the formal **54/60 (90.0%)** language-capability score.
+
+## D243 - Deterministic Bootstrap Hashing Behind a Runtime Boundary
+
+Sollang separates the meaning of a hashable key from the table's concrete hash
+policy. `Hash` and `Eq` remain the key contract, including the invariant that
+equal keys must produce equal hashes. The self-host bootstrap now lowers `Text`
+keys through shared LLVM helpers: a byte-wise 64-bit FNV-1a hash matching the
+C# reference emitter and a length-plus-byte equality comparison. Dictionary
+literals and indexed lookups use the same helpers in normal function, region,
+and entry paths. The helpers are emitted only when a canonical dictionary has a
+`Text` key, so unrelated dictionary modules and snapshots do not grow.
+
+The deterministic algorithm is a bootstrap and reproducible-code-generation
+policy, not a claim of collision-attack resistance. Rust and Swift use random
+seeds for their general-purpose runtime maps, while Zig makes the hash/equality
+context explicit and currently gives its string context a deterministic
+Wyhash seed. Sollang therefore keeps the generated call boundary suitable for
+a future table-owned runtime seed without making compiler output depend on
+process entropy today.
+
+Example 557 proves Text-key literals and lookups in function, entry, and region
+paths. LLVM validation, link, execution, and C# versus self-host differential
+verification pass on Windows and Linux. Other non-integer key families and
+generic mutation remain open, so formal progress stays **54/60 (90.0%)**.
+
+Research basis:
+
+- [Rust `HashMap`](https://doc.rust-lang.org/std/collections/hash_map/struct.HashMap.html)
+- [Swift `Hasher.init()`](https://developer.apple.com/documentation/swift/hasher/init%28%29)
+- [Zig `hash_map.zig`](https://github.com/ziglang/zig/blob/master/lib/std/hash_map.zig)
+
+## D244 - Fixed-width Integer Dictionary Mutation Uses Canonical Types
+
+The self-host `put` lowering no longer assumes four-byte signed keys and
+values. It resolves the canonical dictionary key and value type IDs once, then
+uses their LLVM type, storage size, alignment, integer width, and signedness for
+lookup, in-place replacement, insertion, allocation, and rehashing. Signed keys
+are sign-extended and unsigned keys are zero-extended into the common 64-bit
+hash input; 64-bit keys remain unchanged. This keeps the control-byte layout
+and four-field dictionary ABI independent of primitive element width.
+
+Nested conversion calls exposed a separate typed-IR defect. The intrinsic name
+scanner used a Boolean `inside arguments` flag, so the first inner `)` in
+`put(UInt64(9), Int16(90))` ended the outer argument list early and selected
+`Int16` as the flow target. It now tracks parenthesis and type-argument depth,
+preserving the `put` opcode through nested arguments.
+
+Example 558 covers `Int8: UInt64`, `UInt64: Int16`, and `UInt16: Int8`
+dictionaries across normal function, entry, and region emitters. Insertion,
+replacement, load-factor growth, rehashing, lookup, LLVM validation, linking,
+execution, and C# versus self-host differential verification pass on Windows
+and Linux. The complete self-host suite passes **347/347** on both targets, and
+the Release solution build has zero warnings and zero errors. Owned/composite
+key and value mutation still requires transfer,
+replacement-drop, equality, and hashing integration, so generic mutation is not
+closed and formal progress remains **54/60 (90.0%)**.

@@ -3098,3 +3098,37 @@ example-410 invocations both pass. The mutex-enabled Windows self-host suite
 passes **345/345**. This improves validation reliability rather than
 adding a language capability, so formal progress stays **54/60 (90.0%)**, with
 **6 equivalent gates remaining**.
+
+## D243/example 557 - Text Key Hashing and Equality
+
+The self-host LLVM backend now matches the reference compiler's deterministic
+64-bit FNV-1a hash for `Text` keys and compares Text by length and UTF-8 bytes.
+Shared LLVM helpers keep this policy behind a replaceable runtime boundary and
+are emitted only for canonical dictionaries whose key type is `Text`.
+Dictionary literals and indexed lookups use the same behavior in normal
+function, region, and entry paths.
+
+Example 557 passes LLVM validation, linking, execution, and C# versus self-host
+differential verification on Windows and Linux. Randomly seeded runtime hashing
+remains a later hardening option; reproducible bootstrap output stays
+deterministic. Other non-integer key families and generic mutation remain open,
+so formal progress stays **54/60 (90.0%)**, with **6 equivalent gates
+remaining**.
+
+## D244/example 558 - Fixed-width Integer Dictionary Mutation
+
+The self-host `put` path now derives key/value LLVM types, sizes, alignments,
+hash widths, and signedness from the canonical dictionary type instead of
+hard-coding `i32` and four-byte storage. All fixed-width signed and unsigned
+integer key/value combinations therefore share the existing lookup,
+tombstone, load-factor, growth, and rehash algorithm.
+
+The typed-IR intrinsic scanner also tracks nested parenthesis and type-argument
+depth, so converted arguments such as `put(UInt64(9), Int16(90))` retain opcode
+`-223`. Example 558 exercises normal function, entry, and region paths and
+passes LLVM validation, linking, execution, and C# versus self-host
+differential verification on Windows and Linux. Owned/composite mutation and
+the remaining non-integer key families stay open. The complete self-host suite
+passes **347/347** on Windows and Linux, and the Release solution build has zero
+warnings and zero errors. Formal progress remains **54/60 (90.0%)**, with **6
+equivalent gates remaining**.

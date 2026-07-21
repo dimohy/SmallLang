@@ -195,7 +195,7 @@ entry:
   %put7_old_values = extractvalue %sollang.dict %put7_dictionary, 1
   %put7_old_length = extractvalue %sollang.dict %put7_dictionary, 2
   %put7_old_capacity = extractvalue %sollang.dict %put7_dictionary, 3
-  %put7_key64 = add i64 0, 3
+  %put7_key64 = sext i32 3 to i64
   %put7_hash_high = lshr i64 %put7_key64, 32
   %put7_hash_fold = xor i64 %put7_key64, %put7_hash_high
   %put7_hash = mul i64 %put7_hash_fold, -7046029254386353131
@@ -373,7 +373,7 @@ put7_complete:
   %put11_old_values = extractvalue %sollang.dict %put11_dictionary, 1
   %put11_old_length = extractvalue %sollang.dict %put11_dictionary, 2
   %put11_old_capacity = extractvalue %sollang.dict %put11_dictionary, 3
-  %put11_key64 = add i64 0, 4
+  %put11_key64 = sext i32 4 to i64
   %put11_hash_high = lshr i64 %put11_key64, 32
   %put11_hash_fold = xor i64 %put11_key64, %put11_hash_high
   %put11_hash = mul i64 %put11_hash_fold, -7046029254386353131
@@ -551,7 +551,7 @@ put11_complete:
   %put15_old_values = extractvalue %sollang.dict %put15_dictionary, 1
   %put15_old_length = extractvalue %sollang.dict %put15_dictionary, 2
   %put15_old_capacity = extractvalue %sollang.dict %put15_dictionary, 3
-  %put15_key64 = add i64 0, 5
+  %put15_key64 = sext i32 5 to i64
   %put15_hash_high = lshr i64 %put15_key64, 32
   %put15_hash_fold = xor i64 %put15_key64, %put15_hash_high
   %put15_hash = mul i64 %put15_hash_fold, -7046029254386353131
@@ -729,7 +729,7 @@ put15_complete:
   %put19_old_values = extractvalue %sollang.dict %put19_dictionary, 1
   %put19_old_length = extractvalue %sollang.dict %put19_dictionary, 2
   %put19_old_capacity = extractvalue %sollang.dict %put19_dictionary, 3
-  %put19_key64 = add i64 0, 2
+  %put19_key64 = sext i32 2 to i64
   %put19_hash_high = lshr i64 %put19_key64, 32
   %put19_hash_fold = xor i64 %put19_key64, %put19_hash_high
   %put19_hash = mul i64 %put19_hash_fold, -7046029254386353131

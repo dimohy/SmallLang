@@ -188,17 +188,17 @@ intrinsicOpcode request: IntrinsicNameRequest -> Int {
 flowIntrinsicOpcode request: FlowIntrinsicRequest -> Int {
     -1 => nameToken!
     request.node.firstToken => tokenIndex!
-    false => inTypeArguments!
-    false => inCallArguments!
+    0 => typeArgumentDepth!
+    0 => callArgumentDepth!
     true => beforeBlock!
     (beforeBlock! and tokenIndex! < request.node.firstToken + request.node.tokenCount) -> while {
         request.tokens[request.tokenStart + tokenIndex!] => token
         token.kind == grammar.tokenIdLeftBrace -> if { false => beforeBlock! } else {
-            token.kind == grammar.tokenIdLess -> if { true => inTypeArguments! }
-            token.kind == grammar.tokenIdGreater -> if { false => inTypeArguments! }
-            token.kind == grammar.tokenIdLeftParen -> if { true => inCallArguments! }
-            token.kind == grammar.tokenIdRightParen -> if { false => inCallArguments! }
-            (token.kind == grammar.tokenIdIdentifier and not inTypeArguments! and not inCallArguments!) -> if { tokenIndex! => nameToken! }
+            token.kind == grammar.tokenIdLess -> if { typeArgumentDepth! + 1 => typeArgumentDepth! }
+            (token.kind == grammar.tokenIdGreater and typeArgumentDepth! > 0) -> if { typeArgumentDepth! - 1 => typeArgumentDepth! }
+            token.kind == grammar.tokenIdLeftParen -> if { callArgumentDepth! + 1 => callArgumentDepth! }
+            (token.kind == grammar.tokenIdRightParen and callArgumentDepth! > 0) -> if { callArgumentDepth! - 1 => callArgumentDepth! }
+            (token.kind == grammar.tokenIdIdentifier and typeArgumentDepth! == 0 and callArgumentDepth! == 0) -> if { tokenIndex! => nameToken! }
             tokenIndex! + 1 => tokenIndex!
         }
     }

@@ -354,7 +354,7 @@ dict13_hit:
   %put16_old_values = extractvalue %sollang.dict %put16_dictionary, 1
   %put16_old_length = extractvalue %sollang.dict %put16_dictionary, 2
   %put16_old_capacity = extractvalue %sollang.dict %put16_dictionary, 3
-  %put16_key64 = add i64 0, 5
+  %put16_key64 = sext i32 5 to i64
   %put16_hash_high = lshr i64 %put16_key64, 32
   %put16_hash_fold = xor i64 %put16_key64, %put16_hash_high
   %put16_hash = mul i64 %put16_hash_fold, -7046029254386353131
@@ -532,7 +532,7 @@ put16_complete:
   %put20_old_values = extractvalue %sollang.dict %put20_dictionary, 1
   %put20_old_length = extractvalue %sollang.dict %put20_dictionary, 2
   %put20_old_capacity = extractvalue %sollang.dict %put20_dictionary, 3
-  %put20_key64 = add i64 0, 9
+  %put20_key64 = sext i32 9 to i64
   %put20_hash_high = lshr i64 %put20_key64, 32
   %put20_hash_fold = xor i64 %put20_key64, %put20_hash_high
   %put20_hash = mul i64 %put20_hash_fold, -7046029254386353131

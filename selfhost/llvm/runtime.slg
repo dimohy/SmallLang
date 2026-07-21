@@ -3,6 +3,60 @@ namespace sollang.compiler.llvm.runtime
 # Target runtime definitions used by LLVM emitted from the self-host compiler.
 # The module index is discovered from the analyzed package, so file ordering
 # never becomes part of the runtime ABI.
+public emitDictionaryTextHelpers: -> Unit uses Console {
+    """
+    define internal i64 @sollang_dictionary_hash_text(%sollang.text %value) {
+    entry:
+      %data = extractvalue %sollang.text %value, 0
+      %length = extractvalue %sollang.text %value, 1
+      br label %loop
+    loop:
+      %index = phi i64 [ 0, %entry ], [ %next_index, %body ]
+      %hash = phi i64 [ -3750763034362895579, %entry ], [ %next_hash, %body ]
+      %active = icmp ult i64 %index, %length
+      br i1 %active, label %body, label %done
+    body:
+      %byte_ptr = getelementptr i8, ptr %data, i64 %index
+      %byte = load i8, ptr %byte_ptr, align 1
+      %wide = zext i8 %byte to i64
+      %mixed = xor i64 %hash, %wide
+      %next_hash = mul i64 %mixed, 1099511628211
+      %next_index = add i64 %index, 1
+      br label %loop
+    done:
+      ret i64 %hash
+    }
+
+    define internal i1 @sollang_dictionary_text_equal(%sollang.text %left, %sollang.text %right) {
+    entry:
+      %left_data = extractvalue %sollang.text %left, 0
+      %left_length = extractvalue %sollang.text %left, 1
+      %right_data = extractvalue %sollang.text %right, 0
+      %right_length = extractvalue %sollang.text %right, 1
+      %same_length = icmp eq i64 %left_length, %right_length
+      br i1 %same_length, label %loop, label %mismatch
+    loop:
+      %index = phi i64 [ 0, %entry ], [ %next_index, %next ]
+      %active = icmp ult i64 %index, %left_length
+      br i1 %active, label %body, label %match
+    body:
+      %left_ptr = getelementptr i8, ptr %left_data, i64 %index
+      %right_ptr = getelementptr i8, ptr %right_data, i64 %index
+      %left_byte = load i8, ptr %left_ptr, align 1
+      %right_byte = load i8, ptr %right_ptr, align 1
+      %same_byte = icmp eq i8 %left_byte, %right_byte
+      br i1 %same_byte, label %next, label %mismatch
+    next:
+      %next_index = add i64 %index, 1
+      br label %loop
+    match:
+      ret i1 true
+    mismatch:
+      ret i1 false
+    }
+    """ -> println
+}
+
 emitDirectoryNodes target: Int -> Unit uses Console {
     """
     define internal void @sollang_directory_copy(ptr %destination, ptr %source, i64 %length) {

@@ -363,8 +363,12 @@ existing keys in place, inserts into available slots, and doubles and rehashes
 only when the next insertion would exceed 87.5% load. Dictionary `take` leaves
 a reusable tombstone, preserving collision chains without shifting entries.
 Signed and unsigned one-byte integer keys now use their real H2 hash width in
-all self-host emitter paths. Generic mutation and non-integer key families
-remain open. Local package
+all self-host emitter paths. Fixed-width signed and unsigned integer
+dictionaries now use their canonical key/value widths throughout `put`,
+growth, and rehashing. Text-key literals and lookups share the
+reference compiler's deterministic byte hash and equality in function, region,
+and entry paths. Owned/composite mutation and the remaining non-integer key
+families remain open. Local package
 identities, SemVer requirements, content-pinned Git dependencies, shared
 deterministic workspace locks, and self-host parsers for both versions and
 lock manifests and registry-index selection are implemented. Exact

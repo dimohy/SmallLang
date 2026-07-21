@@ -1,0 +1,24 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies deterministic Text hashing and byte equality in every emitter path.
+main {
+    [
+        """
+        lookup values: {Text: Int} -> Int => values["parser"]
+
+        main {
+            { "lexer": 10, "parser": 20 } -> lookup => functionValue
+            { "태양": 30, "other": 40 } => entryValues
+            entryValues["태양"] => entryValue
+            functionValue == 20 -> if { "function" -> println }
+            entryValue == 30 -> if { "entry" -> println }
+            true -> if {
+                { "": 50, "nested": 60 } => regionValues
+                regionValues[""] == 50 -> if { "region" -> println }
+            }
+        }
+        """,
+        ~
+    ] => sources!
+    sources! -> llvm.emit
+}

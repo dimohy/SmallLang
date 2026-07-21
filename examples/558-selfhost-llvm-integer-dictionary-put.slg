@@ -1,0 +1,34 @@
+import sollang.compiler.llvm.text as llvm
+
+# Verifies fixed-width signed and unsigned dictionary mutation in every emitter path.
+main {
+    [
+        """
+        verifySigned seed: Int -> Unit uses Console {
+            { Int8(-7): UInt64(70), Int8(3): UInt64(30) } => signed!
+            signed! -> put(Int8(-9), UInt64(900 + seed - 1))
+            signed! -> put(Int8(-7), UInt64(777))
+            signed![Int8(-9)] == UInt64(900) -> if { "signed-insert" -> println }
+            signed![Int8(-7)] == UInt64(777) -> if { "signed-update" -> println }
+        }
+
+        main {
+            1 -> verifySigned
+
+            { UInt64(1): Int16(10), UInt64(5): Int16(50) } => wide!
+            wide! -> put(UInt64(9), Int16(90))
+            wide! -> put(UInt64(5), Int16(55))
+            wide![UInt64(9)] == Int16(90) -> if { "unsigned-insert" -> println }
+            wide![UInt64(5)] == Int16(55) -> if { "unsigned-update" -> println }
+
+            true -> if {
+                { UInt16(2): Int8(20), UInt16(6): Int8(60) } => local!
+                local! -> put(UInt16(10), Int8(100))
+                local![UInt16(10)] == Int8(100) -> if { "region" -> println }
+            }
+        }
+        """,
+        ~,
+    ] => sources!
+    sources! -> llvm.emit
+}
