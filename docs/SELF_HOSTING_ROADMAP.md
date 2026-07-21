@@ -2984,3 +2984,15 @@ insertion, growth, and rehashing are still pending, so formal progress is now
    (implemented for `Option`, `Result`, bytes, Unicode code points, byte arenas,
    reusable lexer/CST/parser source spans, and allocation-free Text search and
    comparison; multi-error continuation remains).
+
+## D236/example 548 and 550 - Grouped Dictionary Control Scans
+
+The self-host LLVM emitter now checks an eight-slot wrapped control-byte group
+for normal indexed lookup, region lookup, and entry lookup before using the
+existing scalar probe. The four-field dictionary ABI and key/value lowering are
+unchanged. Windows self-host verification passes **341/341**, and the Linux
+reference/self-host differential checks for examples 548 and 550 pass **2/2**.
+This is the grouped-probe foundation, not the complete Swiss-table mutation
+algorithm: direct candidate selection, one-byte/non-integer hashing,
+insertion, growth, and rehashing remain open. Formal progress stays
+**54/60 (90.0%)**.

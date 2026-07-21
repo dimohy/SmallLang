@@ -92,15 +92,63 @@ entry:
 dict14_start:
   br label %dict14_loop
 dict14_loop:
-  %v14_slot = phi i64 [ %v14_start_slot, %dict14_start ], [ %v14_next, %dict14_advance ]
-  %v14_probe = phi i64 [ 0, %dict14_start ], [ %v14_probe_next, %dict14_advance ]
+  %v14_slot = phi i64 [ %v14_start_slot, %dict14_start ], [ %v14_next, %dict14_advance ], [ %v14_group_next, %dict14_group_advance ]
+  %v14_probe = phi i64 [ 0, %dict14_start ], [ %v14_probe_next, %dict14_advance ], [ %v14_group_probe_next, %dict14_group_advance ]
   %v14_in_range = icmp ult i64 %v14_probe, %v14_capacity
   br i1 %v14_in_range, label %dict14_check, label %dict14_missing
 dict14_check:
   %v14_control_ptr = getelementptr i8, ptr %v14_controls, i64 %v14_slot
   %v14_control = load i8, ptr %v14_control_ptr, align 1
   %v14_occupied = icmp ne i8 %v14_control, 0
-  br i1 %v14_occupied, label %dict14_h2_check, label %dict14_missing
+  %v14_group_unwrapped1 = add i64 %v14_slot, 1
+  %v14_group_slot1 = urem i64 %v14_group_unwrapped1, %v14_capacity
+  %v14_group_unwrapped2 = add i64 %v14_slot, 2
+  %v14_group_slot2 = urem i64 %v14_group_unwrapped2, %v14_capacity
+  %v14_group_unwrapped3 = add i64 %v14_slot, 3
+  %v14_group_slot3 = urem i64 %v14_group_unwrapped3, %v14_capacity
+  %v14_group_unwrapped4 = add i64 %v14_slot, 4
+  %v14_group_slot4 = urem i64 %v14_group_unwrapped4, %v14_capacity
+  %v14_group_unwrapped5 = add i64 %v14_slot, 5
+  %v14_group_slot5 = urem i64 %v14_group_unwrapped5, %v14_capacity
+  %v14_group_unwrapped6 = add i64 %v14_slot, 6
+  %v14_group_slot6 = urem i64 %v14_group_unwrapped6, %v14_capacity
+  %v14_group_unwrapped7 = add i64 %v14_slot, 7
+  %v14_group_slot7 = urem i64 %v14_group_unwrapped7, %v14_capacity
+  %v14_group_ptr1 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot1
+  %v14_group_ptr2 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot2
+  %v14_group_ptr3 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot3
+  %v14_group_ptr4 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot4
+  %v14_group_ptr5 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot5
+  %v14_group_ptr6 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot6
+  %v14_group_ptr7 = getelementptr i8, ptr %v14_controls, i64 %v14_group_slot7
+  %v14_group_control1 = load i8, ptr %v14_group_ptr1, align 1
+  %v14_group_control2 = load i8, ptr %v14_group_ptr2, align 1
+  %v14_group_control3 = load i8, ptr %v14_group_ptr3, align 1
+  %v14_group_control4 = load i8, ptr %v14_group_ptr4, align 1
+  %v14_group_control5 = load i8, ptr %v14_group_ptr5, align 1
+  %v14_group_control6 = load i8, ptr %v14_group_ptr6, align 1
+  %v14_group_control7 = load i8, ptr %v14_group_ptr7, align 1
+  %v14_group_match0 = icmp eq i8 %v14_control, %v14_h2
+  %v14_group_match1 = icmp eq i8 %v14_group_control1, %v14_h2
+  %v14_group_match2 = icmp eq i8 %v14_group_control2, %v14_h2
+  %v14_group_match3 = icmp eq i8 %v14_group_control3, %v14_h2
+  %v14_group_match4 = icmp eq i8 %v14_group_control4, %v14_h2
+  %v14_group_match5 = icmp eq i8 %v14_group_control5, %v14_h2
+  %v14_group_match6 = icmp eq i8 %v14_group_control6, %v14_h2
+  %v14_group_match7 = icmp eq i8 %v14_group_control7, %v14_h2
+  %v14_group_match01 = or i1 %v14_group_match0, %v14_group_match1
+  %v14_group_match23 = or i1 %v14_group_match2, %v14_group_match3
+  %v14_group_match45 = or i1 %v14_group_match4, %v14_group_match5
+  %v14_group_match67 = or i1 %v14_group_match6, %v14_group_match7
+  %v14_group_match0123 = or i1 %v14_group_match01, %v14_group_match23
+  %v14_group_match4567 = or i1 %v14_group_match45, %v14_group_match67
+  %v14_group_has_match = or i1 %v14_group_match0123, %v14_group_match4567
+  br i1 %v14_group_has_match, label %dict14_h2_check, label %dict14_group_advance
+dict14_group_advance:
+  %v14_group_next_unwrapped = add i64 %v14_slot, 8
+  %v14_group_next = urem i64 %v14_group_next_unwrapped, %v14_capacity
+  %v14_group_probe_next = add i64 %v14_probe, 8
+  br label %dict14_loop
 dict14_h2_check:
   %v14_h2_match = icmp eq i8 %v14_control, %v14_h2
   br i1 %v14_h2_match, label %dict14_key_check, label %dict14_advance

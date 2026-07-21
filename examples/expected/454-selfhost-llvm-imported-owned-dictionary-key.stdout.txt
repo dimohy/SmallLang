@@ -200,15 +200,63 @@ entry:
 dict28_start:
   br label %dict28_loop
 dict28_loop:
-  %v28_slot = phi i64 [ %v28_start_slot, %dict28_start ], [ %v28_next, %dict28_advance ]
-  %v28_probe = phi i64 [ 0, %dict28_start ], [ %v28_probe_next, %dict28_advance ]
+  %v28_slot = phi i64 [ %v28_start_slot, %dict28_start ], [ %v28_next, %dict28_advance ], [ %v28_group_next, %dict28_group_advance ]
+  %v28_probe = phi i64 [ 0, %dict28_start ], [ %v28_probe_next, %dict28_advance ], [ %v28_group_probe_next, %dict28_group_advance ]
   %v28_in_range = icmp ult i64 %v28_probe, %v28_capacity
   br i1 %v28_in_range, label %dict28_check, label %dict28_missing
 dict28_check:
   %v28_control_ptr = getelementptr i8, ptr %v28_controls, i64 %v28_slot
   %v28_control = load i8, ptr %v28_control_ptr, align 1
   %v28_occupied = icmp ne i8 %v28_control, 0
-  br i1 %v28_occupied, label %dict28_h2_check, label %dict28_missing
+  %v28_group_unwrapped1 = add i64 %v28_slot, 1
+  %v28_group_slot1 = urem i64 %v28_group_unwrapped1, %v28_capacity
+  %v28_group_unwrapped2 = add i64 %v28_slot, 2
+  %v28_group_slot2 = urem i64 %v28_group_unwrapped2, %v28_capacity
+  %v28_group_unwrapped3 = add i64 %v28_slot, 3
+  %v28_group_slot3 = urem i64 %v28_group_unwrapped3, %v28_capacity
+  %v28_group_unwrapped4 = add i64 %v28_slot, 4
+  %v28_group_slot4 = urem i64 %v28_group_unwrapped4, %v28_capacity
+  %v28_group_unwrapped5 = add i64 %v28_slot, 5
+  %v28_group_slot5 = urem i64 %v28_group_unwrapped5, %v28_capacity
+  %v28_group_unwrapped6 = add i64 %v28_slot, 6
+  %v28_group_slot6 = urem i64 %v28_group_unwrapped6, %v28_capacity
+  %v28_group_unwrapped7 = add i64 %v28_slot, 7
+  %v28_group_slot7 = urem i64 %v28_group_unwrapped7, %v28_capacity
+  %v28_group_ptr1 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot1
+  %v28_group_ptr2 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot2
+  %v28_group_ptr3 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot3
+  %v28_group_ptr4 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot4
+  %v28_group_ptr5 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot5
+  %v28_group_ptr6 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot6
+  %v28_group_ptr7 = getelementptr i8, ptr %v28_controls, i64 %v28_group_slot7
+  %v28_group_control1 = load i8, ptr %v28_group_ptr1, align 1
+  %v28_group_control2 = load i8, ptr %v28_group_ptr2, align 1
+  %v28_group_control3 = load i8, ptr %v28_group_ptr3, align 1
+  %v28_group_control4 = load i8, ptr %v28_group_ptr4, align 1
+  %v28_group_control5 = load i8, ptr %v28_group_ptr5, align 1
+  %v28_group_control6 = load i8, ptr %v28_group_ptr6, align 1
+  %v28_group_control7 = load i8, ptr %v28_group_ptr7, align 1
+  %v28_group_match0 = icmp eq i8 %v28_control, %v28_h2
+  %v28_group_match1 = icmp eq i8 %v28_group_control1, %v28_h2
+  %v28_group_match2 = icmp eq i8 %v28_group_control2, %v28_h2
+  %v28_group_match3 = icmp eq i8 %v28_group_control3, %v28_h2
+  %v28_group_match4 = icmp eq i8 %v28_group_control4, %v28_h2
+  %v28_group_match5 = icmp eq i8 %v28_group_control5, %v28_h2
+  %v28_group_match6 = icmp eq i8 %v28_group_control6, %v28_h2
+  %v28_group_match7 = icmp eq i8 %v28_group_control7, %v28_h2
+  %v28_group_match01 = or i1 %v28_group_match0, %v28_group_match1
+  %v28_group_match23 = or i1 %v28_group_match2, %v28_group_match3
+  %v28_group_match45 = or i1 %v28_group_match4, %v28_group_match5
+  %v28_group_match67 = or i1 %v28_group_match6, %v28_group_match7
+  %v28_group_match0123 = or i1 %v28_group_match01, %v28_group_match23
+  %v28_group_match4567 = or i1 %v28_group_match45, %v28_group_match67
+  %v28_group_has_match = or i1 %v28_group_match0123, %v28_group_match4567
+  br i1 %v28_group_has_match, label %dict28_h2_check, label %dict28_group_advance
+dict28_group_advance:
+  %v28_group_next_unwrapped = add i64 %v28_slot, 8
+  %v28_group_next = urem i64 %v28_group_next_unwrapped, %v28_capacity
+  %v28_group_probe_next = add i64 %v28_probe, 8
+  br label %dict28_loop
 dict28_h2_check:
   %v28_h2_match = icmp eq i8 %v28_control, %v28_h2
   br i1 %v28_h2_match, label %dict28_key_check, label %dict28_advance
@@ -283,15 +331,63 @@ assign35_done:
 dict38_start:
   br label %dict38_loop
 dict38_loop:
-  %v38_slot = phi i64 [ %v38_start_slot, %dict38_start ], [ %v38_next, %dict38_advance ]
-  %v38_probe = phi i64 [ 0, %dict38_start ], [ %v38_probe_next, %dict38_advance ]
+  %v38_slot = phi i64 [ %v38_start_slot, %dict38_start ], [ %v38_next, %dict38_advance ], [ %v38_group_next, %dict38_group_advance ]
+  %v38_probe = phi i64 [ 0, %dict38_start ], [ %v38_probe_next, %dict38_advance ], [ %v38_group_probe_next, %dict38_group_advance ]
   %v38_in_range = icmp ult i64 %v38_probe, %v38_capacity
   br i1 %v38_in_range, label %dict38_check, label %dict38_missing
 dict38_check:
   %v38_control_ptr = getelementptr i8, ptr %v38_controls, i64 %v38_slot
   %v38_control = load i8, ptr %v38_control_ptr, align 1
   %v38_occupied = icmp ne i8 %v38_control, 0
-  br i1 %v38_occupied, label %dict38_h2_check, label %dict38_missing
+  %v38_group_unwrapped1 = add i64 %v38_slot, 1
+  %v38_group_slot1 = urem i64 %v38_group_unwrapped1, %v38_capacity
+  %v38_group_unwrapped2 = add i64 %v38_slot, 2
+  %v38_group_slot2 = urem i64 %v38_group_unwrapped2, %v38_capacity
+  %v38_group_unwrapped3 = add i64 %v38_slot, 3
+  %v38_group_slot3 = urem i64 %v38_group_unwrapped3, %v38_capacity
+  %v38_group_unwrapped4 = add i64 %v38_slot, 4
+  %v38_group_slot4 = urem i64 %v38_group_unwrapped4, %v38_capacity
+  %v38_group_unwrapped5 = add i64 %v38_slot, 5
+  %v38_group_slot5 = urem i64 %v38_group_unwrapped5, %v38_capacity
+  %v38_group_unwrapped6 = add i64 %v38_slot, 6
+  %v38_group_slot6 = urem i64 %v38_group_unwrapped6, %v38_capacity
+  %v38_group_unwrapped7 = add i64 %v38_slot, 7
+  %v38_group_slot7 = urem i64 %v38_group_unwrapped7, %v38_capacity
+  %v38_group_ptr1 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot1
+  %v38_group_ptr2 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot2
+  %v38_group_ptr3 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot3
+  %v38_group_ptr4 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot4
+  %v38_group_ptr5 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot5
+  %v38_group_ptr6 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot6
+  %v38_group_ptr7 = getelementptr i8, ptr %v38_controls, i64 %v38_group_slot7
+  %v38_group_control1 = load i8, ptr %v38_group_ptr1, align 1
+  %v38_group_control2 = load i8, ptr %v38_group_ptr2, align 1
+  %v38_group_control3 = load i8, ptr %v38_group_ptr3, align 1
+  %v38_group_control4 = load i8, ptr %v38_group_ptr4, align 1
+  %v38_group_control5 = load i8, ptr %v38_group_ptr5, align 1
+  %v38_group_control6 = load i8, ptr %v38_group_ptr6, align 1
+  %v38_group_control7 = load i8, ptr %v38_group_ptr7, align 1
+  %v38_group_match0 = icmp eq i8 %v38_control, %v38_h2
+  %v38_group_match1 = icmp eq i8 %v38_group_control1, %v38_h2
+  %v38_group_match2 = icmp eq i8 %v38_group_control2, %v38_h2
+  %v38_group_match3 = icmp eq i8 %v38_group_control3, %v38_h2
+  %v38_group_match4 = icmp eq i8 %v38_group_control4, %v38_h2
+  %v38_group_match5 = icmp eq i8 %v38_group_control5, %v38_h2
+  %v38_group_match6 = icmp eq i8 %v38_group_control6, %v38_h2
+  %v38_group_match7 = icmp eq i8 %v38_group_control7, %v38_h2
+  %v38_group_match01 = or i1 %v38_group_match0, %v38_group_match1
+  %v38_group_match23 = or i1 %v38_group_match2, %v38_group_match3
+  %v38_group_match45 = or i1 %v38_group_match4, %v38_group_match5
+  %v38_group_match67 = or i1 %v38_group_match6, %v38_group_match7
+  %v38_group_match0123 = or i1 %v38_group_match01, %v38_group_match23
+  %v38_group_match4567 = or i1 %v38_group_match45, %v38_group_match67
+  %v38_group_has_match = or i1 %v38_group_match0123, %v38_group_match4567
+  br i1 %v38_group_has_match, label %dict38_h2_check, label %dict38_group_advance
+dict38_group_advance:
+  %v38_group_next_unwrapped = add i64 %v38_slot, 8
+  %v38_group_next = urem i64 %v38_group_next_unwrapped, %v38_capacity
+  %v38_group_probe_next = add i64 %v38_probe, 8
+  br label %dict38_loop
 dict38_h2_check:
   %v38_h2_match = icmp eq i8 %v38_control, %v38_h2
   br i1 %v38_h2_match, label %dict38_key_check, label %dict38_advance

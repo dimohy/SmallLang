@@ -5997,15 +5997,63 @@ emitCore context: EmitContext -> Unit uses Console {
                         "dict$(regionNodeIndex!)_start:" -> println
                         "  br label %dict$(regionNodeIndex!)_loop" -> println
                         "dict$(regionNodeIndex!)_loop:" -> println
-                        "  %v$(regionNodeIndex!)_slot = phi i64 [ %v$(regionNodeIndex!)_start_slot, %dict$(regionNodeIndex!)_start ], [ %v$(regionNodeIndex!)_next, %dict$(regionNodeIndex!)_advance ]" -> println
-                        "  %v$(regionNodeIndex!)_probe = phi i64 [ 0, %dict$(regionNodeIndex!)_start ], [ %v$(regionNodeIndex!)_probe_next, %dict$(regionNodeIndex!)_advance ]" -> println
+                        "  %v$(regionNodeIndex!)_slot = phi i64 [ %v$(regionNodeIndex!)_start_slot, %dict$(regionNodeIndex!)_start ], [ %v$(regionNodeIndex!)_next, %dict$(regionNodeIndex!)_advance ], [ %v$(regionNodeIndex!)_group_next, %dict$(regionNodeIndex!)_group_advance ]" -> println
+                        "  %v$(regionNodeIndex!)_probe = phi i64 [ 0, %dict$(regionNodeIndex!)_start ], [ %v$(regionNodeIndex!)_probe_next, %dict$(regionNodeIndex!)_advance ], [ %v$(regionNodeIndex!)_group_probe_next, %dict$(regionNodeIndex!)_group_advance ]" -> println
                         "  %v$(regionNodeIndex!)_in_range = icmp ult i64 %v$(regionNodeIndex!)_probe, %v$(regionNodeIndex!)_capacity" -> println
                         "  br i1 %v$(regionNodeIndex!)_in_range, label %dict$(regionNodeIndex!)_check, label %dict$(regionNodeIndex!)_missing" -> println
                         "dict$(regionNodeIndex!)_check:" -> println
                         "  %v$(regionNodeIndex!)_control_ptr = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_slot" -> println
                         "  %v$(regionNodeIndex!)_control = load i8, ptr %v$(regionNodeIndex!)_control_ptr, align 1" -> println
                         "  %v$(regionNodeIndex!)_occupied = icmp ne i8 %v$(regionNodeIndex!)_control, 0" -> println
-                        "  br i1 %v$(regionNodeIndex!)_occupied, label %dict$(regionNodeIndex!)_h2_check, label %dict$(regionNodeIndex!)_missing" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped1 = add i64 %v$(regionNodeIndex!)_slot, 1" -> println
+                        "  %v$(regionNodeIndex!)_group_slot1 = urem i64 %v$(regionNodeIndex!)_group_unwrapped1, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped2 = add i64 %v$(regionNodeIndex!)_slot, 2" -> println
+                        "  %v$(regionNodeIndex!)_group_slot2 = urem i64 %v$(regionNodeIndex!)_group_unwrapped2, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped3 = add i64 %v$(regionNodeIndex!)_slot, 3" -> println
+                        "  %v$(regionNodeIndex!)_group_slot3 = urem i64 %v$(regionNodeIndex!)_group_unwrapped3, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped4 = add i64 %v$(regionNodeIndex!)_slot, 4" -> println
+                        "  %v$(regionNodeIndex!)_group_slot4 = urem i64 %v$(regionNodeIndex!)_group_unwrapped4, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped5 = add i64 %v$(regionNodeIndex!)_slot, 5" -> println
+                        "  %v$(regionNodeIndex!)_group_slot5 = urem i64 %v$(regionNodeIndex!)_group_unwrapped5, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped6 = add i64 %v$(regionNodeIndex!)_slot, 6" -> println
+                        "  %v$(regionNodeIndex!)_group_slot6 = urem i64 %v$(regionNodeIndex!)_group_unwrapped6, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_unwrapped7 = add i64 %v$(regionNodeIndex!)_slot, 7" -> println
+                        "  %v$(regionNodeIndex!)_group_slot7 = urem i64 %v$(regionNodeIndex!)_group_unwrapped7, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr1 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot1" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr2 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot2" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr3 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot3" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr4 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot4" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr5 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot5" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr6 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot6" -> println
+                        "  %v$(regionNodeIndex!)_group_ptr7 = getelementptr i8, ptr %v$(regionNodeIndex!)_controls, i64 %v$(regionNodeIndex!)_group_slot7" -> println
+                        "  %v$(regionNodeIndex!)_group_control1 = load i8, ptr %v$(regionNodeIndex!)_group_ptr1, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control2 = load i8, ptr %v$(regionNodeIndex!)_group_ptr2, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control3 = load i8, ptr %v$(regionNodeIndex!)_group_ptr3, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control4 = load i8, ptr %v$(regionNodeIndex!)_group_ptr4, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control5 = load i8, ptr %v$(regionNodeIndex!)_group_ptr5, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control6 = load i8, ptr %v$(regionNodeIndex!)_group_ptr6, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_control7 = load i8, ptr %v$(regionNodeIndex!)_group_ptr7, align 1" -> println
+                        "  %v$(regionNodeIndex!)_group_match0 = icmp eq i8 %v$(regionNodeIndex!)_control, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match1 = icmp eq i8 %v$(regionNodeIndex!)_group_control1, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match2 = icmp eq i8 %v$(regionNodeIndex!)_group_control2, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match3 = icmp eq i8 %v$(regionNodeIndex!)_group_control3, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match4 = icmp eq i8 %v$(regionNodeIndex!)_group_control4, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match5 = icmp eq i8 %v$(regionNodeIndex!)_group_control5, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match6 = icmp eq i8 %v$(regionNodeIndex!)_group_control6, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match7 = icmp eq i8 %v$(regionNodeIndex!)_group_control7, %v$(regionNodeIndex!)_h2" -> println
+                        "  %v$(regionNodeIndex!)_group_match01 = or i1 %v$(regionNodeIndex!)_group_match0, %v$(regionNodeIndex!)_group_match1" -> println
+                        "  %v$(regionNodeIndex!)_group_match23 = or i1 %v$(regionNodeIndex!)_group_match2, %v$(regionNodeIndex!)_group_match3" -> println
+                        "  %v$(regionNodeIndex!)_group_match45 = or i1 %v$(regionNodeIndex!)_group_match4, %v$(regionNodeIndex!)_group_match5" -> println
+                        "  %v$(regionNodeIndex!)_group_match67 = or i1 %v$(regionNodeIndex!)_group_match6, %v$(regionNodeIndex!)_group_match7" -> println
+                        "  %v$(regionNodeIndex!)_group_match0123 = or i1 %v$(regionNodeIndex!)_group_match01, %v$(regionNodeIndex!)_group_match23" -> println
+                        "  %v$(regionNodeIndex!)_group_match4567 = or i1 %v$(regionNodeIndex!)_group_match45, %v$(regionNodeIndex!)_group_match67" -> println
+                        "  %v$(regionNodeIndex!)_group_has_match = or i1 %v$(regionNodeIndex!)_group_match0123, %v$(regionNodeIndex!)_group_match4567" -> println
+                        "  br i1 %v$(regionNodeIndex!)_group_has_match, label %dict$(regionNodeIndex!)_h2_check, label %dict$(regionNodeIndex!)_group_advance" -> println
+                        "dict$(regionNodeIndex!)_group_advance:" -> println
+                        "  %v$(regionNodeIndex!)_group_next_unwrapped = add i64 %v$(regionNodeIndex!)_slot, 8" -> println
+                        "  %v$(regionNodeIndex!)_group_next = urem i64 %v$(regionNodeIndex!)_group_next_unwrapped, %v$(regionNodeIndex!)_capacity" -> println
+                        "  %v$(regionNodeIndex!)_group_probe_next = add i64 %v$(regionNodeIndex!)_probe, 8" -> println
+                        "  br label %dict$(regionNodeIndex!)_loop" -> println
                         "dict$(regionNodeIndex!)_h2_check:" -> println
                         "  %v$(regionNodeIndex!)_h2_match = icmp eq i8 %v$(regionNodeIndex!)_control, %v$(regionNodeIndex!)_h2" -> println
                         "  br i1 %v$(regionNodeIndex!)_h2_match, label %dict$(regionNodeIndex!)_key_check, label %dict$(regionNodeIndex!)_advance" -> println
@@ -8013,15 +8061,63 @@ emitCore context: EmitContext -> Unit uses Console {
                         "dict$(expressionIndex!)_start:" -> println
                         "  br label %dict$(expressionIndex!)_loop" -> println
                          "dict$(expressionIndex!)_loop:" -> println
-                         "  %v$(expressionIndex!)_slot = phi i64 [ %v$(expressionIndex!)_start_slot, %dict$(expressionIndex!)_start ], [ %v$(expressionIndex!)_next, %dict$(expressionIndex!)_advance ]" -> println
-                         "  %v$(expressionIndex!)_probe = phi i64 [ 0, %dict$(expressionIndex!)_start ], [ %v$(expressionIndex!)_probe_next, %dict$(expressionIndex!)_advance ]" -> println
+                         "  %v$(expressionIndex!)_slot = phi i64 [ %v$(expressionIndex!)_start_slot, %dict$(expressionIndex!)_start ], [ %v$(expressionIndex!)_next, %dict$(expressionIndex!)_advance ], [ %v$(expressionIndex!)_group_next, %dict$(expressionIndex!)_group_advance ]" -> println
+                         "  %v$(expressionIndex!)_probe = phi i64 [ 0, %dict$(expressionIndex!)_start ], [ %v$(expressionIndex!)_probe_next, %dict$(expressionIndex!)_advance ], [ %v$(expressionIndex!)_group_probe_next, %dict$(expressionIndex!)_group_advance ]" -> println
                          "  %v$(expressionIndex!)_in_range = icmp ult i64 %v$(expressionIndex!)_probe, %v$(expressionIndex!)_capacity" -> println
                         "  br i1 %v$(expressionIndex!)_in_range, label %dict$(expressionIndex!)_check, label %dict$(expressionIndex!)_missing" -> println
                          "dict$(expressionIndex!)_check:" -> println
                          "  %v$(expressionIndex!)_control_ptr = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_slot" -> println
                          "  %v$(expressionIndex!)_control = load i8, ptr %v$(expressionIndex!)_control_ptr, align 1" -> println
                          "  %v$(expressionIndex!)_occupied = icmp ne i8 %v$(expressionIndex!)_control, 0" -> println
-                         "  br i1 %v$(expressionIndex!)_occupied, label %dict$(expressionIndex!)_h2_check, label %dict$(expressionIndex!)_missing" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped1 = add i64 %v$(expressionIndex!)_slot, 1" -> println
+                         "  %v$(expressionIndex!)_group_slot1 = urem i64 %v$(expressionIndex!)_group_unwrapped1, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped2 = add i64 %v$(expressionIndex!)_slot, 2" -> println
+                         "  %v$(expressionIndex!)_group_slot2 = urem i64 %v$(expressionIndex!)_group_unwrapped2, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped3 = add i64 %v$(expressionIndex!)_slot, 3" -> println
+                         "  %v$(expressionIndex!)_group_slot3 = urem i64 %v$(expressionIndex!)_group_unwrapped3, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped4 = add i64 %v$(expressionIndex!)_slot, 4" -> println
+                         "  %v$(expressionIndex!)_group_slot4 = urem i64 %v$(expressionIndex!)_group_unwrapped4, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped5 = add i64 %v$(expressionIndex!)_slot, 5" -> println
+                         "  %v$(expressionIndex!)_group_slot5 = urem i64 %v$(expressionIndex!)_group_unwrapped5, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped6 = add i64 %v$(expressionIndex!)_slot, 6" -> println
+                         "  %v$(expressionIndex!)_group_slot6 = urem i64 %v$(expressionIndex!)_group_unwrapped6, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_unwrapped7 = add i64 %v$(expressionIndex!)_slot, 7" -> println
+                         "  %v$(expressionIndex!)_group_slot7 = urem i64 %v$(expressionIndex!)_group_unwrapped7, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_ptr1 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot1" -> println
+                         "  %v$(expressionIndex!)_group_ptr2 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot2" -> println
+                         "  %v$(expressionIndex!)_group_ptr3 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot3" -> println
+                         "  %v$(expressionIndex!)_group_ptr4 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot4" -> println
+                         "  %v$(expressionIndex!)_group_ptr5 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot5" -> println
+                         "  %v$(expressionIndex!)_group_ptr6 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot6" -> println
+                         "  %v$(expressionIndex!)_group_ptr7 = getelementptr i8, ptr %v$(expressionIndex!)_controls, i64 %v$(expressionIndex!)_group_slot7" -> println
+                         "  %v$(expressionIndex!)_group_control1 = load i8, ptr %v$(expressionIndex!)_group_ptr1, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control2 = load i8, ptr %v$(expressionIndex!)_group_ptr2, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control3 = load i8, ptr %v$(expressionIndex!)_group_ptr3, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control4 = load i8, ptr %v$(expressionIndex!)_group_ptr4, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control5 = load i8, ptr %v$(expressionIndex!)_group_ptr5, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control6 = load i8, ptr %v$(expressionIndex!)_group_ptr6, align 1" -> println
+                         "  %v$(expressionIndex!)_group_control7 = load i8, ptr %v$(expressionIndex!)_group_ptr7, align 1" -> println
+                         "  %v$(expressionIndex!)_group_match0 = icmp eq i8 %v$(expressionIndex!)_control, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match1 = icmp eq i8 %v$(expressionIndex!)_group_control1, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match2 = icmp eq i8 %v$(expressionIndex!)_group_control2, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match3 = icmp eq i8 %v$(expressionIndex!)_group_control3, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match4 = icmp eq i8 %v$(expressionIndex!)_group_control4, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match5 = icmp eq i8 %v$(expressionIndex!)_group_control5, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match6 = icmp eq i8 %v$(expressionIndex!)_group_control6, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match7 = icmp eq i8 %v$(expressionIndex!)_group_control7, %v$(expressionIndex!)_h2" -> println
+                         "  %v$(expressionIndex!)_group_match01 = or i1 %v$(expressionIndex!)_group_match0, %v$(expressionIndex!)_group_match1" -> println
+                         "  %v$(expressionIndex!)_group_match23 = or i1 %v$(expressionIndex!)_group_match2, %v$(expressionIndex!)_group_match3" -> println
+                         "  %v$(expressionIndex!)_group_match45 = or i1 %v$(expressionIndex!)_group_match4, %v$(expressionIndex!)_group_match5" -> println
+                         "  %v$(expressionIndex!)_group_match67 = or i1 %v$(expressionIndex!)_group_match6, %v$(expressionIndex!)_group_match7" -> println
+                         "  %v$(expressionIndex!)_group_match0123 = or i1 %v$(expressionIndex!)_group_match01, %v$(expressionIndex!)_group_match23" -> println
+                         "  %v$(expressionIndex!)_group_match4567 = or i1 %v$(expressionIndex!)_group_match45, %v$(expressionIndex!)_group_match67" -> println
+                         "  %v$(expressionIndex!)_group_has_match = or i1 %v$(expressionIndex!)_group_match0123, %v$(expressionIndex!)_group_match4567" -> println
+                         "  br i1 %v$(expressionIndex!)_group_has_match, label %dict$(expressionIndex!)_h2_check, label %dict$(expressionIndex!)_group_advance" -> println
+                         "dict$(expressionIndex!)_group_advance:" -> println
+                         "  %v$(expressionIndex!)_group_next_unwrapped = add i64 %v$(expressionIndex!)_slot, 8" -> println
+                         "  %v$(expressionIndex!)_group_next = urem i64 %v$(expressionIndex!)_group_next_unwrapped, %v$(expressionIndex!)_capacity" -> println
+                         "  %v$(expressionIndex!)_group_probe_next = add i64 %v$(expressionIndex!)_probe, 8" -> println
+                         "  br label %dict$(expressionIndex!)_loop" -> println
                          "dict$(expressionIndex!)_h2_check:" -> println
                          "  %v$(expressionIndex!)_h2_match = icmp eq i8 %v$(expressionIndex!)_control, %v$(expressionIndex!)_h2" -> println
                          "  br i1 %v$(expressionIndex!)_h2_match, label %dict$(expressionIndex!)_key_check, label %dict$(expressionIndex!)_advance" -> println
@@ -10419,15 +10515,63 @@ emitCore context: EmitContext -> Unit uses Console {
                                 "dict$(entryExpressionIndex!)_start:" -> println
                                 "  br label %dict$(entryExpressionIndex!)_loop" -> println
                                 "dict$(entryExpressionIndex!)_loop:" -> println
-                                "  %v$(entryExpressionIndex!)_slot = phi i64 [ %v$(entryExpressionIndex!)_start_slot, %dict$(entryExpressionIndex!)_start ], [ %v$(entryExpressionIndex!)_next, %dict$(entryExpressionIndex!)_advance ]" -> println
-                                "  %v$(entryExpressionIndex!)_probe = phi i64 [ 0, %dict$(entryExpressionIndex!)_start ], [ %v$(entryExpressionIndex!)_probe_next, %dict$(entryExpressionIndex!)_advance ]" -> println
+                                 "  %v$(entryExpressionIndex!)_slot = phi i64 [ %v$(entryExpressionIndex!)_start_slot, %dict$(entryExpressionIndex!)_start ], [ %v$(entryExpressionIndex!)_next, %dict$(entryExpressionIndex!)_advance ], [ %v$(entryExpressionIndex!)_group_next, %dict$(entryExpressionIndex!)_group_advance ]" -> println
+                                "  %v$(entryExpressionIndex!)_probe = phi i64 [ 0, %dict$(entryExpressionIndex!)_start ], [ %v$(entryExpressionIndex!)_probe_next, %dict$(entryExpressionIndex!)_advance ], [ %v$(entryExpressionIndex!)_group_probe_next, %dict$(entryExpressionIndex!)_group_advance ]" -> println
                                 "  %v$(entryExpressionIndex!)_in_range = icmp ult i64 %v$(entryExpressionIndex!)_probe, %v$(entryExpressionIndex!)_capacity" -> println
                                 "  br i1 %v$(entryExpressionIndex!)_in_range, label %dict$(entryExpressionIndex!)_check, label %dict$(entryExpressionIndex!)_missing" -> println
                                  "dict$(entryExpressionIndex!)_check:" -> println
                                  "  %v$(entryExpressionIndex!)_control_ptr = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_slot" -> println
                                  "  %v$(entryExpressionIndex!)_control = load i8, ptr %v$(entryExpressionIndex!)_control_ptr, align 1" -> println
                                  "  %v$(entryExpressionIndex!)_occupied = icmp ne i8 %v$(entryExpressionIndex!)_control, 0" -> println
-                                 "  br i1 %v$(entryExpressionIndex!)_occupied, label %dict$(entryExpressionIndex!)_h2_check, label %dict$(entryExpressionIndex!)_missing" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped1 = add i64 %v$(entryExpressionIndex!)_slot, 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot1 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped1, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped2 = add i64 %v$(entryExpressionIndex!)_slot, 2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot2 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped2, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped3 = add i64 %v$(entryExpressionIndex!)_slot, 3" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot3 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped3, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped4 = add i64 %v$(entryExpressionIndex!)_slot, 4" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot4 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped4, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped5 = add i64 %v$(entryExpressionIndex!)_slot, 5" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot5 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped5, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped6 = add i64 %v$(entryExpressionIndex!)_slot, 6" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot6 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped6, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_unwrapped7 = add i64 %v$(entryExpressionIndex!)_slot, 7" -> println
+                                 "  %v$(entryExpressionIndex!)_group_slot7 = urem i64 %v$(entryExpressionIndex!)_group_unwrapped7, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr1 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr2 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr3 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot3" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr4 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot4" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr5 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot5" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr6 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot6" -> println
+                                 "  %v$(entryExpressionIndex!)_group_ptr7 = getelementptr i8, ptr %v$(entryExpressionIndex!)_controls, i64 %v$(entryExpressionIndex!)_group_slot7" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control1 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr1, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control2 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr2, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control3 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr3, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control4 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr4, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control5 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr5, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control6 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr6, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_control7 = load i8, ptr %v$(entryExpressionIndex!)_group_ptr7, align 1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match0 = icmp eq i8 %v$(entryExpressionIndex!)_control, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match1 = icmp eq i8 %v$(entryExpressionIndex!)_group_control1, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match2 = icmp eq i8 %v$(entryExpressionIndex!)_group_control2, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match3 = icmp eq i8 %v$(entryExpressionIndex!)_group_control3, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match4 = icmp eq i8 %v$(entryExpressionIndex!)_group_control4, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match5 = icmp eq i8 %v$(entryExpressionIndex!)_group_control5, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match6 = icmp eq i8 %v$(entryExpressionIndex!)_group_control6, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match7 = icmp eq i8 %v$(entryExpressionIndex!)_group_control7, %v$(entryExpressionIndex!)_h2" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match01 = or i1 %v$(entryExpressionIndex!)_group_match0, %v$(entryExpressionIndex!)_group_match1" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match23 = or i1 %v$(entryExpressionIndex!)_group_match2, %v$(entryExpressionIndex!)_group_match3" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match45 = or i1 %v$(entryExpressionIndex!)_group_match4, %v$(entryExpressionIndex!)_group_match5" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match67 = or i1 %v$(entryExpressionIndex!)_group_match6, %v$(entryExpressionIndex!)_group_match7" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match0123 = or i1 %v$(entryExpressionIndex!)_group_match01, %v$(entryExpressionIndex!)_group_match23" -> println
+                                 "  %v$(entryExpressionIndex!)_group_match4567 = or i1 %v$(entryExpressionIndex!)_group_match45, %v$(entryExpressionIndex!)_group_match67" -> println
+                                 "  %v$(entryExpressionIndex!)_group_has_match = or i1 %v$(entryExpressionIndex!)_group_match0123, %v$(entryExpressionIndex!)_group_match4567" -> println
+                                 "  br i1 %v$(entryExpressionIndex!)_group_has_match, label %dict$(entryExpressionIndex!)_h2_check, label %dict$(entryExpressionIndex!)_group_advance" -> println
+                                 "dict$(entryExpressionIndex!)_group_advance:" -> println
+                                 "  %v$(entryExpressionIndex!)_group_next_unwrapped = add i64 %v$(entryExpressionIndex!)_slot, 8" -> println
+                                 "  %v$(entryExpressionIndex!)_group_next = urem i64 %v$(entryExpressionIndex!)_group_next_unwrapped, %v$(entryExpressionIndex!)_capacity" -> println
+                                 "  %v$(entryExpressionIndex!)_group_probe_next = add i64 %v$(entryExpressionIndex!)_probe, 8" -> println
+                                 "  br label %dict$(entryExpressionIndex!)_loop" -> println
                                  "dict$(entryExpressionIndex!)_h2_check:" -> println
                                  "  %v$(entryExpressionIndex!)_h2_match = icmp eq i8 %v$(entryExpressionIndex!)_control, %v$(entryExpressionIndex!)_h2" -> println
                                  "  br i1 %v$(entryExpressionIndex!)_h2_match, label %dict$(entryExpressionIndex!)_key_check, label %dict$(entryExpressionIndex!)_advance" -> println

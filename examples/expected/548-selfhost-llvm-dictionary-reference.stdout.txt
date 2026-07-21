@@ -179,15 +179,63 @@ entry:
 dict11_start:
   br label %dict11_loop
 dict11_loop:
-  %v11_slot = phi i64 [ %v11_start_slot, %dict11_start ], [ %v11_next, %dict11_advance ]
-  %v11_probe = phi i64 [ 0, %dict11_start ], [ %v11_probe_next, %dict11_advance ]
+  %v11_slot = phi i64 [ %v11_start_slot, %dict11_start ], [ %v11_next, %dict11_advance ], [ %v11_group_next, %dict11_group_advance ]
+  %v11_probe = phi i64 [ 0, %dict11_start ], [ %v11_probe_next, %dict11_advance ], [ %v11_group_probe_next, %dict11_group_advance ]
   %v11_in_range = icmp ult i64 %v11_probe, %v11_capacity
   br i1 %v11_in_range, label %dict11_check, label %dict11_missing
 dict11_check:
   %v11_control_ptr = getelementptr i8, ptr %v11_controls, i64 %v11_slot
   %v11_control = load i8, ptr %v11_control_ptr, align 1
   %v11_occupied = icmp ne i8 %v11_control, 0
-  br i1 %v11_occupied, label %dict11_h2_check, label %dict11_missing
+  %v11_group_unwrapped1 = add i64 %v11_slot, 1
+  %v11_group_slot1 = urem i64 %v11_group_unwrapped1, %v11_capacity
+  %v11_group_unwrapped2 = add i64 %v11_slot, 2
+  %v11_group_slot2 = urem i64 %v11_group_unwrapped2, %v11_capacity
+  %v11_group_unwrapped3 = add i64 %v11_slot, 3
+  %v11_group_slot3 = urem i64 %v11_group_unwrapped3, %v11_capacity
+  %v11_group_unwrapped4 = add i64 %v11_slot, 4
+  %v11_group_slot4 = urem i64 %v11_group_unwrapped4, %v11_capacity
+  %v11_group_unwrapped5 = add i64 %v11_slot, 5
+  %v11_group_slot5 = urem i64 %v11_group_unwrapped5, %v11_capacity
+  %v11_group_unwrapped6 = add i64 %v11_slot, 6
+  %v11_group_slot6 = urem i64 %v11_group_unwrapped6, %v11_capacity
+  %v11_group_unwrapped7 = add i64 %v11_slot, 7
+  %v11_group_slot7 = urem i64 %v11_group_unwrapped7, %v11_capacity
+  %v11_group_ptr1 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot1
+  %v11_group_ptr2 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot2
+  %v11_group_ptr3 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot3
+  %v11_group_ptr4 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot4
+  %v11_group_ptr5 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot5
+  %v11_group_ptr6 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot6
+  %v11_group_ptr7 = getelementptr i8, ptr %v11_controls, i64 %v11_group_slot7
+  %v11_group_control1 = load i8, ptr %v11_group_ptr1, align 1
+  %v11_group_control2 = load i8, ptr %v11_group_ptr2, align 1
+  %v11_group_control3 = load i8, ptr %v11_group_ptr3, align 1
+  %v11_group_control4 = load i8, ptr %v11_group_ptr4, align 1
+  %v11_group_control5 = load i8, ptr %v11_group_ptr5, align 1
+  %v11_group_control6 = load i8, ptr %v11_group_ptr6, align 1
+  %v11_group_control7 = load i8, ptr %v11_group_ptr7, align 1
+  %v11_group_match0 = icmp eq i8 %v11_control, %v11_h2
+  %v11_group_match1 = icmp eq i8 %v11_group_control1, %v11_h2
+  %v11_group_match2 = icmp eq i8 %v11_group_control2, %v11_h2
+  %v11_group_match3 = icmp eq i8 %v11_group_control3, %v11_h2
+  %v11_group_match4 = icmp eq i8 %v11_group_control4, %v11_h2
+  %v11_group_match5 = icmp eq i8 %v11_group_control5, %v11_h2
+  %v11_group_match6 = icmp eq i8 %v11_group_control6, %v11_h2
+  %v11_group_match7 = icmp eq i8 %v11_group_control7, %v11_h2
+  %v11_group_match01 = or i1 %v11_group_match0, %v11_group_match1
+  %v11_group_match23 = or i1 %v11_group_match2, %v11_group_match3
+  %v11_group_match45 = or i1 %v11_group_match4, %v11_group_match5
+  %v11_group_match67 = or i1 %v11_group_match6, %v11_group_match7
+  %v11_group_match0123 = or i1 %v11_group_match01, %v11_group_match23
+  %v11_group_match4567 = or i1 %v11_group_match45, %v11_group_match67
+  %v11_group_has_match = or i1 %v11_group_match0123, %v11_group_match4567
+  br i1 %v11_group_has_match, label %dict11_h2_check, label %dict11_group_advance
+dict11_group_advance:
+  %v11_group_next_unwrapped = add i64 %v11_slot, 8
+  %v11_group_next = urem i64 %v11_group_next_unwrapped, %v11_capacity
+  %v11_group_probe_next = add i64 %v11_probe, 8
+  br label %dict11_loop
 dict11_h2_check:
   %v11_h2_match = icmp eq i8 %v11_control, %v11_h2
   br i1 %v11_h2_match, label %dict11_key_check, label %dict11_advance

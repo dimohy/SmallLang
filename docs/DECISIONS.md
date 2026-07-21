@@ -9335,3 +9335,17 @@ insertion, growth, and rehashing remain open.
 This advances the formal score to **54/60 (90.0%)**; the remaining gates are
 group-wide probing, one-byte/non-integer hashing, insertion, growth, and
 rehashing.
+
+## D236 - Self-host Group Control Scans
+
+The self-host LLVM indexed lookup paths now inspect an eight-slot control-byte
+group before falling back to the scalar probe. The normal expression path,
+region path, and entry path all use the same wrapped group window and bounded
+probe accounting. Existing key equality and value lowering remain unchanged,
+so the group scan is an acceleration and candidate-preservation layer rather
+than a new dictionary ABI. The complete Swiss-table mutation algorithm is
+still open: matching candidates must be selected directly, and insertion,
+growth, rehashing, and one-byte/non-integer hashing remain pending.
+Examples 548 and 550 pass self-host LLVM verification on Windows and Linux;
+the full self-host suite passes **341/341**. The formal score remains
+**54/60 (90.0%)** until the mutation and remaining key-family gates are proven.

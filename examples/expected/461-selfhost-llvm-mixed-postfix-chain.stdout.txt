@@ -286,15 +286,63 @@ entry:
 dict20_start:
   br label %dict20_loop
 dict20_loop:
-  %v20_slot = phi i64 [ %v20_start_slot, %dict20_start ], [ %v20_next, %dict20_advance ]
-  %v20_probe = phi i64 [ 0, %dict20_start ], [ %v20_probe_next, %dict20_advance ]
+  %v20_slot = phi i64 [ %v20_start_slot, %dict20_start ], [ %v20_next, %dict20_advance ], [ %v20_group_next, %dict20_group_advance ]
+  %v20_probe = phi i64 [ 0, %dict20_start ], [ %v20_probe_next, %dict20_advance ], [ %v20_group_probe_next, %dict20_group_advance ]
   %v20_in_range = icmp ult i64 %v20_probe, %v20_capacity
   br i1 %v20_in_range, label %dict20_check, label %dict20_missing
 dict20_check:
   %v20_control_ptr = getelementptr i8, ptr %v20_controls, i64 %v20_slot
   %v20_control = load i8, ptr %v20_control_ptr, align 1
   %v20_occupied = icmp ne i8 %v20_control, 0
-  br i1 %v20_occupied, label %dict20_h2_check, label %dict20_missing
+  %v20_group_unwrapped1 = add i64 %v20_slot, 1
+  %v20_group_slot1 = urem i64 %v20_group_unwrapped1, %v20_capacity
+  %v20_group_unwrapped2 = add i64 %v20_slot, 2
+  %v20_group_slot2 = urem i64 %v20_group_unwrapped2, %v20_capacity
+  %v20_group_unwrapped3 = add i64 %v20_slot, 3
+  %v20_group_slot3 = urem i64 %v20_group_unwrapped3, %v20_capacity
+  %v20_group_unwrapped4 = add i64 %v20_slot, 4
+  %v20_group_slot4 = urem i64 %v20_group_unwrapped4, %v20_capacity
+  %v20_group_unwrapped5 = add i64 %v20_slot, 5
+  %v20_group_slot5 = urem i64 %v20_group_unwrapped5, %v20_capacity
+  %v20_group_unwrapped6 = add i64 %v20_slot, 6
+  %v20_group_slot6 = urem i64 %v20_group_unwrapped6, %v20_capacity
+  %v20_group_unwrapped7 = add i64 %v20_slot, 7
+  %v20_group_slot7 = urem i64 %v20_group_unwrapped7, %v20_capacity
+  %v20_group_ptr1 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot1
+  %v20_group_ptr2 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot2
+  %v20_group_ptr3 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot3
+  %v20_group_ptr4 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot4
+  %v20_group_ptr5 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot5
+  %v20_group_ptr6 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot6
+  %v20_group_ptr7 = getelementptr i8, ptr %v20_controls, i64 %v20_group_slot7
+  %v20_group_control1 = load i8, ptr %v20_group_ptr1, align 1
+  %v20_group_control2 = load i8, ptr %v20_group_ptr2, align 1
+  %v20_group_control3 = load i8, ptr %v20_group_ptr3, align 1
+  %v20_group_control4 = load i8, ptr %v20_group_ptr4, align 1
+  %v20_group_control5 = load i8, ptr %v20_group_ptr5, align 1
+  %v20_group_control6 = load i8, ptr %v20_group_ptr6, align 1
+  %v20_group_control7 = load i8, ptr %v20_group_ptr7, align 1
+  %v20_group_match0 = icmp eq i8 %v20_control, %v20_h2
+  %v20_group_match1 = icmp eq i8 %v20_group_control1, %v20_h2
+  %v20_group_match2 = icmp eq i8 %v20_group_control2, %v20_h2
+  %v20_group_match3 = icmp eq i8 %v20_group_control3, %v20_h2
+  %v20_group_match4 = icmp eq i8 %v20_group_control4, %v20_h2
+  %v20_group_match5 = icmp eq i8 %v20_group_control5, %v20_h2
+  %v20_group_match6 = icmp eq i8 %v20_group_control6, %v20_h2
+  %v20_group_match7 = icmp eq i8 %v20_group_control7, %v20_h2
+  %v20_group_match01 = or i1 %v20_group_match0, %v20_group_match1
+  %v20_group_match23 = or i1 %v20_group_match2, %v20_group_match3
+  %v20_group_match45 = or i1 %v20_group_match4, %v20_group_match5
+  %v20_group_match67 = or i1 %v20_group_match6, %v20_group_match7
+  %v20_group_match0123 = or i1 %v20_group_match01, %v20_group_match23
+  %v20_group_match4567 = or i1 %v20_group_match45, %v20_group_match67
+  %v20_group_has_match = or i1 %v20_group_match0123, %v20_group_match4567
+  br i1 %v20_group_has_match, label %dict20_h2_check, label %dict20_group_advance
+dict20_group_advance:
+  %v20_group_next_unwrapped = add i64 %v20_slot, 8
+  %v20_group_next = urem i64 %v20_group_next_unwrapped, %v20_capacity
+  %v20_group_probe_next = add i64 %v20_probe, 8
+  br label %dict20_loop
 dict20_h2_check:
   %v20_h2_match = icmp eq i8 %v20_control, %v20_h2
   br i1 %v20_h2_match, label %dict20_key_check, label %dict20_advance
@@ -341,15 +389,63 @@ dict20_hit:
 dict33_start:
   br label %dict33_loop
 dict33_loop:
-  %v33_slot = phi i64 [ %v33_start_slot, %dict33_start ], [ %v33_next, %dict33_advance ]
-  %v33_probe = phi i64 [ 0, %dict33_start ], [ %v33_probe_next, %dict33_advance ]
+  %v33_slot = phi i64 [ %v33_start_slot, %dict33_start ], [ %v33_next, %dict33_advance ], [ %v33_group_next, %dict33_group_advance ]
+  %v33_probe = phi i64 [ 0, %dict33_start ], [ %v33_probe_next, %dict33_advance ], [ %v33_group_probe_next, %dict33_group_advance ]
   %v33_in_range = icmp ult i64 %v33_probe, %v33_capacity
   br i1 %v33_in_range, label %dict33_check, label %dict33_missing
 dict33_check:
   %v33_control_ptr = getelementptr i8, ptr %v33_controls, i64 %v33_slot
   %v33_control = load i8, ptr %v33_control_ptr, align 1
   %v33_occupied = icmp ne i8 %v33_control, 0
-  br i1 %v33_occupied, label %dict33_h2_check, label %dict33_missing
+  %v33_group_unwrapped1 = add i64 %v33_slot, 1
+  %v33_group_slot1 = urem i64 %v33_group_unwrapped1, %v33_capacity
+  %v33_group_unwrapped2 = add i64 %v33_slot, 2
+  %v33_group_slot2 = urem i64 %v33_group_unwrapped2, %v33_capacity
+  %v33_group_unwrapped3 = add i64 %v33_slot, 3
+  %v33_group_slot3 = urem i64 %v33_group_unwrapped3, %v33_capacity
+  %v33_group_unwrapped4 = add i64 %v33_slot, 4
+  %v33_group_slot4 = urem i64 %v33_group_unwrapped4, %v33_capacity
+  %v33_group_unwrapped5 = add i64 %v33_slot, 5
+  %v33_group_slot5 = urem i64 %v33_group_unwrapped5, %v33_capacity
+  %v33_group_unwrapped6 = add i64 %v33_slot, 6
+  %v33_group_slot6 = urem i64 %v33_group_unwrapped6, %v33_capacity
+  %v33_group_unwrapped7 = add i64 %v33_slot, 7
+  %v33_group_slot7 = urem i64 %v33_group_unwrapped7, %v33_capacity
+  %v33_group_ptr1 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot1
+  %v33_group_ptr2 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot2
+  %v33_group_ptr3 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot3
+  %v33_group_ptr4 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot4
+  %v33_group_ptr5 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot5
+  %v33_group_ptr6 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot6
+  %v33_group_ptr7 = getelementptr i8, ptr %v33_controls, i64 %v33_group_slot7
+  %v33_group_control1 = load i8, ptr %v33_group_ptr1, align 1
+  %v33_group_control2 = load i8, ptr %v33_group_ptr2, align 1
+  %v33_group_control3 = load i8, ptr %v33_group_ptr3, align 1
+  %v33_group_control4 = load i8, ptr %v33_group_ptr4, align 1
+  %v33_group_control5 = load i8, ptr %v33_group_ptr5, align 1
+  %v33_group_control6 = load i8, ptr %v33_group_ptr6, align 1
+  %v33_group_control7 = load i8, ptr %v33_group_ptr7, align 1
+  %v33_group_match0 = icmp eq i8 %v33_control, %v33_h2
+  %v33_group_match1 = icmp eq i8 %v33_group_control1, %v33_h2
+  %v33_group_match2 = icmp eq i8 %v33_group_control2, %v33_h2
+  %v33_group_match3 = icmp eq i8 %v33_group_control3, %v33_h2
+  %v33_group_match4 = icmp eq i8 %v33_group_control4, %v33_h2
+  %v33_group_match5 = icmp eq i8 %v33_group_control5, %v33_h2
+  %v33_group_match6 = icmp eq i8 %v33_group_control6, %v33_h2
+  %v33_group_match7 = icmp eq i8 %v33_group_control7, %v33_h2
+  %v33_group_match01 = or i1 %v33_group_match0, %v33_group_match1
+  %v33_group_match23 = or i1 %v33_group_match2, %v33_group_match3
+  %v33_group_match45 = or i1 %v33_group_match4, %v33_group_match5
+  %v33_group_match67 = or i1 %v33_group_match6, %v33_group_match7
+  %v33_group_match0123 = or i1 %v33_group_match01, %v33_group_match23
+  %v33_group_match4567 = or i1 %v33_group_match45, %v33_group_match67
+  %v33_group_has_match = or i1 %v33_group_match0123, %v33_group_match4567
+  br i1 %v33_group_has_match, label %dict33_h2_check, label %dict33_group_advance
+dict33_group_advance:
+  %v33_group_next_unwrapped = add i64 %v33_slot, 8
+  %v33_group_next = urem i64 %v33_group_next_unwrapped, %v33_capacity
+  %v33_group_probe_next = add i64 %v33_probe, 8
+  br label %dict33_loop
 dict33_h2_check:
   %v33_h2_match = icmp eq i8 %v33_control, %v33_h2
   br i1 %v33_h2_match, label %dict33_key_check, label %dict33_advance
