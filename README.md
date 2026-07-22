@@ -46,6 +46,8 @@ explicit value flow with `value -> target` and expression-first bindings with
 - `main { ... }` or omitted `main` with top-level executable statements
 - block-function calls such as `1..9 -> each i { ... }` and compact guards such
   as `condition -> if continue`
+- long boolean conditions with line-leading `and`/`or` and a visible final
+  `-> if` control stage
 - expression-oriented `if` and `when`, with contextual enum patterns such as
   `Ok(value)` and `Err(error)`
 - nested structs, traits with associated types, explicit owned `dyn<Trait>`
@@ -176,6 +178,18 @@ source
     -> validate
     -> transform
     => result
+```
+
+Long conditions use the same continuation rhythm, keeping `if` near the left
+edge instead of hiding it after a wide expression:
+
+```sollang
+user.isActive
+    and user.profile.isVerified
+    and request.canWrite
+    -> if {
+        save
+    }
 ```
 
 Names that the surrounding role determines may be omitted. An unnamed function

@@ -74,6 +74,7 @@ internal static class SourceFormatter
         var lines = normalized.Split('\n');
         var result = new StringBuilder(normalized.Length + 1);
         var depth = 0;
+        var continuationBlockDepths = new List<int>();
         var inTripleString = false;
 
         var logicalLineCount = lines.Length;
@@ -101,13 +102,19 @@ internal static class SourceFormatter
 
             ScanLine(trimmed, ref inTripleString, out var opens, out var closes);
             var leadingCloses = CountLeadingClosingBraces(trimmed);
-            var lineDepth = Math.Max(0, depth - leadingCloses);
-            if (IsFlowContinuation(trimmed))
+            var lineDepth = Math.Max(0, depth - leadingCloses) + continuationBlockDepths.Count;
+            var isContinuation = IsContinuation(trimmed);
+            if (isContinuation)
             {
                 lineDepth++;
             }
             result.Append(' ', lineDepth * 4).AppendLine(trimmed.TrimEnd());
             depth = Math.Max(0, depth + opens - closes);
+            continuationBlockDepths.RemoveAll(blockDepth => blockDepth > depth);
+            if (isContinuation && opens > closes)
+            {
+                continuationBlockDepths.Add(depth);
+            }
         }
 
         var formatted = result.ToString().Replace(Environment.NewLine, "\n", StringComparison.Ordinal);
@@ -115,9 +122,16 @@ internal static class SourceFormatter
         return formatted;
     }
 
-    private static bool IsFlowContinuation(string line) =>
+    private static bool IsContinuation(string line) =>
         line.StartsWith("->", StringComparison.Ordinal)
-        || line.StartsWith("=>", StringComparison.Ordinal);
+        || line.StartsWith("=>", StringComparison.Ordinal)
+        || StartsWithWord(line, "and")
+        || StartsWithWord(line, "or");
+
+    private static bool StartsWithWord(string line, string word) =>
+        line.StartsWith(word, StringComparison.Ordinal)
+        && (line.Length == word.Length
+            || (!char.IsLetterOrDigit(line[word.Length]) && line[word.Length] != '_'));
 
     private static int CountLeadingClosingBraces(string line)
     {

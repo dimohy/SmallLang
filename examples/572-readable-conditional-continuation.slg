@@ -1,0 +1,12 @@
+# Long boolean conditions keep their operators and control stage visible.
+main {
+    12 > 10
+        and 12 < 20
+        and 12 % 2 == 0
+        or false
+        -> if {
+            "vertical condition=true" -> println
+        } else {
+            "vertical condition=false" -> println
+        }
+}

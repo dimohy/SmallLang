@@ -9999,3 +9999,35 @@ proves that `UInt8` rejects `256`. The self-host compiler emits `i8 65` and
 `i8 90` for the concise form rather than relying on an implicit runtime cast.
 The Windows Release build completes with zero warnings and errors, and the
 Windows regression suite passes all 757 examples.
+
+## D257 - Readable Vertical Boolean Conditions
+
+Status: implemented
+Date: 2026-07-22
+
+The flow-first spelling `condition -> if` remains canonical, but a long
+condition no longer has to hide `if` at the far right. Newlines may precede
+`and` and `or`, and the existing arrow continuation can place the control stage
+on its own aligned line:
+
+```sollang
+user.isActive
+    and user.profile.isVerified
+    and request.canWrite
+    -> if {
+        save
+    }
+```
+
+Only the non-prefix boolean operators receive this continuation rule. It is
+unambiguous because neither `and` nor `or` can start an independent expression.
+The parser preserves the same logical AST, short-circuit behavior, precedence,
+and left-to-right evaluation as the one-line form.
+
+The formatter treats `and`, `or`, `->`, and `=>` as aligned continuation lines.
+When a continuation opens a block, its body and closing brace retain the extra
+hanging indentation. Example 572 covers parsing, semantic analysis, native
+execution, and boolean precedence; the language-tool verifier covers formatting
+idempotence, CLI rewrite, LSP formatting, and parser diagnostics.
+The Windows Release build completes with zero warnings and errors, and the
+Windows regression suite passes all 758 examples.

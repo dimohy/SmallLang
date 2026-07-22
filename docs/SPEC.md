@@ -400,6 +400,9 @@ Notes:
   the call marker, so empty parentheses are omitted.
 - `condition -> if { ... } else { ... }` introduces the current conditional
   expression form. The value flowing into `if` must be `Bool`.
+- A newline may precede `and` or `or`. The line-leading operator continues the
+  preceding boolean expression, so a long condition can end with a separately
+  visible `-> if` continuation without changing precedence or evaluation order.
 - `when { condition { ... } else { ... } }` is the current multi-branch
   conditional expression form.
 - `value -> when { >= limit { ... } else { ... } }` is the subject-value
@@ -2097,7 +2100,20 @@ text
     => slug
 ```
 
-The formatter indents continuation arrows one level beyond the source line.
+Boolean composition may likewise continue with line-leading `and` and `or`:
+
+```sollang
+user.isActive
+    and user.profile.isVerified
+    and request.canWrite
+    -> if {
+        save
+    }
+```
+
+The formatter indents continuation arrows and boolean operators one level
+beyond the source line. A block opened by a continuation keeps that additional
+indentation for its body and closing brace.
 It preserves the exact left-to-right evaluation order; the vertical form does
 not create a different AST or an implicit scope.
 
