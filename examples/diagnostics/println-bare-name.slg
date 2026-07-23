@@ -1,3 +1,7 @@
+blank: -> Text uses Console {
+    println()
+}
+
 main {
-    println => value
+    blank -> println
 }
