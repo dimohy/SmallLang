@@ -1,0 +1,29 @@
+namespace sys.event
+
+public struct MouseEvent {
+    x: Int
+    y: Int
+    delta: Int
+    button: Int
+    kind: MouseEventKind
+}
+
+# Mouse event kinds are stable across platform adapters.
+public enum MouseEventKind {
+    Move
+    ButtonDown
+    ButtonUp
+    Wheel
+}
+
+# Defines what a hot producer does when its fixed-capacity queue is full.
+public enum EventOverflowPolicy {
+    DropNewest
+    DropOldest
+    CoalesceMotion
+}
+
+# Creates a hot, affine mouse event source. capacity is fixed for the source
+# lifetime. CoalesceMotion replaces the newest pending move and prioritizes
+# button and wheel transitions without growing the queue.
+public mouseEvents capacity: Int, overflow: EventOverflowPolicy -> EventStream<MouseEvent> uses Console = intrinsic

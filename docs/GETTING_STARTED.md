@@ -889,6 +889,48 @@ Example `585-stream-transaction-risk-scan.slg` combines
 contains one billion transaction IDs, upstream cancellation stops it after the
 ninth ID.
 
+A pipeline may also be stored as an affine `Stream<T>` and consumed later.
+`defer` stores only the producer state, not its elements. Passing or returning
+the stream uses `move`, and the final `each` consumes it exactly once:
+
+```sollang
+import std.sequence
+
+makeValues values: Range -> Stream<Int> {
+    values -> defer
+}
+
+main {
+    1..6 -> makeValues => values
+    values -> each value {
+        "$value" -> println
+    }
+}
+```
+
+For hot native input, `sys.event.mouseEvents` returns an affine
+`EventStream<MouseEvent>`. Its queue has a fixed capacity for its whole
+lifetime and an explicit overflow policy. `stop` cancels and joins the producer
+before restoring the console mode:
+
+```sollang
+import sys.event
+
+main {
+    32 -> event.mouseEvents(event.EventOverflowPolicy.CoalesceMotion) => events
+    events -> each event {
+        "mouse $(event.x),$(event.y)" -> println
+        stop
+    }
+}
+```
+
+The adapter uses `ReadConsoleInputW` on Windows and SGR 1003/1006 terminal
+events on Linux. Browser WebAssembly currently reports a targeted capability
+diagnostic: blocking a browser main thread to pull a future DOM event would
+prevent the event from being delivered. Browser support therefore requires a
+separate host-driven callback lowering rather than a fake polling adapter.
+
 When a formatted value must outlive immediate consumption, materialize it into
 an explicit mutable `Arena` owner:
 
@@ -1069,6 +1111,8 @@ approved syntax.
   intrinsics
 - `stdlib/sys/file.slg`: affine sync/async file owners, legacy sorted-`Int`
   helpers, canonical scalar I/O, and the explicit `BinarySerializable` contract
+- `stdlib/sys/event.slg`: bounded affine `EventStream<MouseEvent>` creation and
+  explicit `DropNewest`, `DropOldest`, or `CoalesceMotion` overflow policy
 - `stdlib/std/sequence.slg`: output-inferred lazy Range `map`, array
   `mapArray`, and allocation-free `filter`, `tap`, `beforeEach`, `afterEach`,
   `flatMap`, `take`, and `skip` stream stages

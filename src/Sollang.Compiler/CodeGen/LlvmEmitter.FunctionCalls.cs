@@ -94,6 +94,28 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeNowMillisIntrinsic(path);
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeRangeStream)
+        {
+            if (expression.Arguments.Count != 1)
+            {
+                throw new SollangException($"{path} expects exactly one Range argument");
+            }
+            return EmitRuntimeRangeStream(function, EmitExpression(expression.Arguments[0]), path);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeMouseEvents)
+        {
+            if (expression.Arguments.Count != 2)
+            {
+                throw new SollangException($"{path} expects capacity and overflow arguments");
+            }
+            return EmitRuntimeMouseEvents(
+                function,
+                EmitExpression(expression.Arguments[0]),
+                EmitExpression(expression.Arguments[1]),
+                path);
+        }
+
         if (function.Kind == BoundFunctionKind.RuntimeExitProcess)
         {
             if (expression.Arguments.Count != 1)
@@ -829,6 +851,29 @@ internal sealed partial class LlvmEmitter
             return EmitRuntimeNowMillisIntrinsic(function.Name);
         }
 
+        if (function.Kind == BoundFunctionKind.RuntimeRangeStream)
+        {
+            if (argument is null)
+            {
+                throw new SollangException($"{function.Name} expects exactly one Range argument");
+            }
+            return EmitRuntimeRangeStream(function, argument, function.Name);
+        }
+
+        if (function.Kind == BoundFunctionKind.RuntimeMouseEvents)
+        {
+            if (argument is null || additionalArguments is not { Count: 1 })
+            {
+                throw new SollangException(
+                    $"{function.Name} expects capacity and overflow arguments");
+            }
+            return EmitRuntimeMouseEvents(
+                function,
+                argument,
+                additionalArguments[0],
+                function.Name);
+        }
+
         if (function.Kind == BoundFunctionKind.RuntimePathStyle)
         {
             if (argument is not null)
@@ -1077,6 +1122,9 @@ internal sealed partial class LlvmEmitter
             _ when _program.Types.IsStruct(function.ReturnType)
                 || _program.Types.IsEnum(function.ReturnType)
                 || _program.Types.IsBox(function.ReturnType)
+                => EmitStructFunctionCall(function, argument, additionalArguments),
+            _ when _program.Types.IsStream(function.ReturnType)
+                || _program.Types.IsEventStream(function.ReturnType)
                 => EmitStructFunctionCall(function, argument, additionalArguments),
             _ => throw new SollangException($"unsupported function return type {function.ReturnType}")
         };
@@ -1413,8 +1461,16 @@ internal sealed partial class LlvmEmitter
             RuntimeStruct structure when function.InputType == structure.Type => $"{LlvmStructType(structure.Type)} {structure.ValueName}",
             RuntimeEnum enumeration when function.InputType == enumeration.Type => $"{LlvmEnumType(enumeration.Type)} {enumeration.ValueName}",
             RuntimeBox box when function.InputType == box.Type => $"ptr {box.PointerName}",
+            RuntimeProducerStream stream when function.InputType == stream.Type =>
+                BuildProducerStreamArgument(stream),
             _ => throw new SollangException($"function '{function.Name}' expects {function.InputType} but received {argument.Type}")
         };
+    }
+
+    private string BuildProducerStreamArgument(RuntimeProducerStream stream)
+    {
+        var materialized = MaterializeAggregateValue(stream);
+        return $"{materialized.TypeName} {materialized.ValueName}";
     }
 
     private BoundType StaticArrayElementType(BoundType arrayType)

@@ -1,0 +1,25 @@
+# A Stream<T> returned from a function is a real affine producer value (ABI and
+# self-host parity proof).
+# Its elements are still pulled one at a time without an intermediate collection.
+import std.sequence
+
+makeValues values: Range -> Stream<Int> {
+    values -> defer
+}
+
+passThrough values: move Stream<Int> -> Stream<Int> {
+    values
+}
+
+main {
+    1..6 -> makeValues => rawValues
+    rawValues -> passThrough => values
+
+    values
+        -> filter value {
+            value % 2 == 0
+        }
+        -> each value {
+            "$value" -> println
+        }
+}

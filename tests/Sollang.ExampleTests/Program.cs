@@ -451,6 +451,7 @@ Parallel.ForEach(
     var selfHostRootPath = Path.Combine(expectedDir, name + ".root.txt");
     var stdoutLlvmValidationPath = Path.Combine(expectedDir, name + ".stdout.llvm.validate.txt");
     var stdoutLlvmExecutionPath = Path.Combine(expectedDir, name + ".stdout.llvm.execute.txt");
+    var compileOnlyPath = Path.Combine(expectedDir, name + ".compile-only.txt");
     var verifyLlvm = File.Exists(llvmContainsPath) || File.Exists(llvmNotContainsPath);
 
     if (!File.Exists(sourcePath) && !File.Exists(projectPath))
@@ -587,6 +588,12 @@ Parallel.ForEach(
             Interlocked.Increment(ref failures);
             return;
         }
+    }
+
+    if (File.Exists(compileOnlyPath))
+    {
+        passed = true;
+        return;
     }
 
     var stdin = File.Exists(stdinPath)

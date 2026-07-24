@@ -1,0 +1,3 @@
+%sollang.stream = type { ptr, ptr, ptr }
+call i1 %stream_next
+@sollang_range_stream_next

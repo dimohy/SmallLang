@@ -3,6 +3,7 @@ namespace sollang.compiler.semantic.type_ids
 import sollang.compiler.ast
 import sollang.compiler.lexer
 import sollang.compiler.semantic.analysis as analysis
+import sollang.compiler.semantic.module_resolve as moduleResolve
 import sollang.compiler.semantic.modules
 import sollang.compiler.semantic.qualified
 import sollang.compiler.semantic.symbols
@@ -138,6 +139,12 @@ public classify request: TypeClassificationRequest -> [Int; ~] {
         (current.kind == 1 and (current.origin == 0 or current.origin == 2)) -> if {
             true => owns!
         }
+        # Stream and EventStream are affine producer handles. Their fixed
+        # three-pointer ABI owns producer state even when T itself is scalar.
+        (current.kind == 7 and current.origin == 4 and (current.symbol == 3 or current.symbol == 4)) -> if {
+            true => owns!
+            true => reachesHeap!
+        }
         (current.kind == 4 or current.kind == 7) -> if {
             current.first >= 0 -> if {
                 traits![current.first] % 2 == 1 -> if { true => owns! }
@@ -205,6 +212,8 @@ public resolve sources: [Text; ~] -> SemanticTypeSet {
 public resolveAnalyzed package: analysis.PackageAnalysis -> SemanticTypeSet {
     ["Unit", "Text", "Int", "Int8", "Int16", "Int32", "Int64", "Long", "UInt8", "UInt16", "UInt32", "UInt64", "Size", "UIntSize", "CodePoint", "Arena", "Arguments", "MappedBytes", "MutableMappedBytes", "Float", "Float32", "Float64", "Double", "Bool", "SourceText", "Range", ~] => builtinNames!
     package -> modules.identitiesAnalyzed => identities!
+    package -> modules.importsAnalyzed => imports!
+    package -> moduleResolve.resolveAnalyzed => resolvedImports!
     package -> qualified.resolveAnalyzed => qualifiedResults!
     [SemanticType; ~] => semanticTypes!
     [TypeReference; ~] => references!
@@ -341,7 +350,64 @@ public resolveAnalyzed package: analysis.PackageAnalysis -> SemanticTypeSet {
                                         sourceIndex! => targetModule!
                                         localSymbol! => targetSymbol!
                                     } else {
-                                        2 => status!
+                                        -1 => importedTypeModule!
+                                        -1 => importedTypeSymbol!
+                                        0 => importedTypeMatches!
+                                        false => searchImportedType!
+                                        name.span.length == UIntSize(10) -> if {
+                                            ((source -> byte(name.span.start)) == UInt8(77)
+                                                and (source -> byte(name.span.start + UIntSize(1))) == UInt8(111)
+                                                and (source -> byte(name.span.start + UIntSize(2))) == UInt8(117)
+                                                and (source -> byte(name.span.start + UIntSize(3))) == UInt8(115)
+                                                and (source -> byte(name.span.start + UIntSize(4))) == UInt8(101)
+                                                and (source -> byte(name.span.start + UIntSize(5))) == UInt8(69)
+                                                and (source -> byte(name.span.start + UIntSize(6))) == UInt8(118)
+                                                and (source -> byte(name.span.start + UIntSize(7))) == UInt8(101)
+                                                and (source -> byte(name.span.start + UIntSize(8))) == UInt8(110)
+                                                and (source -> byte(name.span.start + UIntSize(9))) == UInt8(116)) -> if {
+                                                true => searchImportedType!
+                                            }
+                                        }
+                                        0 => importedTypeEdgeIndex!
+                                        (searchImportedType! and importedTypeEdgeIndex! < (imports! -> len)) -> while {
+                                            imports![importedTypeEdgeIndex!] => importedTypeEdge
+                                            resolvedImports![importedTypeEdgeIndex!] => importedTypeResolution
+                                            (importedTypeEdge.sourceModule == sourceIndex! and importedTypeResolution.status == 0) -> if {
+                                                identities![importedTypeResolution.targetModule].sourceIndex => importedTypeSourceModule
+                                                package.sources[importedTypeSourceModule] -> len => importedTypeSourceLength
+                                                package.sources[importedTypeSourceModule] -> slice(UIntSize(0), importedTypeSourceLength) => importedTypeSource
+                                                package.ranges[importedTypeSourceModule] => importedTypeRange
+                                                0 => importedTypeCandidateIndex!
+                                                importedTypeCandidateIndex! < importedTypeRange.symbolCount -> while {
+                                                    package.symbols[importedTypeRange.symbolStart + importedTypeCandidateIndex!] => importedTypeCandidate
+                                                    (importedTypeCandidate.parent < 0 and (importedTypeCandidate.kind == 3 or importedTypeCandidate.kind == 4) and importedTypeCandidate.flags >= 4) -> if {
+                                                        package.tokens[importedTypeRange.tokenStart + importedTypeCandidate.nameToken] => importedTypeCandidateName
+                                                        name.span.length == importedTypeCandidateName.span.length => importedTypeNameEqual!
+                                                        UIntSize(0) => importedTypeNameByte!
+                                                        (importedTypeNameEqual! and importedTypeNameByte! < name.span.length) -> while {
+                                                            (source -> byte(name.span.start + importedTypeNameByte!)) != (importedTypeSource -> byte(importedTypeCandidateName.span.start + importedTypeNameByte!)) -> if {
+                                                                false => importedTypeNameEqual!
+                                                            }
+                                                            importedTypeNameByte! + UIntSize(1) => importedTypeNameByte!
+                                                        }
+                                                        importedTypeNameEqual! -> if {
+                                                            importedTypeSourceModule => importedTypeModule!
+                                                            importedTypeCandidateIndex! => importedTypeSymbol!
+                                                            importedTypeMatches! + 1 => importedTypeMatches!
+                                                        }
+                                                    }
+                                                    importedTypeCandidateIndex! + 1 => importedTypeCandidateIndex!
+                                                }
+                                            }
+                                            importedTypeEdgeIndex! + 1 => importedTypeEdgeIndex!
+                                        }
+                                        importedTypeMatches! == 1 -> if {
+                                            2 => origin!
+                                            importedTypeModule! => targetModule!
+                                            importedTypeSymbol! => targetSymbol!
+                                        } else {
+                                            2 => status!
+                                        }
                                     }
                                 }
                             }
@@ -359,6 +425,7 @@ public resolveAnalyzed package: analysis.PackageAnalysis -> SemanticTypeSet {
                                 source -> byte(constructorName.span.start + UIntSize(5)) => byte5
                                 (byte0 == UInt8(82) and byte1 == UInt8(101) and byte2 == UInt8(115) and byte3 == UInt8(117) and byte4 == UInt8(108) and byte5 == UInt8(116)) -> if { 1 => targetSymbol! }
                                 (byte0 == UInt8(79) and byte1 == UInt8(112) and byte2 == UInt8(116) and byte3 == UInt8(105) and byte4 == UInt8(111) and byte5 == UInt8(110)) -> if { 0 => targetSymbol! }
+                                (byte0 == UInt8(83) and byte1 == UInt8(116) and byte2 == UInt8(114) and byte3 == UInt8(101) and byte4 == UInt8(97) and byte5 == UInt8(109)) -> if { 3 => targetSymbol! }
                             }
                             constructorName.span.length == UIntSize(4) -> if {
                                 source -> byte(constructorName.span.start) => byte0
@@ -366,6 +433,20 @@ public resolveAnalyzed package: analysis.PackageAnalysis -> SemanticTypeSet {
                                 source -> byte(constructorName.span.start + UIntSize(2)) => byte2
                                 source -> byte(constructorName.span.start + UIntSize(3)) => byte3
                                 (byte0 == UInt8(84) and byte1 == UInt8(97) and byte2 == UInt8(115) and byte3 == UInt8(107)) -> if { 2 => targetSymbol! }
+                            }
+                            constructorName.span.length == UIntSize(11) -> if {
+                                source -> byte(constructorName.span.start) => byte0
+                                source -> byte(constructorName.span.start + UIntSize(1)) => byte1
+                                source -> byte(constructorName.span.start + UIntSize(2)) => byte2
+                                source -> byte(constructorName.span.start + UIntSize(3)) => byte3
+                                source -> byte(constructorName.span.start + UIntSize(4)) => byte4
+                                source -> byte(constructorName.span.start + UIntSize(5)) => byte5
+                                source -> byte(constructorName.span.start + UIntSize(6)) => byte6
+                                source -> byte(constructorName.span.start + UIntSize(7)) => byte7
+                                source -> byte(constructorName.span.start + UIntSize(8)) => byte8
+                                source -> byte(constructorName.span.start + UIntSize(9)) => byte9
+                                source -> byte(constructorName.span.start + UIntSize(10)) => byte10
+                                (byte0 == UInt8(69) and byte1 == UInt8(118) and byte2 == UInt8(101) and byte3 == UInt8(110) and byte4 == UInt8(116) and byte5 == UInt8(83) and byte6 == UInt8(116) and byte7 == UInt8(114) and byte8 == UInt8(101) and byte9 == UInt8(97) and byte10 == UInt8(109)) -> if { 4 => targetSymbol! }
                             }
                             targetSymbol! < 0 -> if { 2 => status! }
                         }

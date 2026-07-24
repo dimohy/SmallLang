@@ -18,6 +18,8 @@ internal sealed partial class LlvmEmitter
     private readonly bool _usesAsyncFile;
     private bool _usesDirectoryTraversal;
     private readonly bool _usesParallel;
+    private readonly bool _usesMouseEvents;
+    private readonly bool _usesRangeStreams;
     private sealed record ParallelCallbackInfo(
         string Name,
         BoundFunction Target,
@@ -90,6 +92,11 @@ internal sealed partial class LlvmEmitter
                 function.Kind is BoundFunctionKind.RuntimeParallel
                     or BoundFunctionKind.RuntimeTryParallel
                     or BoundFunctionKind.RuntimeLimitParallelWorkers);
+        _usesMouseEvents = program.EventStreamConsumers.Values.Any(static pipeline => pipeline.IsEvent);
+        _usesRangeStreams = program.MainStatements.Any(UsesRangeStream)
+            || program.Functions.Values.Where(function => !function.IsStandardLibrary).Any(function =>
+                (function.Body is not null && UsesRangeStream(function.Body))
+                || function.BlockBody.Any(UsesRangeStream));
         _usesAsync = program.Functions.Values.Any(function => function.IsAsync && !function.IsStandardLibrary)
             || _usesAsyncFile
             || program.MainStatements.Any(UsesRuntimeSleep)
@@ -101,6 +108,7 @@ internal sealed partial class LlvmEmitter
         _platform.UsesProcessExit = _usesProcessExit;
         _platform.UsesComputePool = _usesParallel;
         _platform.UsesDirectoryTraversal = _usesDirectoryTraversal;
+        _platform.UsesMouseEvents = _usesMouseEvents;
     }
 
     private void RecordFunctionScopes(
@@ -303,6 +311,67 @@ internal sealed partial class LlvmEmitter
     private bool UsesRuntimeSleep(BlockBody body) => body.Statements.Any(UsesRuntimeSleep)
         || (body.Value is not null && UsesRuntimeSleep(body.Value));
 
+    private bool UsesRangeStream(Statement statement) => statement switch
+    {
+        BindingStatement value => UsesRangeStream(value.Value),
+        ExpressionStatement value => UsesRangeStream(value.Expression),
+        IndexAssignmentStatement value => UsesRangeStream(value.Index) || UsesRangeStream(value.Value),
+        FieldAssignmentStatement value => UsesRangeStream(value.Value),
+        BlockFunctionCallStatement value => UsesRangeStream(value.Source) || value.Body.Any(UsesRangeStream),
+        BlockFunctionPipelineStatement value => value.Calls.Any(UsesRangeStream),
+        GuardLoopControlStatement value => UsesRangeStream(value.Condition),
+        ReturnStatement { Value: { } value } => UsesRangeStream(value),
+        _ => false
+    };
+
+    private bool UsesRangeStream(Expression expression)
+    {
+        if (expression is CallExpression call
+            && string.Join('.', call.Path) is "defer" or "std.sequence.defer") return true;
+        if (expression is FlowExpression flow
+            && flow.Targets.Any(target =>
+                string.Join('.', target.Path) is "defer" or "std.sequence.defer")) return true;
+        return expression switch
+        {
+            StringExpression value => value.Segments.OfType<InterpolationSegment>().Any(x => UsesRangeStream(x.Expression)),
+            AddExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            SubtractExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            MultiplyExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            DivideExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            ModuloExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            NegateExpression value => UsesRangeStream(value.Value),
+            CompareExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            AndExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            OrExpression value => UsesRangeStream(value.Left) || UsesRangeStream(value.Right),
+            NotExpression value => UsesRangeStream(value.Value),
+            FlowExpression value => UsesRangeStream(value.Source)
+                || value.Targets.SelectMany(target => target.Arguments).Any(UsesRangeStream),
+            CallExpression value => value.Arguments.Any(UsesRangeStream),
+            RangeExpression value => UsesRangeStream(value.Start) || UsesRangeStream(value.End),
+            ArrayLiteralExpression value => value.Elements.Any(UsesRangeStream),
+            ArrayRepeatExpression value => UsesRangeStream(value.Value),
+            DictionaryLiteralExpression value => value.Entries.Any(x => UsesRangeStream(x.Key) || UsesRangeStream(x.Value)),
+            IndexExpression value => UsesRangeStream(value.Source) || UsesRangeStream(value.Index),
+            StructLiteralExpression value => value.Fields.Any(x => UsesRangeStream(x.Value)),
+            BoxExpression value => UsesRangeStream(value.Value),
+            TryExpression value => UsesRangeStream(value.Value),
+            FieldAccessExpression value => UsesRangeStream(value.Source),
+            IfExpression value => UsesRangeStream(value.Condition) || UsesRangeStream(value.Then)
+                || (value.Else is not null && UsesRangeStream(value.Else)),
+            WhenExpression value => (value.Subject is not null && UsesRangeStream(value.Subject))
+                || value.Arms.Any(x => UsesRangeStream(x.Condition) || UsesRangeStream(x.Body))
+                || UsesRangeStream(value.Else),
+            EnumMatchExpression value => UsesRangeStream(value.Subject)
+                || value.Arms.Any(x => UsesRangeStream(x.Body))
+                || (value.Else is not null && UsesRangeStream(value.Else)),
+            FoldExpression value => UsesRangeStream(value.Source) || UsesRangeStream(value.Initial) || UsesRangeStream(value.Body),
+            _ => false
+        };
+    }
+
+    private bool UsesRangeStream(BlockBody body) => body.Statements.Any(UsesRangeStream)
+        || (body.Value is not null && UsesRangeStream(body.Value));
+
     private bool UsesProcessArguments(Statement statement) => statement switch
     {
         BindingStatement binding => UsesProcessArguments(binding.Value),
@@ -475,6 +544,12 @@ internal sealed partial class LlvmEmitter
         {
             throw new SollangException("directory traversal is unavailable on the current target");
         }
+        if (_usesMouseEvents && !_platform.SupportsEventStreams)
+        {
+            throw new SollangException(
+                "mouse event streams are unavailable on wasm32-browser; "
+                + "browser events require host-driven callback lowering");
+        }
         var moduleGroups = GetEmittableUserFunctions()
             .GroupBy(static function => function.ModuleName ?? "", StringComparer.Ordinal)
             .OrderBy(static group => LlvmCodegenUnit.StableIdentity(group.Key))
@@ -511,6 +586,8 @@ internal sealed partial class LlvmEmitter
             %sollang.environment_result = type { ptr, i64, i1, i1 }
             %sollang.process_result = type { i32, i32 }
             %sollang.task = type { ptr, ptr }
+            %sollang.stream = type { ptr, ptr, ptr }
+            %sollang.event_stream = type { ptr, ptr, ptr }
             %sollang.dyn = type { ptr, ptr }
             %sollang.task_control = type { ptr, ptr, ptr, ptr, i32, i32, ptr, ptr, i64, ptr, ptr, i32, i32, i64, i64, i32, ptr, i64, i64, i32, i32 }
             """;

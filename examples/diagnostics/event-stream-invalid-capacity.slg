@@ -1,0 +1,8 @@
+import sys.event
+
+main {
+    1 -> event.mouseEvents(event.EventOverflowPolicy.DropNewest) => events
+    events -> each event {
+        event.x -> println
+    }
+}

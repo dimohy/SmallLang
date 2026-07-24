@@ -63,6 +63,94 @@ internal sealed partial class LlvmEmitter
         return new RuntimeInt(BoundType.Int64, value);
     }
 
+    private RuntimeProducerStream EmitRuntimeRangeStream(
+        BoundFunction function,
+        RuntimeValue argument,
+        string path)
+    {
+        if (argument is not RuntimeStruct { Type: BoundType.Range } range
+            || !_program.Types.TryGetStreamValue(function.ReturnType, out var elementType)
+            || elementType != BoundType.Int)
+        {
+            throw new SollangException($"{path} expects Range and returns Stream<Int>");
+        }
+        if (!_platform.SupportsHeapAllocation)
+        {
+            throw new SollangException(
+                $"{path} crosses a runtime Stream boundary and requires heap allocation on this target");
+        }
+
+        var context = NextTemp("range_stream_context");
+        EmitCall(context, "ptr", "sollang_alloc", "i64 12");
+        var allocated = NextTemp("range_stream_allocated");
+        EmitCompare(allocated, "ne", "ptr", context, "null");
+        EmitTrapUnless(allocated, "range_stream_allocation");
+
+        var llvmRangeType = LlvmStructType(BoundType.Range);
+        var start = NextTemp("range_stream_start");
+        EmitAssign(start, $"extractvalue {llvmRangeType} {range.ValueName}, 0");
+        var end = NextTemp("range_stream_end");
+        EmitAssign(end, $"extractvalue {llvmRangeType} {range.ValueName}, 1");
+        EmitStore("i32", start, context, 4);
+        var endAddress = NextTemp("range_stream_end_address");
+        EmitAssign(endAddress, $"getelementptr i8, ptr {context}, i64 4");
+        EmitStore("i32", end, endAddress, 4);
+        var doneAddress = NextTemp("range_stream_done_address");
+        EmitAssign(doneAddress, $"getelementptr i8, ptr {context}, i64 8");
+        EmitStore("i1", "false", doneAddress, 1);
+
+        return new RuntimeProducerStream(
+            function.ReturnType,
+            BoundType.Int,
+            context,
+            "@sollang_range_stream_next",
+            "@sollang_stream_heap_drop",
+            IsEvent: false);
+    }
+
+    private RuntimeProducerStream EmitRuntimeMouseEvents(
+        BoundFunction function,
+        RuntimeValue capacityValue,
+        RuntimeValue overflowValue,
+        string path)
+    {
+        if (!_program.Types.TryGetEventStreamValue(function.ReturnType, out var elementType)
+            || !_program.Types.TryResolve("sys.event.MouseEvent", out var mouseEventType)
+            || elementType != mouseEventType)
+        {
+            throw new SollangException($"{path} must return EventStream<sys.event.MouseEvent>");
+        }
+        if (capacityValue is not RuntimeInt { Type: BoundType.Int } capacity
+            || overflowValue is not RuntimeEnum overflow
+            || !_program.Types.TryResolve("sys.event.EventOverflowPolicy", out var overflowType)
+            || overflow.Type != overflowType)
+        {
+            throw new SollangException(
+                $"{path} expects Int capacity and sys.event.EventOverflowPolicy");
+        }
+
+        var overflowTag = NextTemp("mouse_event_overflow");
+        EmitAssign(
+            overflowTag,
+            $"extractvalue {LlvmEnumType(overflow.Type)} {overflow.ValueName}, 0");
+        var context = NextTemp("mouse_event_context");
+        EmitCall(
+            context,
+            "ptr",
+            "sollang_mouse_event_stream_create",
+            $"i32 {capacity.ValueName}, i32 {overflowTag}");
+        var created = NextTemp("mouse_event_stream_created");
+        EmitCompare(created, "ne", "ptr", context, "null");
+        EmitTrapUnless(created, "mouse_event_stream_create");
+        return new RuntimeProducerStream(
+            function.ReturnType,
+            elementType,
+            context,
+            "@sollang_mouse_event_stream_next",
+            "@sollang_mouse_event_stream_drop",
+            IsEvent: true);
+    }
+
     private RuntimeInt EmitRuntimeParallelWorkersIntrinsic(string path)
     {
         _ = path;

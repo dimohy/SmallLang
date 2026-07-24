@@ -116,7 +116,8 @@ internal sealed partial class LlvmEmitter
                 || TryResolveFunction(target.Path, out function)
                 || TryResolveInstanceMethod(current.Type, path, out function))
             {
-                if (function.Kind != BoundFunctionKind.User && target.Arguments.Count != 0)
+                if (function.Kind is not (BoundFunctionKind.User or BoundFunctionKind.RuntimeMouseEvents)
+                    && target.Arguments.Count != 0)
                 {
                     throw new SollangException($"function value-flow target '{path}' does not accept additional arguments in this slice");
                 }
@@ -235,6 +236,21 @@ internal sealed partial class LlvmEmitter
                         continue;
                     case BoundFunctionKind.RuntimePathQuery:
                         current = EmitRuntimePathQuery(function, current);
+                        continue;
+                    case BoundFunctionKind.RuntimeRangeStream:
+                        current = EmitRuntimeRangeStream(function, current, path);
+                        continue;
+                    case BoundFunctionKind.RuntimeMouseEvents:
+                        if (target.Arguments.Count != 1)
+                        {
+                            throw new SollangException(
+                                $"{path} expects one overflow argument after the flowed capacity");
+                        }
+                        current = EmitRuntimeMouseEvents(
+                            function,
+                            current,
+                            EmitExpression(target.Arguments[0]),
+                            path);
                         continue;
                     case BoundFunctionKind.RuntimeOpenFileAsync:
                     case BoundFunctionKind.RuntimeOpenWriteFileAsync:

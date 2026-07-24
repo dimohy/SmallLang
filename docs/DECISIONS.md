@@ -10457,16 +10457,17 @@ The Release solution builds with zero warnings and errors. The complete Windows
 suite passes 777/777, including grammar determinism, CLI `sollang run`,
 self-host parsing and LLVM, diagnostics, native linking, and execution.
 
-## D270 — Release versions encode the release date
+## D270 — Release versions encode the last compilation date
 
 Status: accepted
 Date: 2026-07-23
 
 Sollang release versions use `major.minor.yymmdd`. The third component is the
-six-digit release date, so the 2026-07-23 release is `0.2.260723`. The NuGet and
-informational versions carry the complete value. CLR assembly and file versions
-remain `0.2.0.0` because a CLR numeric version component cannot exceed 65534.
-The CLI and language server report the informational release version.
+six-digit date on which the distributed compiler artifact was last compiled, so
+an artifact compiled on 2026-07-25 is `0.2.260725`. The NuGet and informational
+versions carry the complete value. CLR assembly and file versions remain
+`0.2.0.0` because a CLR numeric version component cannot exceed 65534. The CLI
+and language server report the informational release version.
 
 ## D271 — Browser playground runs the compiler client-side
 
@@ -10481,7 +10482,7 @@ Run reparses, semantically validates, and executes that edited source without
 sending it to a compilation server.
 
 The published runtime lives under a release-versioned static path such as
-`/compiler-0.2.260723/`. This prevents stale content-addressed .NET runtime
+`/compiler-0.2.260725/`. This prevents stale content-addressed .NET runtime
 assets from mixing with a later compiler publish. Browser regression tests
 cover sample selection, stateful stream execution, editor mutation, output,
 syntax colors, and desktop/mobile layout.
@@ -10566,3 +10567,62 @@ Stage2 bootstrap, LLVM verification, and native link complete in 78.61 seconds.
 For the grouped-not smoke fixture, Stage1 and Stage2 compile in 10.9 ms and
 6.3 ms respectively and emit byte-identical, `llvm-as`-valid LLVM with SHA-256
 `3656BE7142B9C84EF5260A3CDD27234882C05F32FD94277EF7E0DE10D42819C7`.
+
+## D275 — First-Class Streams Use an Affine Producer ABI
+
+Status: implemented
+Date: 2026-07-25
+
+`Stream<T>` is a deferred execution plan, not a collection. A local block
+pipeline remains fused into its source loop and creates no iterator, callback
+object, or intermediate collection. When a stream must cross a function or
+library boundary, its public ABI is exactly three machine words: opaque
+producer context, typed `next(context, output)` function, and
+`drop(context)` function. `std.sequence.defer` allocates one 12-byte Range
+context; enumeration still pulls one element at a time.
+
+The producer value is affine. A binding may be moved into and returned from a
+library function, but one terminal `each` consumes it. A second terminal use is
+reported as an unknown consumed binding by both reference and self-host
+ownership analysis. Example 586 proves a stored local pipeline without
+materialization. Example 587 proves producer ABI identity through two function
+boundaries and exact output. Example 589 proves the self-host runtime pull
+loop.
+
+`EventStream<T>` deliberately shares the same affine ABI and adds a hot-source
+lifetime contract. `sys.event.mouseEvents` owns a fixed-capacity ring, an
+explicit `DropNewest`, `DropOldest`, or `CoalesceMotion` policy, and a producer
+worker. Drop requests cancellation, interrupts or wakes blocked I/O, joins the
+worker, restores the console/terminal state, and releases the ring. No queue
+growth occurs after creation.
+
+The Windows adapter consumes actual `MOUSE_EVENT_RECORD` values through
+`ReadConsoleInputW`. The Linux adapter enables SGR 1003/1006 reporting and
+parses the terminal byte stream. Native runtime probes injected or delivered
+the same logical event and both produced `mouse 7,9`. Literal capacities
+outside `2..65536`, and a second consumption of either stream kind, are
+compile-time diagnostics in both compilers.
+
+This split follows the central design shared by .NET `IAsyncEnumerable<T>`,
+Kotlin `Flow`, Swift `AsyncSequence`, and Reactive Streams: demand crosses a
+small producer boundary while storage and cancellation remain explicit. The
+browser exception is equally intentional. The HTML event loop runs author code
+as queued tasks, while Pointer Events are dispatched by the host. A synchronous
+Wasm pull loop waiting on that same main thread would prevent the event task
+from running. `wasm32-browser` therefore emits a targeted capability diagnostic
+instead of leaving unresolved imports or pretending a polling adapter is
+event-driven. Browser DOM support requires a separate host-driven callback
+lowering.
+
+The final expanded complete Stage2 emission takes 79.49 seconds on the
+measurement machine, compared with the previous 101.8-second baseline: about
+21.9% faster despite the additional Stream/EventStream and diagnostic surface.
+The narrower
+optimized Stage2 path measured 68.17 seconds, about 33.0% faster than that same
+baseline.
+
+The final numbered example set passes 785/785 on both Windows x64 and Linux
+x64. Browser Stage2 passes all five Stream programs plus interpolation,
+unresolved-call, and mouse-capability diagnostics. The published compiler Wasm
+has SHA-256
+`5DD63D0857C1556D0CCDDE13A6D94DC52B75F1F048E7EDC5156C91EE979149BE`.

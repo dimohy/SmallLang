@@ -1,0 +1,17 @@
+# Move or click once in the console. The affine EventStream is dropped
+# immediately after the first callback, restoring the previous console mode.
+import sys.event
+
+passThrough events: move EventStream<MouseEvent> -> EventStream<MouseEvent> {
+    events
+}
+
+main {
+    32 -> event.mouseEvents(event.EventOverflowPolicy.CoalesceMotion) => rawEvents
+    rawEvents -> passThrough => events
+
+    events -> each event {
+        "mouse $(event.x),$(event.y)" -> println
+        stop
+    }
+}

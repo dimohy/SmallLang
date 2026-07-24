@@ -76,6 +76,36 @@ runtimeFunctionSymbol request: RuntimeNameRequest -> Int {
     runtimeSymbol!
 }
 
+intrinsicFlowTarget request: RuntimeNameRequest -> Bool {
+    false => intrinsic!
+    TokenNameRequest { source: request.source, token: request.token, expected: "each" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "yield" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "emit" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "await" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "cancel" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "parallel" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "tryParallel" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "used" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "alloc" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "store" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "load" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "reset" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "materialize" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "flush" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "len" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "byte" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "slice" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "capacity" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "push" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "take" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "append" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "put" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "updated" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "readAt" } -> tokenNameIs -> if { true => intrinsic! }
+    TokenNameRequest { source: request.source, token: request.token, expected: "writeAt" } -> tokenNameIs -> if { true => intrinsic! }
+    intrinsic!
+}
+
 # Status 0 is a resolved local function and 2 is an unresolved call target.
 public resolve source: Text -> [CallResolution; ~] {
     source -> ast.lower => nodes!
@@ -160,7 +190,9 @@ public resolve source: Text -> [CallResolution; ~] {
                 }
                 symbolIndex! + 1 => symbolIndex!
             }
-            ((node.kind == 10 and hasQualifiedFlowTarget!) or node.kind == 11 or node.kind == 48 or functionSymbol! >= 0) -> if {
+            RuntimeNameRequest { source: source, token: tokens![callNameToken!] } -> intrinsicFlowTarget => intrinsicFlow!
+            (callNameToken! > node.firstToken and tokens![callNameToken! - 1].kind == grammar.tokenIdDot) -> if { false => intrinsicFlow! }
+            (functionSymbol! >= 0 or (not intrinsicFlow! and (node.kind == 10 or node.kind == 11 or node.kind == 48))) -> if {
                 2 => callStatus!
                 functionSymbol! >= 0 -> if { 0 => callStatus! }
                 resolved! -> push(CallResolution {
@@ -290,7 +322,9 @@ public resolveModulesPrepared request: move ModuleCallRequest -> [ModuleCallReso
                     RuntimeNameRequest { source: source, token: tokens![callNameToken!] } -> runtimeFunctionSymbol => runtimeSymbol
                     runtimeSymbol < -1 -> if { runtimeSymbol => localFunctionSymbol! }
                 }
-                ((callNode.kind == 10 and moduleHasQualifiedFlowTarget!) or callNode.kind == 11 or callNode.kind == 48 or localFunctionSymbol! != -1) -> if {
+                RuntimeNameRequest { source: source, token: tokens![callNameToken!] } -> intrinsicFlowTarget => intrinsicFlow!
+                (callNameToken! > callNode.firstToken and tokens![callNameToken! - 1].kind == grammar.tokenIdDot) -> if { false => intrinsicFlow! }
+                (localFunctionSymbol! != -1 or (not intrinsicFlow! and (callNode.kind == 10 or callNode.kind == 11 or callNode.kind == 48))) -> if {
                     2 => localCallStatus!
                     localFunctionSymbol! != -1 -> if { 0 => localCallStatus! }
                     localCalls! -> push(CallResolution {
@@ -509,7 +543,9 @@ public resolveModulesAnalyzed package: analysis.PackageAnalysis -> [ModuleCallRe
                     RuntimeNameRequest { source: source, token: package.tokens[sourceRange.tokenStart + callNameToken!] } -> runtimeFunctionSymbol => runtimeSymbol
                     runtimeSymbol < -1 -> if { runtimeSymbol => localFunctionSymbol! }
                 }
-                ((callNode.kind == 10 and moduleHasQualifiedFlowTarget!) or callNode.kind == 11 or callNode.kind == 48 or localFunctionSymbol! != -1) -> if {
+                RuntimeNameRequest { source: source, token: package.tokens[sourceRange.tokenStart + callNameToken!] } -> intrinsicFlowTarget => intrinsicFlow!
+                (callNameToken! > callNode.firstToken and package.tokens[sourceRange.tokenStart + callNameToken! - 1].kind == grammar.tokenIdDot) -> if { false => intrinsicFlow! }
+                (localFunctionSymbol! != -1 or (not intrinsicFlow! and (callNode.kind == 10 or callNode.kind == 11 or callNode.kind == 48))) -> if {
                     2 => localCallStatus!
                     localFunctionSymbol! != -1 -> if { 0 => localCallStatus! }
                     localCalls! -> push(CallResolution {
@@ -606,11 +642,11 @@ public resolveModulesAnalyzed package: analysis.PackageAnalysis -> [ModuleCallRe
             } else {
                 # An unqualified name is also looked up in every directly
                 # imported module. This is the Stage1 open-import behavior used
-                # by `import std.sequence` followed by `-> map`, `-> filter`,
-                # and the other ordinary library stream functions.
+                # by `import std.sequence` followed by ordinary flow, direct,
+                # or block-function calls such as `defer`, `map`, and `filter`.
                 false => openImportFound!
                 false => openImportAmbiguous!
-                (local.functionSymbol == -1 and localCallNode.kind == 48) -> if {
+                (local.functionSymbol == -1 and (localCallNode.kind == 10 or localCallNode.kind == 11 or localCallNode.kind == 48)) -> if {
                     0 => openImportIndex!
                     openImportIndex! < (resolvedImports! -> len) -> while {
                         resolvedImports![openImportIndex!] => openImport

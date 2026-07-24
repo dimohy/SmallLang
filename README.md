@@ -58,6 +58,9 @@ library and source code never travel to a compilation server.
   `-> if` control stage
 - result-producing block pipelines such as `map { ... } -> tap { ... } ->
   filter { ... }`, with no special keywords for those role names
+- affine `Stream<T>` values that can be stored, returned across a library
+  boundary, and consumed once with `each`, plus bounded `EventStream<T>` native
+  event sources with deterministic cancellation
 - expression-oriented `if` and `when`, with contextual enum patterns such as
   `Ok(value)` and `Err(error)`
 - nested structs, traits with associated types, explicit owned `dyn<Trait>`

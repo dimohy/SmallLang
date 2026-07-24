@@ -17,7 +17,7 @@ $compilerError = Join-Path $repoRoot "artifacts\sollangc-browser-stage2.err"
 $compilerBitcode = Join-Path $repoRoot "artifacts\sollangc-browser-stage2.bc"
 $compilerObject = Join-Path $repoRoot "artifacts\sollangc-browser-stage2.o"
 $compilerArtifact = Join-Path $repoRoot "artifacts\sollangc-browser.wasm"
-$publicCompiler = Join-Path $repoRoot "public\sollangc-stage2-0.2.260723.wasm"
+$publicCompiler = Join-Path $repoRoot "public\sollangc-stage2-0.2.260725.wasm"
 
 $browserSources = Get-Content -LiteralPath $manifestPath |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
@@ -107,6 +107,20 @@ foreach ($case in @(
     (Join-Path $repoRoot "examples\diagnostics\browser-interpolation-boundary.slg") `
     (Join-Path $repoRoot "artifacts\browser-stage2-interpolation-diagnostic.txt") `
     "unknown interpolation binding 'dimohy는'"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& node (Join-Path $PSScriptRoot "verify-browser-stage2.mjs") `
+    $compilerArtifact `
+    (Join-Path $repoRoot "tests\Sollang.ExampleTests\Fixtures\browser-stage2-unknown-flow-target.slg") `
+    (Join-Path $repoRoot "artifacts\browser-stage2-unknown-flow-target-diagnostic.txt") `
+    "unresolved call target 'println2'"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& node (Join-Path $PSScriptRoot "verify-browser-stage2.mjs") `
+    $compilerArtifact `
+    (Join-Path $repoRoot "examples\588-mouse-event-stream.slg") `
+    (Join-Path $repoRoot "artifacts\browser-stage2-mouse-event-diagnostic.txt") `
+    "mouse event streams are unavailable on wasm32-browser; browser events require host-driven callback lowering"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "[browser 4/4] Publish only the verified compiler artifact."

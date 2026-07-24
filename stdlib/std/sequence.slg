@@ -1,5 +1,9 @@
 namespace std.sequence
 
+# Creates a library-safe affine Stream<Int> value. The Range is still lazy;
+# defer stores producer state, not elements, and each consumes it exactly once.
+public defer values: Range -> Stream<Int> = intrinsic
+
 # Creates an inclusive lazy range. It stores only its two bounds; each lowers
 # consumption to a direct loop and never materializes an element array.
 public range start: Int, endInclusive: Int -> Range {

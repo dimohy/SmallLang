@@ -1,0 +1,7 @@
+%sollang.event_stream = type { ptr, ptr, ptr }
+@sollang_mouse_enable = private constant [16 x i8]
+define internal ptr @sollang_linux_mouse_worker(ptr %context)
+define internal ptr @sollang_mouse_event_stream_create(i32 %requested_capacity, i32 %overflow)
+define internal i1 @sollang_mouse_event_stream_next(ptr %context, ptr %output)
+define internal void @sollang_mouse_event_stream_drop(ptr %context)
+cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic

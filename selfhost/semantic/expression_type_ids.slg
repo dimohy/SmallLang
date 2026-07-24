@@ -1842,11 +1842,12 @@ public resolveContext prepared: semanticContext.SemanticSnapshot -> ExpressionTy
                             }
                             eachSourceSearch! + 1 => eachSourceSearch!
                         }
-                        eachSourceExpression! >= 0 -> if {
+                        (eachSourceExpression! >= 0 and expressions![eachSourceExpression!].typeId >= 0 and expressions![eachSourceExpression!].typeId < (types! -> len)) -> if {
                             types![expressions![eachSourceExpression!].typeId] => eachCollectionType
                             -1 => eachElementType!
                             (eachCollectionType.kind >= 2 and eachCollectionType.kind <= 4) -> if { eachCollectionType.first => eachElementType! }
                             (eachCollectionType.kind == 1 and eachCollectionType.origin == 1 and eachCollectionType.symbol == 25) -> if { 2 => eachElementType! }
+                            (eachCollectionType.kind == 7 and eachCollectionType.origin == 4 and (eachCollectionType.symbol == 3 or eachCollectionType.symbol == 4) and eachCollectionType.first >= 0 and eachCollectionType.first < (types! -> len)) -> if { eachCollectionType.first => eachElementType! }
                             eachElementType! < 0 -> if {
                                 expressions![eachSourceExpression!] => eachStreamSourceExpression
                                 0 => eachStreamCallSearch!

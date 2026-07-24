@@ -24,6 +24,14 @@ internal sealed partial class SemanticCompiler
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, IReadOnlySet<string>> _activeBorrowedTextOrigins =
         new(StringComparer.Ordinal);
+    private readonly HashSet<Statement> _deferredStreamDeclarations =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Statement, BlockFunctionPipelineStatement> _deferredStreamConsumers =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Statement, BoundEventStreamPipeline> _eventStreamConsumers =
+        new(ReferenceEqualityComparer.Instance);
+    private Dictionary<string, DeferredStreamPlan> _currentDeferredStreams =
+        new(StringComparer.Ordinal);
     private readonly HashSet<string> _activeReadonlyReferenceBindings =
         new(StringComparer.Ordinal);
     private IReadOnlySet<string> _borrowedTextContinuationNames =
@@ -40,11 +48,21 @@ internal sealed partial class SemanticCompiler
     private BoundType? _currentBlockYieldResultType;
     private IReadOnlyList<BoundType> _currentBlockAdditionalYieldInputTypes = [];
     private BoundType? _currentStreamElementType;
+    private bool _allowStreamStop;
     private IReadOnlyDictionary<string, BoundType> _activeGenericTypeArguments =
         new Dictionary<string, BoundType>(StringComparer.Ordinal);
     private HashSet<string>? _collectingLocalCalls;
     private readonly int _pointerBitWidth;
     private int _loopDepth;
+
+    private sealed record DeferredStreamPlan(
+        IReadOnlyList<BlockFunctionCallStatement> Calls,
+        BoundType ElementType,
+        int Line,
+        int Column,
+        bool IsEvent = false,
+        Expression? EventSource = null,
+        BoundType? EventSourceElementType = null);
 
     public SemanticCompiler(SollangProgram program, int pointerBitWidth)
     {
@@ -133,7 +151,10 @@ internal sealed partial class SemanticCompiler
             declarationFingerprint,
             reusedSemanticFunctions,
             totalSemanticFunctions,
-            reusedMainSemantics);
+            reusedMainSemantics,
+            _deferredStreamDeclarations,
+            _deferredStreamConsumers,
+            _eventStreamConsumers);
     }
 
     private IReadOnlyDictionary<string, BoundTraitDefinition> BindTraits(
@@ -915,6 +936,19 @@ internal sealed partial class SemanticCompiler
                 "async functions require a transferable result, a sendable input, and a non-local user declaration; owned inputs must use move");
         }
         var kind = BindFunctionKind(function, inputType, returnType, isLocal);
+        if (kind == BoundFunctionKind.RuntimeMouseEvents)
+        {
+            if (additionalParameters.Length != 1
+                || !_types.TryResolve("sys.event.EventOverflowPolicy", out var overflowType)
+                || additionalParameters[0].Type != overflowType)
+            {
+                throw Error(
+                    function.Line,
+                    function.Column,
+                    "intrinsic sys.event.mouseEvents must be "
+                    + "Int, EventOverflowPolicy -> EventStream<MouseEvent>");
+            }
+        }
         var localFunctions = BindLocalFunctions(function);
 
         return new BoundFunction(
@@ -1666,6 +1700,7 @@ internal sealed partial class SemanticCompiler
             }
         }
 
+        var parentDeferredStreams = BeginDeferredStreamScope();
         BindStatements(
             function.BlockBody,
             scopedFunctions,
@@ -1674,6 +1709,7 @@ internal sealed partial class SemanticCompiler
             allowContainerBindings: true,
             borrowRegionResult: function.Body,
             shortenBorrowRegions: true);
+        EndDeferredStreamScope(parentDeferredStreams);
         var functionBorrowedTextOrigins = new Dictionary<string, IReadOnlySet<string>>(
             _activeBorrowedTextOrigins,
             StringComparer.Ordinal);
@@ -1900,6 +1936,7 @@ internal sealed partial class SemanticCompiler
             mutableBindings.Add(function.InputName ?? "it");
         }
 
+        var parentDeferredStreams = BeginDeferredStreamScope();
         BindStatements(
             function.BlockBody,
             scopedFunctions,
@@ -1909,6 +1946,7 @@ internal sealed partial class SemanticCompiler
             allowContainerBindings: true,
             borrowRegionResult: function.Body,
             shortenBorrowRegions: true);
+        EndDeferredStreamScope(parentDeferredStreams);
 
         var bodyType = function.Body is null
             ? BoundType.Unit
@@ -2099,6 +2137,23 @@ internal sealed partial class SemanticCompiler
                 expectedInputType: null,
                 BoundType.Int,
                 BoundFunctionKind.RuntimeParallelPeakWorkers),
+            "std.sequence.defer" => RequireIntrinsicSignature(
+                function,
+                inputType,
+                returnType,
+                BoundType.Range,
+                _types.GetOrAddStream(BoundType.Int),
+                BoundFunctionKind.RuntimeRangeStream),
+            "sys.event.mouseEvents" => RequireIntrinsicSignature(
+                function,
+                inputType,
+                returnType,
+                BoundType.Int,
+                _types.GetOrAddEventStream(
+                    _types.TryResolve("sys.event.MouseEvent", out var mouseEventType)
+                        ? mouseEventType
+                        : throw Error(function.Line, function.Column, "sys.event.MouseEvent type is missing")),
+                BoundFunctionKind.RuntimeMouseEvents),
             "sys.time.sleep" => RequireSleepIntrinsicSignature(
                 function,
                 inputType,
@@ -2551,13 +2606,37 @@ internal sealed partial class SemanticCompiler
         _activeReadonlyReferenceBindings.Clear();
         var bindings = new Dictionary<string, BoundType>(StringComparer.Ordinal);
         var mutableBindings = new HashSet<string>(StringComparer.Ordinal);
+        var parentDeferredStreams = BeginDeferredStreamScope();
         BindStatements(
             _program.Statements,
             functions,
             bindings,
             mutableBindings,
             shortenBorrowRegions: true);
+        EndDeferredStreamScope(parentDeferredStreams);
         return bindings;
+    }
+
+    private Dictionary<string, DeferredStreamPlan> BeginDeferredStreamScope()
+    {
+        var parent = _currentDeferredStreams;
+        _currentDeferredStreams = new Dictionary<string, DeferredStreamPlan>(StringComparer.Ordinal);
+        return parent;
+    }
+
+    private void EndDeferredStreamScope(Dictionary<string, DeferredStreamPlan> parent)
+    {
+        if (_currentDeferredStreams.Count != 0)
+        {
+            var unconsumed = _currentDeferredStreams.First();
+            throw Error(
+                unconsumed.Value.Line,
+                unconsumed.Value.Column,
+                $"{(unconsumed.Value.IsEvent ? "EventStream" : "Stream")} binding '{unconsumed.Key}' "
+                + "must be consumed exactly once with each");
+        }
+
+        _currentDeferredStreams = parent;
     }
 
     private void BindStatements(
@@ -2777,7 +2856,7 @@ internal sealed partial class SemanticCompiler
                     _borrowedTextContinuationNames = parentBorrowedTextContinuation;
                     return;
                 case StreamStopStatement stop:
-                    if (_currentStreamElementType is null)
+                    if (_currentStreamElementType is null && !_allowStreamStop)
                     {
                         throw Error(stop.Line, stop.Column, "'stop' is valid only inside a stream function");
                     }
@@ -3187,6 +3266,42 @@ internal sealed partial class SemanticCompiler
         BoundType? yieldInputType)
     {
         var target = string.Join('.', call.Target);
+        if (call.Source is NameExpression eventSource
+            && ((_currentDeferredStreams.TryGetValue(eventSource.Name, out var eventPlan)
+                    && eventPlan.EventSource is not null)
+                || (bindings.TryGetValue(eventSource.Name, out var eventSourceType)
+                    && (_types.IsEventStream(eventSourceType) || _types.IsStream(eventSourceType)))))
+        {
+            var pipeline = new BlockFunctionPipelineStatement([call], call.Line, call.Column);
+            if (TryBindEventStreamingPipeline(
+                    pipeline,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    call))
+            {
+                return;
+            }
+        }
+        if ((call.Source is NameExpression streamSource
+                && _currentDeferredStreams.TryGetValue(streamSource.Name, out var streamPlan)
+                && streamPlan.EventSource is null)
+            || (TryGetFunction(target, functions, out var possibleStreamFunction)
+                && (possibleStreamFunction.StreamElementType is not null
+                    || possibleStreamFunction.StreamElementTypeTemplate is not null)))
+        {
+            var pipeline = new BlockFunctionPipelineStatement([call], call.Line, call.Column);
+            if (TryBindStreamingPipeline(
+                    pipeline,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    call))
+            {
+                return;
+            }
+        }
+
         switch (target)
         {
             case "each":
@@ -3230,7 +3345,21 @@ internal sealed partial class SemanticCompiler
         HashSet<string> mutableBindings,
         BoundType? yieldInputType)
     {
-        if (TryBindStreamingPipeline(pipeline, functions, bindings, mutableBindings))
+        if (pipeline.Calls[0].Source is NameExpression eventSource
+            && ((_currentDeferredStreams.TryGetValue(eventSource.Name, out var eventPlan)
+                    && eventPlan.EventSource is not null)
+                || (bindings.TryGetValue(eventSource.Name, out var eventSourceType)
+                    && (_types.IsEventStream(eventSourceType) || _types.IsStream(eventSourceType))))
+            && TryBindEventStreamingPipeline(
+                pipeline,
+                functions,
+                bindings,
+                mutableBindings,
+                pipeline))
+        {
+            return;
+        }
+        if (TryBindStreamingPipeline(pipeline, functions, bindings, mutableBindings, pipeline))
         {
             return;
         }
@@ -3245,9 +3374,40 @@ internal sealed partial class SemanticCompiler
         BlockFunctionPipelineStatement pipeline,
         IReadOnlyDictionary<string, BoundFunction> functions,
         Dictionary<string, BoundType> bindings,
-        HashSet<string> mutableBindings)
+        HashSet<string> mutableBindings,
+        Statement originalStatement,
+        bool expandedFromBinding = false)
     {
         var firstCall = pipeline.Calls[0];
+        if (firstCall.Source is NameExpression sourceName
+            && _currentDeferredStreams.TryGetValue(sourceName.Name, out var upstream))
+        {
+            if (!bindings.TryGetValue(sourceName.Name, out var sourceType)
+                || !_types.TryGetStreamValue(sourceType, out var sourceElementType)
+                || sourceElementType != upstream.ElementType)
+            {
+                throw Error(
+                    sourceName.Line,
+                    sourceName.Column,
+                    $"invalid Stream binding '{sourceName.Name}'");
+            }
+
+            _currentDeferredStreams.Remove(sourceName.Name);
+            bindings.Remove(sourceName.Name);
+            mutableBindings.Remove(sourceName.Name);
+            var expanded = new BlockFunctionPipelineStatement(
+                [.. upstream.Calls, .. pipeline.Calls],
+                upstream.Line,
+                upstream.Column);
+            return TryBindStreamingPipeline(
+                expanded,
+                functions,
+                bindings,
+                mutableBindings,
+                originalStatement,
+                expandedFromBinding: true);
+        }
+
         if (!TryGetFunction(string.Join('.', firstCall.Target), functions, out var firstFunction)
             || (firstFunction.StreamElementType is null
                 && firstFunction.StreamElementTypeTemplate is null))
@@ -3266,6 +3426,10 @@ internal sealed partial class SemanticCompiler
                     throw Error(call.Line, call.Column, "each must terminate a streaming pipeline");
                 }
                 BindEachBlockBody(call, streamedInputType.Value, functions, bindings, mutableBindings);
+                if (expandedFromBinding)
+                {
+                    _deferredStreamConsumers.Add(originalStatement, pipeline);
+                }
                 return true;
             }
 
@@ -3290,6 +3454,10 @@ internal sealed partial class SemanticCompiler
                 if (terminalFunction.ReturnType != BoundType.Unit)
                 {
                     throw Error(call.Line, call.Column, "a terminal streaming block function must return Unit");
+                }
+                if (expandedFromBinding)
+                {
+                    _deferredStreamConsumers.Add(originalStatement, pipeline);
                 }
                 return true;
             }
@@ -3332,7 +3500,219 @@ internal sealed partial class SemanticCompiler
             }
         }
 
-        throw Error(firstCall.Line, firstCall.Column, "a streaming pipeline must end with each");
+        var lastCall = pipeline.Calls[^1];
+        if (lastCall.ResultName is null || lastCall.ResultIsSynthetic)
+        {
+            throw Error(firstCall.Line, firstCall.Column, "a streaming pipeline must end with each or bind a Stream<T>");
+        }
+        if (lastCall.ResultIsMutable)
+        {
+            throw Error(lastCall.Line, lastCall.Column, "Stream<T> bindings are affine and cannot be mutable");
+        }
+
+        ValidateBindingName(lastCall.ResultName, lastCall.Line, lastCall.Column);
+        if (bindings.ContainsKey(lastCall.ResultName))
+        {
+            throw Error(
+                lastCall.Line,
+                lastCall.Column,
+                $"binding '{lastCall.ResultName}' already exists in this scope");
+        }
+
+        var elementType = streamedInputType
+            ?? throw Error(lastCall.Line, lastCall.Column, "stream element type was not inferred");
+        bindings.Add(lastCall.ResultName, _types.GetOrAddStream(elementType));
+        _currentDeferredStreams.Add(
+            lastCall.ResultName,
+            new DeferredStreamPlan(pipeline.Calls, elementType, lastCall.Line, lastCall.Column));
+        _deferredStreamDeclarations.Add(originalStatement);
+        return true;
+    }
+
+    private bool TryBindEventStreamingPipeline(
+        BlockFunctionPipelineStatement pipeline,
+        IReadOnlyDictionary<string, BoundFunction> functions,
+        Dictionary<string, BoundType> bindings,
+        HashSet<string> mutableBindings,
+        Statement originalStatement)
+    {
+        if (pipeline.Calls[0].Source is not NameExpression sourceName)
+        {
+            return false;
+        }
+
+        Expression runtimeSource;
+        BoundType sourceElementType;
+        bool isEvent;
+        IReadOnlyList<BlockFunctionCallStatement> calls;
+        if (_currentDeferredStreams.TryGetValue(sourceName.Name, out var upstream))
+        {
+            if (!upstream.IsEvent
+                || upstream.EventSource is null
+                || upstream.EventSourceElementType is null)
+            {
+                return false;
+            }
+
+            runtimeSource = upstream.EventSource;
+            sourceElementType = upstream.EventSourceElementType.Value;
+            isEvent = upstream.IsEvent;
+            calls = [.. upstream.Calls, .. pipeline.Calls];
+            _currentDeferredStreams.Remove(sourceName.Name);
+        }
+        else
+        {
+            if (!bindings.TryGetValue(sourceName.Name, out var sourceType))
+            {
+                return false;
+            }
+            if (_types.TryGetEventStreamValue(sourceType, out sourceElementType))
+            {
+                isEvent = true;
+            }
+            else if (_types.TryGetStreamValue(sourceType, out sourceElementType))
+            {
+                isEvent = false;
+            }
+            else
+            {
+                return false;
+            }
+
+            runtimeSource = pipeline.Calls[0].Source;
+            calls = pipeline.Calls;
+        }
+
+        bindings.Remove(sourceName.Name);
+        mutableBindings.Remove(sourceName.Name);
+        BoundType currentElementType = sourceElementType;
+        for (var index = 0; index < calls.Count; index++)
+        {
+            var call = calls[index];
+            var target = string.Join('.', call.Target);
+            if (target == "each")
+            {
+                if (index != calls.Count - 1)
+                {
+                    throw Error(call.Line, call.Column, "each must terminate an EventStream<T> pipeline");
+                }
+
+                BindEachBlockBody(
+                    call,
+                    currentElementType,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    allowStreamStop: true);
+                _eventStreamConsumers.Add(
+                    originalStatement,
+                    new BoundEventStreamPipeline(runtimeSource, calls, sourceElementType, isEvent));
+                return true;
+            }
+
+            if (!TryGetFunction(target, functions, out var streamFunction)
+                || (streamFunction.StreamElementType is null
+                    && streamFunction.StreamElementTypeTemplate is null))
+            {
+                if (index != calls.Count - 1
+                    || !TryGetFunction(target, functions, out var terminalFunction)
+                    || terminalFunction.Kind != BoundFunctionKind.UserBlock)
+                {
+                    throw Error(
+                        call.Line,
+                        call.Column,
+                        "an EventStream<T> pipeline may end only with each or a Unit block function");
+                }
+
+                BindUserBlockFunctionCall(
+                    call,
+                    terminalFunction,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    terminalFunction.Name,
+                    streamedInputType: currentElementType);
+                if (terminalFunction.ReturnType != BoundType.Unit)
+                {
+                    throw Error(call.Line, call.Column, "an EventStream<T> terminal must return Unit");
+                }
+
+                _eventStreamConsumers.Add(
+                    originalStatement,
+                    new BoundEventStreamPipeline(runtimeSource, calls, sourceElementType, isEvent));
+                return true;
+            }
+
+            if (streamFunction.Kind == BoundFunctionKind.User
+                && streamFunction.BlockInputType is null)
+            {
+                BindBlocklessStreamFunctionCall(
+                    call,
+                    streamFunction,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    currentElementType);
+            }
+            else
+            {
+                BindUserBlockFunctionCall(
+                    call,
+                    streamFunction,
+                    functions,
+                    bindings,
+                    mutableBindings,
+                    streamFunction.Name,
+                    suppressResultBinding: true,
+                    streamedInputType: currentElementType);
+            }
+
+            streamFunction = _resolvedGenericCalls.TryGetValue(call, out var specialization)
+                ? specialization
+                : streamFunction;
+            currentElementType = streamFunction.StreamElementType
+                ?? throw Error(call.Line, call.Column, "EventStream<T> element type was not specialized");
+        }
+
+        var lastCall = calls[^1];
+        if (lastCall.ResultName is null || lastCall.ResultIsSynthetic)
+        {
+            throw Error(
+                lastCall.Line,
+                lastCall.Column,
+                "an EventStream<T> pipeline must end with each or bind another EventStream<T>");
+        }
+        if (lastCall.ResultIsMutable)
+        {
+            throw Error(lastCall.Line, lastCall.Column, "EventStream<T> bindings are affine and cannot be mutable");
+        }
+
+        ValidateBindingName(lastCall.ResultName, lastCall.Line, lastCall.Column);
+        if (bindings.ContainsKey(lastCall.ResultName))
+        {
+            throw Error(
+                lastCall.Line,
+                lastCall.Column,
+                $"binding '{lastCall.ResultName}' already exists in this scope");
+        }
+
+        bindings.Add(
+            lastCall.ResultName,
+            isEvent
+                ? _types.GetOrAddEventStream(currentElementType)
+                : _types.GetOrAddStream(currentElementType));
+        _currentDeferredStreams.Add(
+            lastCall.ResultName,
+            new DeferredStreamPlan(
+                calls,
+                currentElementType,
+                lastCall.Line,
+                lastCall.Column,
+                IsEvent: isEvent,
+                EventSource: runtimeSource,
+                EventSourceElementType: sourceElementType));
+        _deferredStreamDeclarations.Add(originalStatement);
+        return true;
     }
 
     private void BindBlocklessStreamFunctionCall(
@@ -3494,7 +3874,8 @@ internal sealed partial class SemanticCompiler
         IReadOnlyDictionary<string, BoundFunction> functions,
         Dictionary<string, BoundType> bindings,
         HashSet<string> mutableBindings,
-        BoundType? yieldInputType = null)
+        BoundType? yieldInputType = null,
+        bool allowStreamStop = false)
     {
         RejectBuiltInBlockResult(call, "each");
         if (!call.UsesDefaultItemName)
@@ -3510,13 +3891,22 @@ internal sealed partial class SemanticCompiler
         {
             [call.ItemName] = itemType
         };
-        BindLoopStatements(
-            call.Body,
-            functions,
-            bodyBindings,
-            new HashSet<string>(mutableBindings, StringComparer.Ordinal),
-            yieldInputType,
-            allowContainerBindings: true);
+        var previousAllowStreamStop = _allowStreamStop;
+        _allowStreamStop = previousAllowStreamStop || allowStreamStop;
+        try
+        {
+            BindLoopStatements(
+                call.Body,
+                functions,
+                bodyBindings,
+                new HashSet<string>(mutableBindings, StringComparer.Ordinal),
+                yieldInputType,
+                allowContainerBindings: true);
+        }
+        finally
+        {
+            _allowStreamStop = previousAllowStreamStop;
+        }
     }
 
     private void BindUserBlockFunctionCall(
@@ -6163,7 +6553,8 @@ internal sealed partial class SemanticCompiler
             {
                 EnsureFunctionVisible(function, target.Line, target.Column);
                 EnsureAsyncRuntimeCallable(function, target.Line, target.Column, path);
-                if (function.Kind != BoundFunctionKind.User && target.Arguments.Count != 0)
+                if (function.Kind is not (BoundFunctionKind.User or BoundFunctionKind.RuntimeMouseEvents)
+                    && target.Arguments.Count != 0)
                 {
                     throw Error(
                         target.Line,
@@ -6275,7 +6666,27 @@ internal sealed partial class SemanticCompiler
                     case BoundFunctionKind.RuntimePathQuery:
                     case BoundFunctionKind.RuntimeSyncFile:
                     case BoundFunctionKind.RuntimeAtomicReplaceFile:
+                    case BoundFunctionKind.RuntimeRangeStream:
                         EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
+                        currentType = function.ReturnType;
+                        continue;
+                    case BoundFunctionKind.RuntimeMouseEvents:
+                        EnsureRuntimeIntrinsicAllowed(
+                            function,
+                            allowReadIntCall,
+                            expression.Line,
+                            expression.Column,
+                            path);
+                        EnsureRuntimeInput(currentType, function, expression.Line, expression.Column, path);
+                        ValidateMouseEventCapacityLiteral(expression.Source);
+                        ValidateAdditionalFunctionArguments(
+                            function,
+                            target.Arguments,
+                            functions,
+                            bindings,
+                            allowReadIntCall,
+                            mutableBindings,
+                            path);
                         currentType = function.ReturnType;
                         continue;
                     case BoundFunctionKind.RuntimeExitProcess:
@@ -7404,9 +7815,10 @@ internal sealed partial class SemanticCompiler
                 return function.ReturnType;
             case BoundFunctionKind.RuntimeReadDirectory:
             case BoundFunctionKind.RuntimePathQuery:
+            case BoundFunctionKind.RuntimeRangeStream:
                 if (expression.Arguments.Count != 1)
                 {
-                    throw Error(expression.Line, expression.Column, $"{path} expects exactly one Path argument");
+                    throw Error(expression.Line, expression.Column, $"{path} expects exactly one argument");
                 }
                 var directoryPathType = InferExpression(
                     expression.Arguments[0], functions, bindings,
@@ -7465,6 +7877,39 @@ internal sealed partial class SemanticCompiler
                     throw Error(expression.Line, expression.Column, $"{path} does not accept arguments");
                 }
 
+                return function.ReturnType;
+            case BoundFunctionKind.RuntimeMouseEvents:
+                EnsureRuntimeIntrinsicAllowed(function, allowReadIntCall, expression.Line, expression.Column, path);
+                if (expression.Arguments.Count != 2)
+                {
+                    throw Error(
+                        expression.Line,
+                        expression.Column,
+                        $"{path} expects capacity and overflow arguments");
+                }
+                var capacityType = InferExpression(
+                    expression.Arguments[0],
+                    functions,
+                    bindings,
+                    allowPrintCall: false,
+                    allowReadIntCall,
+                    allowFlowBindingTarget: false,
+                    mutableBindings: mutableBindings);
+                EnsureRuntimeInput(
+                    capacityType,
+                    function,
+                    expression.Arguments[0].Line,
+                    expression.Arguments[0].Column,
+                    path);
+                ValidateMouseEventCapacityLiteral(expression.Arguments[0]);
+                ValidateAdditionalFunctionArguments(
+                    function,
+                    expression.Arguments.Skip(1).ToArray(),
+                    functions,
+                    bindings,
+                    allowReadIntCall,
+                    mutableBindings,
+                    path);
                 return function.ReturnType;
             case BoundFunctionKind.RuntimeSleep:
                 if (expression.Arguments.Count != 1)
@@ -7810,6 +8255,16 @@ internal sealed partial class SemanticCompiler
         {
             var value = SubstituteGenericType(taskValue, primaryType, secondaryType, tertiaryType);
             return _types.GetOrAddTask(value);
+        }
+        if (_types.TryGetStreamValue(type, out var streamValue))
+        {
+            var value = SubstituteGenericType(streamValue, primaryType, secondaryType, tertiaryType);
+            return _types.GetOrAddStream(value);
+        }
+        if (_types.TryGetEventStreamValue(type, out var eventStreamValue))
+        {
+            var value = SubstituteGenericType(eventStreamValue, primaryType, secondaryType, tertiaryType);
+            return _types.GetOrAddEventStream(value);
         }
         if (_types.IsReference(type))
         {
@@ -8754,6 +9209,8 @@ internal sealed partial class SemanticCompiler
                                         ? TypeId.DirectoryRaw
                                         : string.Equals(declaration.Name, "sys.directory.Entry", StringComparison.Ordinal)
                                             ? TypeId.DirectoryEntry
+                                            : string.Equals(declaration.Name, "sys.event.MouseEvent", StringComparison.Ordinal)
+                                                ? TypeId.MouseEvent
                                             : (TypeId)nextTypeId++;
             if (!names.TryAdd(declaration.Name, id))
             {
@@ -8779,6 +9236,10 @@ internal sealed partial class SemanticCompiler
                         ? TypeId.DirectoryRawResult
                         : string.Equals(declaration.Name, "sys.directory.ReadResult", StringComparison.Ordinal)
                             ? TypeId.DirectoryReadResult
+                        : string.Equals(declaration.Name, "sys.event.MouseEventKind", StringComparison.Ordinal)
+                            ? TypeId.MouseEventKind
+                        : string.Equals(declaration.Name, "sys.event.EventOverflowPolicy", StringComparison.Ordinal)
+                            ? TypeId.EventOverflowPolicy
                     : (TypeId)nextTypeId++;
             if (!names.TryAdd(declaration.Name, id))
             {
@@ -8807,7 +9268,8 @@ internal sealed partial class SemanticCompiler
                 || enumTypes.Values.Contains(item.Value))
             .Where(item => item.Value is not (TypeId.Path or TypeId.PathStyle
                 or TypeId.DirectoryRaw or TypeId.DirectoryEntryKind or TypeId.DirectoryEntry
-                or TypeId.DirectoryRawResult or TypeId.DirectoryReadResult))
+                or TypeId.DirectoryRawResult or TypeId.DirectoryReadResult
+                or TypeId.MouseEvent or TypeId.MouseEventKind or TypeId.EventOverflowPolicy))
             .OrderBy(item => (int)item.Value)
             .ToArray();
         foreach (var (name, elementType) in boxableTypes)
@@ -9247,6 +9709,22 @@ internal sealed partial class SemanticCompiler
             _types.AddAlias(typeName, option);
             return option;
         }
+        if (typeName.StartsWith("Stream<", StringComparison.Ordinal) && typeName.EndsWith('>'))
+        {
+            var valueName = typeName[7..^1].Trim();
+            var valueType = ParseType(valueName, line, column);
+            var stream = _types.GetOrAddStream(valueType);
+            _types.AddAlias(typeName, stream);
+            return stream;
+        }
+        if (typeName.StartsWith("EventStream<", StringComparison.Ordinal) && typeName.EndsWith('>'))
+        {
+            var valueName = typeName[12..^1].Trim();
+            var valueType = ParseType(valueName, line, column);
+            var stream = _types.GetOrAddEventStream(valueType);
+            _types.AddAlias(typeName, stream);
+            return stream;
+        }
         if (typeName.StartsWith("Result<", StringComparison.Ordinal) && typeName.EndsWith('>'))
         {
             var arguments = typeName[7..^1];
@@ -9562,6 +10040,14 @@ internal sealed partial class SemanticCompiler
         {
             return $"Task<{FormatType(taskValue)}>";
         }
+        if (_types.TryGetStreamValue(type, out var streamValue))
+        {
+            return $"Stream<{FormatType(streamValue)}>";
+        }
+        if (_types.TryGetEventStreamValue(type, out var eventStreamValue))
+        {
+            return $"EventStream<{FormatType(eventStreamValue)}>";
+        }
 
         return type switch
         {
@@ -9726,6 +10212,33 @@ internal sealed partial class SemanticCompiler
             && !number.Text.Contains('e', StringComparison.OrdinalIgnoreCase),
         _ => false
     };
+
+    private void ValidateMouseEventCapacityLiteral(Expression expression)
+    {
+        var negative = expression is NegateExpression;
+        var number = expression switch
+        {
+            NumberExpression direct => direct,
+            NegateExpression { Value: NumberExpression negated } => negated,
+            _ => null
+        };
+        if (number is null
+            || number.Text.Contains('.', StringComparison.Ordinal)
+            || number.Text.Contains('e', StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var text = negative ? "-" + number.Text : number.Text;
+        var capacity = BigInteger.Parse(text, CultureInfo.InvariantCulture);
+        if (capacity < 2 || capacity > 65536)
+        {
+            throw Error(
+                expression.Line,
+                expression.Column,
+                $"mouse event capacity must be between 2 and 65536 but received {text}");
+        }
+    }
 
     private bool IsOwnedHeapType(BoundType type)
     {

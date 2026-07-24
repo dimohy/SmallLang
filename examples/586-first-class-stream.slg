@@ -1,0 +1,20 @@
+# Stores two lazy stream plans without enumerating or materializing either one.
+import std.sequence
+
+main {
+    1..20
+        -> map value {
+            value * 2
+        }
+        => doubled
+
+    doubled
+        -> filter value {
+            value % 3 == 0
+        }
+        => divisibleByThree
+
+    divisibleByThree -> each value {
+        "$value" -> println
+    }
+}

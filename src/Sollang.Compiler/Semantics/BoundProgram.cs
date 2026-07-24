@@ -20,7 +20,16 @@ internal sealed record BoundProgram(
     byte[] StableDeclarationFingerprint,
     int ReusedSemanticFunctions,
     int TotalSemanticFunctions,
-    bool ReusedMainSemantics);
+    bool ReusedMainSemantics,
+    IReadOnlySet<Statement> DeferredStreamDeclarations,
+    IReadOnlyDictionary<Statement, BlockFunctionPipelineStatement> DeferredStreamConsumers,
+    IReadOnlyDictionary<Statement, BoundEventStreamPipeline> EventStreamConsumers);
+
+internal sealed record BoundEventStreamPipeline(
+    Expression Source,
+    IReadOnlyList<BlockFunctionCallStatement> Calls,
+    TypeId SourceElementType,
+    bool IsEvent);
 
 internal sealed record BoundDynTraitConversion(
     BoundType DynType,
@@ -156,7 +165,9 @@ internal enum BoundFunctionKind
     RuntimeWriteScalarAtAsync,
     RuntimeSyncFileAsync,
     RuntimeSyncFile,
-    RuntimeAtomicReplaceFile
+    RuntimeAtomicReplaceFile,
+    RuntimeRangeStream,
+    RuntimeMouseEvents
 }
 
 internal enum TypeId
@@ -205,6 +216,9 @@ internal enum TypeId
     DirectoryRawResult,
     DirectoryReadResult,
     Range,
+    MouseEvent,
+    MouseEventKind,
+    EventOverflowPolicy,
     GenericParameter = 512,
     SecondaryGenericParameter = 513,
     TertiaryGenericParameter = 514,
@@ -293,6 +307,10 @@ internal sealed class TypeDefinitionTable
     private readonly Dictionary<TypeId, (TypeId Ok, TypeId Error)> _resultTypes = [];
     private readonly Dictionary<TypeId, TypeId> _tasksByValue = [];
     private readonly Dictionary<TypeId, TypeId> _taskValues = [];
+    private readonly Dictionary<TypeId, TypeId> _streamsByValue = [];
+    private readonly Dictionary<TypeId, TypeId> _streamValues = [];
+    private readonly Dictionary<TypeId, TypeId> _eventStreamsByValue = [];
+    private readonly Dictionary<TypeId, TypeId> _eventStreamValues = [];
     private int _nextParametricTypeId;
     private readonly int _pointerSize;
 
@@ -541,6 +559,42 @@ internal sealed class TypeDefinitionTable
     public bool TryGetTaskValue(TypeId type, out TypeId valueType) =>
         _taskValues.TryGetValue(type, out valueType);
 
+    public TypeId GetOrAddStream(TypeId valueType)
+    {
+        if (_streamsByValue.TryGetValue(valueType, out var existing))
+        {
+            return existing;
+        }
+
+        var id = (TypeId)_nextParametricTypeId++;
+        _streamsByValue.Add(valueType, id);
+        _streamValues.Add(id, valueType);
+        return id;
+    }
+
+    public bool IsStream(TypeId type) => _streamValues.ContainsKey(type);
+
+    public bool TryGetStreamValue(TypeId type, out TypeId valueType) =>
+        _streamValues.TryGetValue(type, out valueType);
+
+    public TypeId GetOrAddEventStream(TypeId valueType)
+    {
+        if (_eventStreamsByValue.TryGetValue(valueType, out var existing))
+        {
+            return existing;
+        }
+
+        var id = (TypeId)_nextParametricTypeId++;
+        _eventStreamsByValue.Add(valueType, id);
+        _eventStreamValues.Add(id, valueType);
+        return id;
+    }
+
+    public bool IsEventStream(TypeId type) => _eventStreamValues.ContainsKey(type);
+
+    public bool TryGetEventStreamValue(TypeId type, out TypeId valueType) =>
+        _eventStreamValues.TryGetValue(type, out valueType);
+
     public bool ContainsOwnedStorage(TypeId type)
     {
         return ContainsOwnedStorage(type, new HashSet<TypeId>());
@@ -552,6 +606,7 @@ internal sealed class TypeDefinitionTable
             or TypeId.File or TypeId.FileWriter
             or TypeId.SourceText or TypeId.MappedBytes or TypeId.MutableMappedBytes
             || IsTask(type) || IsBox(type) || IsDynTrait(type)
+            || IsStream(type) || IsEventStream(type)
             || IsStaticArray(type) || IsDynamicArray(type) || IsDictionary(type))
         {
             return true;
@@ -683,6 +738,7 @@ internal sealed class TypeDefinitionTable
             TypeId.SourceText => 32,
             TypeId.MappedBytes or TypeId.MutableMappedBytes => 40,
             _ when IsTask(type) => 16,
+            _ when IsStream(type) || IsEventStream(type) => checked(_pointerSize * 3),
             TypeId.GenericParameter or TypeId.SecondaryGenericParameter or TypeId.TertiaryGenericParameter => 8,
             _ => throw new InvalidOperationException($"type {type} has no inline size")
         };

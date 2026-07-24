@@ -1,0 +1,11 @@
+import sys.event
+
+main {
+    8 -> event.mouseEvents(event.EventOverflowPolicy.DropOldest) => events
+    events -> each event {
+        stop
+    }
+    events -> each event {
+        stop
+    }
+}

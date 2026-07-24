@@ -77,15 +77,20 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
             functions.AppendLine("declare i64 @strlen(ptr)");
             functions.AppendLine("declare i32 @stat(ptr, ptr)");
         }
-        if (UsesAsyncFile || UsesComputePool)
+        if (UsesAsyncFile || UsesComputePool || UsesMouseEvents)
         {
             functions.AppendLine("declare i32 @eventfd(i32, i32)");
             functions.AppendLine("declare i32 @pthread_create(ptr, ptr, ptr, ptr)");
             functions.AppendLine("declare i32 @pthread_join(i64, ptr)");
         }
-        if (UsesAsyncFile)
+        if (UsesAsyncFile || UsesMouseEvents)
         {
             functions.AppendLine("declare i32 @poll(ptr, i64, i32)");
+        }
+        if (UsesMouseEvents)
+        {
+            functions.AppendLine("declare i32 @tcgetattr(i32, ptr)");
+            functions.AppendLine("declare i32 @tcsetattr(i32, i32, ptr)");
         }
         if (UsesComputePool)
         {
@@ -99,6 +104,488 @@ internal sealed class LinuxLlvmRuntimePlatform : LlvmRuntimePlatform
     {
         functions.AppendLine("declare ptr @malloc(i64)");
         functions.AppendLine("declare void @free(ptr)");
+    }
+
+    public override void EmitEventPrimitives(StringBuilder functions)
+    {
+        functions.AppendLine("""
+            @sollang_mouse_enable = private constant [16 x i8] c"\1B[?1003h\1B[?1006h"
+            @sollang_mouse_disable = private constant [16 x i8] c"\1B[?1003l\1B[?1006l"
+
+            define internal i32 @sollang_linux_mouse_read_byte(ptr %context) #0 {
+            entry:
+              %poll_record = alloca [8 x i8], align 4
+              %byte = alloca i8, align 1
+              store i32 0, ptr %poll_record, align 4
+              %events = getelementptr i8, ptr %poll_record, i64 4
+              store i16 1, ptr %events, align 2
+              br label %wait
+
+            wait:
+              %cancel_address = getelementptr i8, ptr %context, i64 20
+              %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+              %active = icmp eq i32 %cancelled, 0
+              br i1 %active, label %poll, label %closed
+
+            poll:
+              %ready = call i32 @poll(ptr %poll_record, i64 1, i32 50)
+              %has_input = icmp sgt i32 %ready, 0
+              br i1 %has_input, label %read_byte, label %wait
+
+            read_byte:
+              %read_count = call i64 @read(i32 0, ptr %byte, i64 1)
+              %read_ok = icmp eq i64 %read_count, 1
+              br i1 %read_ok, label %got_value, label %wait
+
+            got_value:
+              %raw = load i8, ptr %byte, align 1
+              %byte_value = zext i8 %raw to i32
+              ret i32 %byte_value
+
+            closed:
+              ret i32 -1
+            }
+
+            define internal void @sollang_linux_mouse_signal(ptr %context) #0 {
+            entry:
+              %one = alloca i64, align 8
+              store i64 1, ptr %one, align 8
+              %fd_address = getelementptr i8, ptr %context, i64 28
+              %fd = load i32, ptr %fd_address, align 4
+              %written = call i64 @write(i32 %fd, ptr %one, i64 8)
+              ret void
+            }
+
+            define internal void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 %delta, i32 %button, i32 %kind) #0 {
+            entry:
+              br label %queue_lock
+
+            queue_lock:
+              %lock_address = getelementptr i8, ptr %context, i64 24
+              %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+              %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+              br i1 %lock_acquired, label %queue_state, label %queue_lock
+
+            queue_state:
+              %capacity = load i32, ptr %context, align 4
+              %policy_address = getelementptr i8, ptr %context, i64 4
+              %policy = load i32, ptr %policy_address, align 4
+              %count_address = getelementptr i8, ptr %context, i64 16
+              %count = load i32, ptr %count_address, align 4
+              %full = icmp uge i32 %count, %capacity
+              br i1 %full, label %overflow, label %write
+
+            overflow:
+              %drop_newest = icmp eq i32 %policy, 0
+              br i1 %drop_newest, label %unlock_drop, label %not_drop_newest
+
+            not_drop_newest:
+              %coalesce = icmp eq i32 %policy, 2
+              %is_move = icmp eq i32 %kind, 0
+              %coalesce_move = and i1 %coalesce, %is_move
+              br i1 %coalesce_move, label %replace_move_check, label %drop_oldest
+
+            replace_move_check:
+              %tail_address0 = getelementptr i8, ptr %context, i64 12
+              %tail0 = load i32, ptr %tail_address0, align 4
+              %tail_plus_capacity = add i32 %tail0, %capacity
+              %last_unwrapped = sub i32 %tail_plus_capacity, 1
+              %last_index = urem i32 %last_unwrapped, %capacity
+              %last_index64 = zext i32 %last_index to i64
+              %last_offset = mul i64 %last_index64, 20
+              %buffer_address0 = getelementptr i8, ptr %context, i64 40
+              %buffer0 = load ptr, ptr %buffer_address0, align 8
+              %last_record = getelementptr i8, ptr %buffer0, i64 %last_offset
+              %last_kind_address = getelementptr i8, ptr %last_record, i64 16
+              %last_kind = load i32, ptr %last_kind_address, align 4
+              %last_is_move = icmp eq i32 %last_kind, 0
+              br i1 %last_is_move, label %replace_move, label %unlock_drop
+
+            replace_move:
+              store i32 %x, ptr %last_record, align 4
+              %last_y = getelementptr i8, ptr %last_record, i64 4
+              store i32 %y, ptr %last_y, align 4
+              br label %unlock_signal
+
+            drop_oldest:
+              %head_address = getelementptr i8, ptr %context, i64 8
+              %head = load i32, ptr %head_address, align 4
+              %next_head_unwrapped = add i32 %head, 1
+              %next_head = urem i32 %next_head_unwrapped, %capacity
+              store i32 %next_head, ptr %head_address, align 4
+              %reduced_count = sub i32 %count, 1
+              store i32 %reduced_count, ptr %count_address, align 4
+              br label %write
+
+            write:
+              %tail_address = getelementptr i8, ptr %context, i64 12
+              %tail = load i32, ptr %tail_address, align 4
+              %tail64 = zext i32 %tail to i64
+              %offset = mul i64 %tail64, 20
+              %buffer_address = getelementptr i8, ptr %context, i64 40
+              %buffer = load ptr, ptr %buffer_address, align 8
+              %slot = getelementptr i8, ptr %buffer, i64 %offset
+              store i32 %x, ptr %slot, align 4
+              %slot_y = getelementptr i8, ptr %slot, i64 4
+              store i32 %y, ptr %slot_y, align 4
+              %slot_delta = getelementptr i8, ptr %slot, i64 8
+              store i32 %delta, ptr %slot_delta, align 4
+              %slot_button = getelementptr i8, ptr %slot, i64 12
+              store i32 %button, ptr %slot_button, align 4
+              %slot_kind = getelementptr i8, ptr %slot, i64 16
+              store i32 %kind, ptr %slot_kind, align 4
+              %next_tail_unwrapped = add i32 %tail, 1
+              %next_tail = urem i32 %next_tail_unwrapped, %capacity
+              store i32 %next_tail, ptr %tail_address, align 4
+              %current_count = load i32, ptr %count_address, align 4
+              %next_count = add i32 %current_count, 1
+              store i32 %next_count, ptr %count_address, align 4
+              br label %unlock_signal
+
+            unlock_drop:
+              store atomic i32 0, ptr %lock_address release, align 4
+              ret void
+
+            unlock_signal:
+              store atomic i32 0, ptr %lock_address release, align 4
+              call void @sollang_linux_mouse_signal(ptr %context)
+              ret void
+            }
+
+            define internal ptr @sollang_linux_mouse_worker(ptr %context) #0 {
+            entry:
+              %button_value = alloca i32, align 4
+              %x_value = alloca i32, align 4
+              %y_value = alloca i32, align 4
+              br label %seek_escape
+
+            seek_escape:
+              %escape = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %escape_closed = icmp slt i32 %escape, 0
+              br i1 %escape_closed, label %done, label %check_escape
+
+            check_escape:
+              %is_escape = icmp eq i32 %escape, 27
+              br i1 %is_escape, label %expect_bracket, label %seek_escape
+
+            expect_bracket:
+              %bracket = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %is_bracket = icmp eq i32 %bracket, 91
+              br i1 %is_bracket, label %expect_less, label %seek_escape
+
+            expect_less:
+              %less = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %is_less = icmp eq i32 %less, 60
+              br i1 %is_less, label %button_start, label %seek_escape
+
+            button_start:
+              store i32 0, ptr %button_value, align 4
+              br label %button_digit
+
+            button_digit:
+              %button_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %button_is_digit_low = icmp sge i32 %button_char, 48
+              %button_is_digit_high = icmp sle i32 %button_char, 57
+              %button_is_digit = and i1 %button_is_digit_low, %button_is_digit_high
+              br i1 %button_is_digit, label %button_accumulate, label %button_separator
+
+            button_accumulate:
+              %button_old = load i32, ptr %button_value, align 4
+              %button_times_ten = mul i32 %button_old, 10
+              %button_digit_value = sub i32 %button_char, 48
+              %button_next = add i32 %button_times_ten, %button_digit_value
+              store i32 %button_next, ptr %button_value, align 4
+              br label %button_digit
+
+            button_separator:
+              %button_has_separator = icmp eq i32 %button_char, 59
+              br i1 %button_has_separator, label %x_start, label %seek_escape
+
+            x_start:
+              store i32 0, ptr %x_value, align 4
+              br label %x_digit
+
+            x_digit:
+              %x_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %x_is_digit_low = icmp sge i32 %x_char, 48
+              %x_is_digit_high = icmp sle i32 %x_char, 57
+              %x_is_digit = and i1 %x_is_digit_low, %x_is_digit_high
+              br i1 %x_is_digit, label %x_accumulate, label %x_separator
+
+            x_accumulate:
+              %x_old = load i32, ptr %x_value, align 4
+              %x_times_ten = mul i32 %x_old, 10
+              %x_digit_value = sub i32 %x_char, 48
+              %x_next = add i32 %x_times_ten, %x_digit_value
+              store i32 %x_next, ptr %x_value, align 4
+              br label %x_digit
+
+            x_separator:
+              %x_has_separator = icmp eq i32 %x_char, 59
+              br i1 %x_has_separator, label %y_start, label %seek_escape
+
+            y_start:
+              store i32 0, ptr %y_value, align 4
+              br label %y_digit
+
+            y_digit:
+              %y_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+              %y_is_digit_low = icmp sge i32 %y_char, 48
+              %y_is_digit_high = icmp sle i32 %y_char, 57
+              %y_is_digit = and i1 %y_is_digit_low, %y_is_digit_high
+              br i1 %y_is_digit, label %y_accumulate, label %finish_event
+
+            y_accumulate:
+              %y_old = load i32, ptr %y_value, align 4
+              %y_times_ten = mul i32 %y_old, 10
+              %y_digit_value = sub i32 %y_char, 48
+              %y_next = add i32 %y_times_ten, %y_digit_value
+              store i32 %y_next, ptr %y_value, align 4
+              br label %y_digit
+
+            finish_event:
+              %is_press = icmp eq i32 %y_char, 77
+              %is_release = icmp eq i32 %y_char, 109
+              %valid_final = or i1 %is_press, %is_release
+              br i1 %valid_final, label %classify, label %seek_escape
+
+            classify:
+              %raw_button = load i32, ptr %button_value, align 4
+              %raw_x = load i32, ptr %x_value, align 4
+              %raw_y = load i32, ptr %y_value, align 4
+              %x = sub i32 %raw_x, 1
+              %y = sub i32 %raw_y, 1
+              %wheel_bit = and i32 %raw_button, 64
+              %is_wheel = icmp ne i32 %wheel_bit, 0
+              br i1 %is_wheel, label %wheel, label %non_wheel
+
+            wheel:
+              %wheel_direction = and i32 %raw_button, 1
+              %wheel_down = icmp ne i32 %wheel_direction, 0
+              %delta = select i1 %wheel_down, i32 -120, i32 120
+              call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 %delta, i32 -1, i32 3)
+              br label %seek_escape
+
+            non_wheel:
+              %motion_bit = and i32 %raw_button, 32
+              %is_motion = icmp ne i32 %motion_bit, 0
+              br i1 %is_motion, label %move, label %button
+
+            move:
+              call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 0, i32 -1, i32 0)
+              br label %seek_escape
+
+            button:
+              %button_index = and i32 %raw_button, 3
+              %kind = select i1 %is_release, i32 2, i32 1
+              call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 0, i32 %button_index, i32 %kind)
+              br label %seek_escape
+
+            done:
+              call void @sollang_linux_mouse_signal(ptr %context)
+              ret ptr null
+            }
+
+            define internal ptr @sollang_mouse_event_stream_create(i32 %requested_capacity, i32 %overflow) #0 {
+            entry:
+              %capacity_low = icmp slt i32 %requested_capacity, 2
+              %capacity_high = icmp sgt i32 %requested_capacity, 65536
+              %capacity_invalid = or i1 %capacity_low, %capacity_high
+              %overflow_invalid = icmp ugt i32 %overflow, 2
+              %invalid = or i1 %capacity_invalid, %overflow_invalid
+              br i1 %invalid, label %fail, label %tty
+
+            tty:
+              %interactive = call i32 @isatty(i32 0)
+              %is_tty = icmp ne i32 %interactive, 0
+              br i1 %is_tty, label %allocate_context, label %fail
+
+            allocate_context:
+              %context = call ptr @sollang_alloc(i64 64)
+              %context_ok = icmp ne ptr %context, null
+              br i1 %context_ok, label %allocate_buffer, label %fail
+
+            allocate_buffer:
+              %capacity64 = zext i32 %requested_capacity to i64
+              %buffer_bytes = mul i64 %capacity64, 20
+              %buffer = call ptr @sollang_alloc(i64 %buffer_bytes)
+              %buffer_ok = icmp ne ptr %buffer, null
+              br i1 %buffer_ok, label %allocate_termios, label %free_context
+
+            allocate_termios:
+              %original = call ptr @sollang_alloc(i64 64)
+              %original_ok = icmp ne ptr %original, null
+              br i1 %original_ok, label %read_termios, label %free_buffer
+
+            read_termios:
+              %got_termios = call i32 @tcgetattr(i32 0, ptr %original)
+              %termios_ok = icmp eq i32 %got_termios, 0
+              br i1 %termios_ok, label %configure_termios, label %free_termios
+
+            configure_termios:
+              %current = alloca [64 x i8], align 8
+              call void @llvm.memcpy.p0.p0.i64(ptr %current, ptr %original, i64 64, i1 false)
+              %lflag_address = getelementptr i8, ptr %current, i64 12
+              %lflag = load i32, ptr %lflag_address, align 4
+              %raw_lflag = and i32 %lflag, -11
+              store i32 %raw_lflag, ptr %lflag_address, align 4
+              %vtime = getelementptr i8, ptr %current, i64 22
+              store i8 0, ptr %vtime, align 1
+              %vmin = getelementptr i8, ptr %current, i64 23
+              store i8 1, ptr %vmin, align 1
+              %set_termios = call i32 @tcsetattr(i32 0, i32 0, ptr %current)
+              %termios_set = icmp eq i32 %set_termios, 0
+              br i1 %termios_set, label %create_event, label %free_termios
+
+            create_event:
+              %event_fd = call i32 @eventfd(i32 0, i32 0)
+              %event_ok = icmp sge i32 %event_fd, 0
+              br i1 %event_ok, label %initialize, label %restore
+
+            initialize:
+              store i32 %requested_capacity, ptr %context, align 4
+              %policy_address = getelementptr i8, ptr %context, i64 4
+              store i32 %overflow, ptr %policy_address, align 4
+              %head_address = getelementptr i8, ptr %context, i64 8
+              store i32 0, ptr %head_address, align 4
+              %tail_address = getelementptr i8, ptr %context, i64 12
+              store i32 0, ptr %tail_address, align 4
+              %count_address = getelementptr i8, ptr %context, i64 16
+              store i32 0, ptr %count_address, align 4
+              %cancel_address = getelementptr i8, ptr %context, i64 20
+              store atomic i32 0, ptr %cancel_address release, align 4
+              %lock_address = getelementptr i8, ptr %context, i64 24
+              store atomic i32 0, ptr %lock_address release, align 4
+              %event_address = getelementptr i8, ptr %context, i64 28
+              store i32 %event_fd, ptr %event_address, align 4
+              %buffer_address = getelementptr i8, ptr %context, i64 40
+              store ptr %buffer, ptr %buffer_address, align 8
+              %termios_address = getelementptr i8, ptr %context, i64 48
+              store ptr %original, ptr %termios_address, align 8
+              %enabled = call i64 @write(i32 1, ptr @sollang_mouse_enable, i64 16)
+              %thread_slot = alloca i64, align 8
+              %created = call i32 @pthread_create(ptr %thread_slot, ptr null, ptr @sollang_linux_mouse_worker, ptr %context)
+              %thread_ok = icmp eq i32 %created, 0
+              br i1 %thread_ok, label %ready, label %close_event
+
+            ready:
+              %thread = load i64, ptr %thread_slot, align 8
+              %thread_address = getelementptr i8, ptr %context, i64 32
+              store i64 %thread, ptr %thread_address, align 8
+              ret ptr %context
+
+            close_event:
+              %closed_event = call i32 @close(i32 %event_fd)
+              br label %restore
+
+            restore:
+              %restored = call i32 @tcsetattr(i32 0, i32 0, ptr %original)
+              br label %free_termios
+
+            free_termios:
+              call void @sollang_free(ptr %original)
+              br label %free_buffer
+
+            free_buffer:
+              call void @sollang_free(ptr %buffer)
+              br label %free_context
+
+            free_context:
+              call void @sollang_free(ptr %context)
+              br label %fail
+
+            fail:
+              ret ptr null
+            }
+
+            define internal i1 @sollang_mouse_event_next_raw(ptr %context, ptr %x, ptr %y, ptr %delta, ptr %button, ptr %kind) #0 {
+            entry:
+              br label %queue_lock
+
+            queue_lock:
+              %lock_address = getelementptr i8, ptr %context, i64 24
+              %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+              %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+              br i1 %lock_acquired, label %queue_state, label %queue_lock
+
+            queue_state:
+              %count_address = getelementptr i8, ptr %context, i64 16
+              %count = load i32, ptr %count_address, align 4
+              %available = icmp ugt i32 %count, 0
+              br i1 %available, label %read, label %unlock_empty
+
+            unlock_empty:
+              store atomic i32 0, ptr %lock_address release, align 4
+              %cancel_address = getelementptr i8, ptr %context, i64 20
+              %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+              %active = icmp eq i32 %cancelled, 0
+              br i1 %active, label %wait, label %closed
+
+            wait:
+              %counter = alloca i64, align 8
+              %event_address = getelementptr i8, ptr %context, i64 28
+              %event_fd = load i32, ptr %event_address, align 4
+              %read_signal = call i64 @read(i32 %event_fd, ptr %counter, i64 8)
+              br label %queue_lock
+
+            read:
+              %capacity = load i32, ptr %context, align 4
+              %head_address = getelementptr i8, ptr %context, i64 8
+              %head = load i32, ptr %head_address, align 4
+              %head64 = zext i32 %head to i64
+              %offset = mul i64 %head64, 20
+              %buffer_address = getelementptr i8, ptr %context, i64 40
+              %buffer = load ptr, ptr %buffer_address, align 8
+              %slot = getelementptr i8, ptr %buffer, i64 %offset
+              %x_value = load i32, ptr %slot, align 4
+              store i32 %x_value, ptr %x, align 4
+              %slot_y = getelementptr i8, ptr %slot, i64 4
+              %y_value = load i32, ptr %slot_y, align 4
+              store i32 %y_value, ptr %y, align 4
+              %slot_delta = getelementptr i8, ptr %slot, i64 8
+              %delta_value = load i32, ptr %slot_delta, align 4
+              store i32 %delta_value, ptr %delta, align 4
+              %slot_button = getelementptr i8, ptr %slot, i64 12
+              %button_value = load i32, ptr %slot_button, align 4
+              store i32 %button_value, ptr %button, align 4
+              %slot_kind = getelementptr i8, ptr %slot, i64 16
+              %kind_value = load i32, ptr %slot_kind, align 4
+              store i32 %kind_value, ptr %kind, align 4
+              %next_head_unwrapped = add i32 %head, 1
+              %next_head = urem i32 %next_head_unwrapped, %capacity
+              store i32 %next_head, ptr %head_address, align 4
+              %next_count = sub i32 %count, 1
+              store i32 %next_count, ptr %count_address, align 4
+              store atomic i32 0, ptr %lock_address release, align 4
+              ret i1 true
+
+            closed:
+              ret i1 false
+            }
+
+            define internal void @sollang_mouse_event_stream_drop(ptr %context) #0 {
+            entry:
+              %cancel_address = getelementptr i8, ptr %context, i64 20
+              store atomic i32 1, ptr %cancel_address release, align 4
+              %thread_address = getelementptr i8, ptr %context, i64 32
+              %thread = load i64, ptr %thread_address, align 8
+              %joined = call i32 @pthread_join(i64 %thread, ptr null)
+              %disabled = call i64 @write(i32 1, ptr @sollang_mouse_disable, i64 16)
+              %termios_address = getelementptr i8, ptr %context, i64 48
+              %original = load ptr, ptr %termios_address, align 8
+              %restored = call i32 @tcsetattr(i32 0, i32 0, ptr %original)
+              %event_address = getelementptr i8, ptr %context, i64 28
+              %event_fd = load i32, ptr %event_address, align 4
+              %closed_event = call i32 @close(i32 %event_fd)
+              %buffer_address = getelementptr i8, ptr %context, i64 40
+              %buffer = load ptr, ptr %buffer_address, align 8
+              call void @sollang_free(ptr %original)
+              call void @sollang_free(ptr %buffer)
+              call void @sollang_free(ptr %context)
+              ret void
+            }
+
+            """);
     }
 
     public override void EmitAsyncPrimitives(StringBuilder functions)

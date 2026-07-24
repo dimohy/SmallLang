@@ -180,6 +180,9 @@ internal sealed class WindowsLinker(LlvmToolchain toolchain)
             CreateThread
             CreateEventA
             SetEvent
+            SetConsoleMode
+            ReadConsoleInputW
+            CancelSynchronousIo
             ResetEvent
             CreateSemaphoreA
             ReleaseSemaphore

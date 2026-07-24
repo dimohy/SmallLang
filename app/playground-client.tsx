@@ -334,7 +334,7 @@ export default function PlaygroundPage() {
       </section>
 
       <footer>
-        <span>Sollang 0.2.260723 · Apache-2.0</span>
+        <span>Sollang 0.2.260725 · Apache-2.0</span>
         <span>Compiler: SLG Stage2 WebAssembly · No server round-trip</span>
       </footer>
     </main>

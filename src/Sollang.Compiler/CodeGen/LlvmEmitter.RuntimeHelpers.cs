@@ -8,6 +8,59 @@ namespace Sollang.Compiler.CodeGen;
 
 internal sealed partial class LlvmEmitter
 {
+    private void EmitMouseEventStreamAdapter()
+    {
+        if (!_program.Types.TryResolve("sys.event.MouseEvent", out var mouseEventType)
+            || !_program.Types.IsStruct(mouseEventType))
+        {
+            throw new SollangException("sys.event.mouseEvents requires sys.event.MouseEvent");
+        }
+        var definition = _program.Types.GetStruct(mouseEventType);
+        if (definition.Fields.Count != 5
+            || !_program.Types.IsEnum(definition.Fields[4].Type))
+        {
+            throw new SollangException("sys.event.MouseEvent has an incompatible runtime layout");
+        }
+        var structType = LlvmStructType(mouseEventType);
+        var enumType = LlvmEnumType(definition.Fields[4].Type);
+        EmitFunctionBlock($$"""
+            define internal i1 @sollang_mouse_event_stream_next(ptr %context, ptr %output) #0 {
+            entry:
+              %x = alloca i32, align 4
+              %y = alloca i32, align 4
+              %delta = alloca i32, align 4
+              %button = alloca i32, align 4
+              %kind = alloca i32, align 4
+              %available = call i1 @sollang_mouse_event_next_raw(ptr %context, ptr %x, ptr %y, ptr %delta, ptr %button, ptr %kind)
+              br i1 %available, label %write, label %done
+
+            write:
+              %x_value = load i32, ptr %x, align 4
+              %y_value = load i32, ptr %y, align 4
+              %delta_value = load i32, ptr %delta, align 4
+              %button_value = load i32, ptr %button, align 4
+              %kind_value = load i32, ptr %kind, align 4
+              %x_address = getelementptr {{structType}}, ptr %output, i32 0, i32 0
+              store i32 %x_value, ptr %x_address, align 4
+              %y_address = getelementptr {{structType}}, ptr %output, i32 0, i32 1
+              store i32 %y_value, ptr %y_address, align 4
+              %delta_address = getelementptr {{structType}}, ptr %output, i32 0, i32 2
+              store i32 %delta_value, ptr %delta_address, align 4
+              %button_address = getelementptr {{structType}}, ptr %output, i32 0, i32 3
+              store i32 %button_value, ptr %button_address, align 4
+              %kind0 = insertvalue {{enumType}} poison, i32 %kind_value, 0
+              %kind1 = insertvalue {{enumType}} %kind0, [0 x i64] zeroinitializer, 1
+              %kind_address = getelementptr {{structType}}, ptr %output, i32 0, i32 4
+              store {{enumType}} %kind1, ptr %kind_address, align 8
+              ret i1 true
+
+            done:
+              ret i1 false
+            }
+
+            """);
+    }
+
     private void EmitRuntimeHelpers()
     {
         EmitPlatformFunctionBlock(_platform.EmitIoPrimitives);
@@ -27,6 +80,57 @@ internal sealed partial class LlvmEmitter
             EmitPlatformFunctionBlock(_platform.EmitEnvironmentPrimitives);
         }
         EmitPlatformFunctionBlock(_platform.EmitMemoryPrimitives);
+        if (_usesMouseEvents)
+        {
+            EmitPlatformFunctionBlock(_platform.EmitEventPrimitives);
+            EmitMouseEventStreamAdapter();
+        }
+        if (_usesRangeStreams)
+        {
+            EmitFunctionBlock("""
+            define internal i1 @sollang_range_stream_next(ptr %context, ptr %output) #0 {
+            entry:
+              %done_address = getelementptr i8, ptr %context, i64 8
+              %done = load i1, ptr %done_address, align 1
+              br i1 %done, label %finished, label %active
+
+            active:
+              %current = load i32, ptr %context, align 4
+              %end_address = getelementptr i8, ptr %context, i64 4
+              %end = load i32, ptr %end_address, align 4
+              %past_end = icmp sgt i32 %current, %end
+              br i1 %past_end, label %mark_finished, label %yield
+
+            yield:
+              store i32 %current, ptr %output, align 4
+              %is_last = icmp eq i32 %current, %end
+              br i1 %is_last, label %mark_finished_after_yield, label %advance
+
+            advance:
+              %next = add i32 %current, 1
+              store i32 %next, ptr %context, align 4
+              ret i1 true
+
+            mark_finished_after_yield:
+              store i1 true, ptr %done_address, align 1
+              ret i1 true
+
+            mark_finished:
+              store i1 true, ptr %done_address, align 1
+              ret i1 false
+
+            finished:
+              ret i1 false
+            }
+
+            define internal void @sollang_stream_heap_drop(ptr %context) #0 {
+            entry:
+              call void @sollang_free(ptr %context)
+              ret void
+            }
+
+            """);
+        }
         EmitFunctionBlock("""
             define dso_local ptr @memset(ptr %dest, i32 %value, i64 %count) #0 {
             entry:

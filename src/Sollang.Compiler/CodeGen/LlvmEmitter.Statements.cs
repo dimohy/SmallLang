@@ -72,6 +72,23 @@ internal sealed partial class LlvmEmitter
 
     private void EmitStatement(Statement statement)
     {
+        if (_program.DeferredStreamDeclarations.Contains(statement))
+        {
+            return;
+        }
+        if (_program.DeferredStreamConsumers.TryGetValue(statement, out var expandedStream))
+        {
+            EmitBlockFunctionPipeline(expandedStream);
+            EmitStackLifetimeEndsAfter(statement);
+            return;
+        }
+        if (_program.EventStreamConsumers.TryGetValue(statement, out var runtimeStream))
+        {
+            EmitRuntimeProducerPipeline(runtimeStream);
+            EmitStackLifetimeEndsAfter(statement);
+            return;
+        }
+
         if (statement is ExpressionStatement cfgYield && TryEmitCfgYieldStatement(cfgYield))
         {
             EmitStackLifetimeEndsAfter(statement);
@@ -593,6 +610,120 @@ internal sealed partial class LlvmEmitter
         {
             _currentStreamCancellationSlot = previousCancellationSlot;
         }
+    }
+
+    private void EmitRuntimeProducerPipeline(BoundEventStreamPipeline pipeline)
+    {
+        var source = EmitExpression(pipeline.Source) as RuntimeProducerStream
+            ?? throw new SollangException("runtime Stream<T> source did not produce a producer handle");
+        if (source.ElementType != pipeline.SourceElementType || source.IsEvent != pipeline.IsEvent)
+        {
+            throw new SollangException("runtime Stream<T> producer ABI type mismatch");
+        }
+        if (pipeline.Source is NameExpression sourceName)
+        {
+            RemoveLocal(sourceName.Name);
+        }
+
+        var previousCancellationSlot = _currentStreamCancellationSlot;
+        var cancellationSlot = NextTemp("stream_cancelled");
+        EmitAlloca(cancellationSlot, "i1", 1);
+        EmitStore("i1", "false", cancellationSlot, 1);
+        _currentStreamCancellationSlot = cancellationSlot;
+
+        var callSite = new RuntimeStreamCallSite(CaptureLocals(), _currentFunctions, _currentFunction);
+        var lastCall = pipeline.Calls[^1];
+        RuntimeStreamSink sink;
+        if (string.Join('.', lastCall.Target) == "each")
+        {
+            sink = new RuntimeStreamConsumer(new RuntimeBlockInvocation(
+                lastCall.ItemName,
+                [],
+                lastCall.Body,
+                CaptureLocals(),
+                _currentFunctions,
+                _currentFunction,
+                BoundType.Unit,
+                OwnsItem: true));
+        }
+        else
+        {
+            if (!(_program.ResolvedGenericCalls.TryGetValue(lastCall, out var terminalFunction)
+                    || TryResolveFunction(lastCall.Target, out terminalFunction))
+                || terminalFunction.Kind != BoundFunctionKind.UserBlock
+                || terminalFunction.ReturnType != BoundType.Unit)
+            {
+                throw new SollangException("a runtime Stream<T> pipeline must end with each or a Unit block function");
+            }
+            var terminalArguments = (lastCall.Arguments ?? []).Select(EmitExpression).ToArray();
+            sink = new RuntimeStreamTerminalStage(lastCall, terminalFunction, callSite, terminalArguments);
+        }
+
+        for (var index = pipeline.Calls.Count - 2; index >= 0; index--)
+        {
+            var call = pipeline.Calls[index];
+            if (!(_program.ResolvedGenericCalls.TryGetValue(call, out var function)
+                    || TryResolveFunction(call.Target, out function))
+                || function.StreamElementType is null)
+            {
+                throw new SollangException(
+                    "a runtime Stream<T> pipeline may contain only stream functions before its terminal");
+            }
+            var arguments = (call.Arguments ?? []).Select(EmitExpression).ToArray();
+            if ((function.Kind == BoundFunctionKind.User && function.BlockInputType is null)
+                || function.BlockBody.Any(static statement =>
+                    statement is BindingStatement { IsStreamState: true }))
+            {
+                sink = CreateUserStreamStage(call, function, sink, callSite, arguments, cancellationSlot);
+            }
+            else
+            {
+                sink = new RuntimeStreamStage(call, function, sink, callSite, arguments);
+            }
+        }
+
+        var elementType = LlvmType(source.ElementType);
+        var elementAddress = NextTemp("stream_element_address");
+        EmitAlloca(elementAddress, elementType, RuntimeAlignment(source.ElementType));
+        var nextLabel = NextLabel("stream_next");
+        var valueLabel = NextLabel("stream_value");
+        var continueLabel = NextLabel("stream_continue");
+        var doneLabel = NextLabel("stream_done");
+        EmitBranch(nextLabel);
+        EmitFunctionLine();
+        EmitLabel(nextLabel);
+        var hasValue = NextTemp("stream_has_value");
+        EmitIndirectCall(
+            hasValue,
+            "i1",
+            source.NextName,
+            $"ptr {source.ContextName}, ptr {elementAddress}");
+        EmitConditionalBranch(hasValue, valueLabel, doneLabel);
+        EmitFunctionLine();
+        EmitLabel(valueLabel);
+        var materializedElement = NextTemp("stream_element");
+        EmitLoad(
+            materializedElement,
+            elementType,
+            elementAddress,
+            RuntimeAlignment(source.ElementType));
+        EmitStreamValue(
+            DematerializeAggregateValue(source.ElementType, materializedElement),
+            sink);
+        if (!_currentBlockTerminated)
+        {
+            EmitBranch(continueLabel);
+        }
+        EmitFunctionLine();
+        EmitLabel(continueLabel);
+        var cancelled = NextTemp("stream_cancelled");
+        EmitLoad(cancelled, "i1", cancellationSlot, 1);
+        EmitConditionalBranch(cancelled, doneLabel, nextLabel);
+        EmitFunctionLine();
+        EmitLabel(doneLabel);
+        _currentBlockLabel = doneLabel;
+        DropOwnedRuntimeValue(source);
+        _currentStreamCancellationSlot = previousCancellationSlot;
     }
 
     private RuntimeUserStreamStage CreateUserStreamStage(

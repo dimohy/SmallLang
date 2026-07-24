@@ -937,6 +937,39 @@ and postprocessing without testing the first or last inner index:
     }
 ```
 
+`Stream<T>` is the affine, first-class form of a deferred producer. It is a
+three-word ABI value containing an opaque context, a typed `next` function, and
+a `drop` function. The value may be bound to a name, moved through a library
+function, returned, and then consumed by `each`. It never owns a materialized
+element collection. A second terminal use is an ownership error.
+
+`std.sequence.defer` converts a `Range` into `Stream<Int>` by allocating only
+the small producer context that stores the current and inclusive end values.
+Local block pipelines continue to use fused loop lowering and allocate no
+producer object at all. The public ABI is used only when the stream must become
+a runtime value across a function or library boundary.
+
+`EventStream<T>` uses the same affine producer shape but represents a hot
+source whose `next` may wait for external input. Dropping it performs structured
+cancellation: signal cancellation, wake or interrupt the producer, join its
+worker, restore platform state, and release its fixed storage.
+
+`sys.event.mouseEvents(capacity, overflow)` provides the first concrete event
+source. `capacity` must be in `2..65536`. Its ring buffer never grows, and
+`EventOverflowPolicy` is one of:
+
+- `DropNewest`: retain queued events and discard the incoming event.
+- `DropOldest`: discard the oldest queued event and retain the incoming event.
+- `CoalesceMotion`: replace the newest pending motion event when possible;
+  button and wheel transitions otherwise use oldest-drop behavior.
+
+Windows reads `MOUSE_EVENT_RECORD` values with `ReadConsoleInputW`. Linux
+enables SGR 1003/1006 reporting and parses terminal input. Browser WebAssembly
+rejects this blocking pull adapter with a target capability diagnostic. DOM
+events require a future host-driven callback lowering because synchronous Wasm
+execution on the browser main thread cannot wait for an event without blocking
+its delivery.
+
 The compiler composes these callbacks as synchronous continuations and lowers
 the whole chain into the source loops. No intermediate array, iterator object,
 virtual dispatch, or callback allocation is introduced. Interpolated Text is

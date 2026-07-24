@@ -923,13 +923,13 @@ internal static class ParserEmitter
         builder.AppendLine("        }");
         builder.AppendLine();
         builder.AppendLine("        var typeName = ExpectIdentifier();");
-        builder.AppendLine("        if ((typeName.Text == \"Option\" || typeName.Text == \"Result\") && Match(TokenKind.Less, out _))");
+        builder.AppendLine("        if ((typeName.Text is \"Option\" or \"Result\" or \"Stream\" or \"EventStream\") && Match(TokenKind.Less, out _))");
         builder.AppendLine("        {");
         builder.AppendLine("            var first = ParseTypeAnnotation();");
-        builder.AppendLine("            if (typeName.Text == \"Option\")");
+        builder.AppendLine("            if (typeName.Text is \"Option\" or \"Stream\" or \"EventStream\")");
         builder.AppendLine("            {");
         builder.AppendLine("                Expect(TokenKind.Greater);");
-        builder.AppendLine("                return $\"Option<{first}>\";");
+        builder.AppendLine("                return $\"{typeName.Text}<{first}>\";");
         builder.AppendLine("            }");
         builder.AppendLine("            Expect(TokenKind.Comma);");
         builder.AppendLine("            var second = ParseTypeAnnotation();");

@@ -61,13 +61,20 @@ internal abstract class LlvmRuntimePlatform
 
     public virtual bool SupportsComputePool => false;
 
+    public virtual bool SupportsEventStreams => true;
+
     public bool UsesAsyncFile { get; set; }
     public bool UsesProcessRuntime { get; set; }
     public bool UsesProcessExit { get; set; }
     public bool UsesComputePool { get; set; }
     public bool UsesDirectoryTraversal { get; set; }
+    public bool UsesMouseEvents { get; set; }
 
     public virtual void EmitComputePrimitives(StringBuilder functions)
+    {
+    }
+
+    public virtual void EmitEventPrimitives(StringBuilder functions)
     {
     }
 

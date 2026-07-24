@@ -62,7 +62,7 @@ main {
     typeIndex! < (semantic.types -> len) -> while {
         semantic.types[typeIndex!] => current
         (current.kind == 1 and (current.origin == 0 or current.origin == 2)) -> if {
-            (x64.sizes[typeIndex!] == 40 and x64.aligns[typeIndex!] == 8 and wasm.sizes[typeIndex!] == 32 and wasm.aligns[typeIndex!] == 8) -> if {
+            (x64.sizes[typeIndex!] == 40 and x64.aligns[typeIndex!] == 8 and wasm.sizes[typeIndex!] == 40 and wasm.aligns[typeIndex!] == 8) -> if {
                 packetLayouts! + 1 => packetLayouts!
             }
         }

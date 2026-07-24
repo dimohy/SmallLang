@@ -79,6 +79,18 @@ internal sealed partial class LlvmEmitter
         EmitAssign(target, call);
     }
 
+    private void EmitIndirectCall(string? target, string returnType, string functionPointer, string arguments)
+    {
+        var call = $"call {returnType} {functionPointer}({arguments})";
+        if (target is null)
+        {
+            EmitInstruction(call);
+            return;
+        }
+
+        EmitAssign(target, call);
+    }
+
     private void EmitBinary(string target, string operation, string typeName, string left, string right)
     {
         EmitAssign(target, $"{operation} {typeName} {left}, {right}");

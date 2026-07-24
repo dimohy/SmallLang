@@ -101,7 +101,9 @@ internal sealed partial class LlvmEmitter
                     }
                     if (_program.Types.IsStruct(function.ReturnType)
                         || _program.Types.IsEnum(function.ReturnType)
-                        || _program.Types.IsBox(function.ReturnType))
+                        || _program.Types.IsBox(function.ReturnType)
+                        || _program.Types.IsStream(function.ReturnType)
+                        || _program.Types.IsEventStream(function.ReturnType))
                     {
                         EmitStructFunction(function);
                         break;
@@ -645,7 +647,9 @@ internal sealed partial class LlvmEmitter
         if (function.InputType is { } inputType
             && (_program.Types.IsStruct(inputType)
                 || _program.Types.IsEnum(inputType)
-                || _program.Types.IsBox(inputType)))
+                || _program.Types.IsBox(inputType)
+                || _program.Types.IsStream(inputType)
+                || _program.Types.IsEventStream(inputType)))
         {
             return $"{LlvmType(inputType)} %it";
         }
@@ -774,6 +778,15 @@ internal sealed partial class LlvmEmitter
             _locals.Add(
                 function.InputName ?? "it",
                 ExtractMappedBytesAggregate(function.InputType.Value, "%it"));
+            return;
+        }
+        if (function.InputType is { } producerType
+            && (_program.Types.IsStream(producerType)
+                || _program.Types.IsEventStream(producerType)))
+        {
+            _locals.Add(
+                function.InputName ?? "it",
+                DematerializeAggregateValue(producerType, "%it"));
             return;
         }
         if (function.InputType is { } inputType && _program.Types.IsStruct(inputType))

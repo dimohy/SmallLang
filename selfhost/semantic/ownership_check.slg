@@ -206,6 +206,7 @@ typedNodeContainsReadonlyReference prepared: semanticContext.SemanticSnapshot, t
 # Code 20 identifies a branch or loop that exits with a partially moved path.
 # Code 21 identifies an origin moved while a returned borrowed Text is live.
 # Code 22 identifies a readonly-reference argument without stable storage.
+# Code 24 identifies a second terminal use of an affine Stream/EventStream.
 # The view region ends at its last typed-IR use rather than at lexical scope end.
 indexAssignmentTargetsBinding prepared: semanticContext.SemanticSnapshot, typed: [typedIr.TypedIrNode; ~], assignmentIr: Int, bindingIr: Int -> Bool {
     false => same!
@@ -1608,6 +1609,38 @@ public analyzeLoweredContext prepared: semanticContext.SemanticSnapshot, typed: 
     0 => partialMoveIndex!
     partialMoveIndex! < (moves! -> len) -> while {
         moves![partialMoveIndex!] => partialMove
+        partialMove.memberIr < 0 -> if {
+            typed[partialMove.siteIr] => affineMoveSite
+            affineMoveSite.operand0 >= 0 -> if {
+                typed[affineMoveSite.operand0] => affineMoveSource
+                (affineMoveSource.kind == 5 and affineMoveSource.typeKind == 7 and affineMoveSource.typeOrigin == 4 and (affineMoveSource.typeSymbol == 3 or affineMoveSource.typeSymbol == 4)) -> if {
+                    prepared.package.ranges[partialMove.sourceModule] => affineMoveRange
+                    prepared.package.nodes[affineMoveRange.astStart + affineMoveSite.astNode].start => affineMoveStart
+                    0 => affineReuseIndex!
+                    affineReuseIndex! < (typed -> len) -> while {
+                        typed[affineReuseIndex!] => affineReuse
+                        (affineReuse.kind == 5 and affineReuse.sourceModule == partialMove.sourceModule and affineReuse.symbol == partialMove.symbol and prepared.package.nodes[affineMoveRange.astStart + affineReuse.astNode].start > affineMoveStart and not (affineReuseIndex! -> nodeBelongsTo(partialMove.siteIr))) -> if {
+                            (partialMove.siteIr -> useReachableAfterMove(affineReuseIndex!)) -> if {
+                                diagnostics! -> push(OwnershipDiagnostic {
+                                    code: 24
+                                    sourceModule: partialMove.sourceModule
+                                    functionSymbol: -1
+                                    expectedOrigin: -1
+                                    expectedModule: -1
+                                    expectedSymbol: partialMove.siteIr
+                                    actualOrigin: -1
+                                    actualModule: -1
+                                    actualSymbol: affineReuseIndex!
+                                    actualBuiltin: -1
+                                    span: syntax.SourceSpan { fileId: partialMove.sourceModule, start: prepared.package.nodes[affineMoveRange.astStart + affineReuse.astNode].start, length: prepared.package.nodes[affineMoveRange.astStart + affineReuse.astNode].length }
+                                })
+                            }
+                        }
+                        affineReuseIndex! + 1 => affineReuseIndex!
+                    }
+                }
+            }
+        }
         false => partialMoveIsExplicitExtraction!
         # A member nested inside an aggregate literal may be a shallow,
         # call-scoped request projection. `movesFrom` still retains that event

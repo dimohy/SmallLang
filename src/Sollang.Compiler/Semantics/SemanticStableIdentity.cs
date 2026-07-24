@@ -199,6 +199,14 @@ internal static class SemanticStableIdentity
         {
             return "Task<" + Type(types, taskValue) + ">";
         }
+        if (types.TryGetStreamValue(type, out var streamValue))
+        {
+            return "Stream<" + Type(types, streamValue) + ">";
+        }
+        if (types.TryGetEventStreamValue(type, out var eventStreamValue))
+        {
+            return "EventStream<" + Type(types, eventStreamValue) + ">";
+        }
         if (types.IsStaticArray(type))
         {
             return "StaticArray<" + Type(types, types.GetStaticArray(type).ElementType) + ">";
@@ -554,6 +562,10 @@ internal static class SemanticStableIdentity
                 return Close(types.GetOrAddOption(Parse(), "Option"));
             if (Take("Task<"))
                 return Close(types.GetOrAddTask(Parse()));
+            if (Take("Stream<"))
+                return Close(types.GetOrAddStream(Parse()));
+            if (Take("EventStream<"))
+                return Close(types.GetOrAddEventStream(Parse()));
             if (Take("StaticArray<"))
                 return Close(types.GetOrAddStaticArray(Parse()));
             if (Take("Array<"))

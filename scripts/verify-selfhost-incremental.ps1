@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string[]]$Fixture = @("examples/582-billion-sensor-alerts.slg"),
-    [ValidateSet("windows")]
+    [ValidateSet("windows", "linux")]
     [string]$Target = "windows",
     [bool]$CompareStage2 = $true,
     [switch]$BootstrapStage2,
@@ -65,19 +65,40 @@ function Invoke-ToFile {
         [string]$OutputPath,
         [string]$ErrorPath
     )
-    $process = Start-Process `
-        -FilePath $FilePath `
-        -ArgumentList $Arguments `
-        -RedirectStandardOutput $OutputPath `
-        -RedirectStandardError $ErrorPath `
-        -PassThru `
-        -WindowStyle Hidden `
-        -Wait
-    if ($process.ExitCode -ne 0) {
-        $details = if (Test-Path -LiteralPath $ErrorPath) {
-            [System.IO.File]::ReadAllText($ErrorPath)
-        } else { "" }
-        throw "$FilePath failed with exit code $($process.ExitCode).`n$details"
+    $outputDirectory = Split-Path -Parent $OutputPath
+    $temporaryOutput = Join-Path $outputDirectory ([System.IO.Path]::GetRandomFileName())
+    $temporaryError = Join-Path $outputDirectory ([System.IO.Path]::GetRandomFileName())
+    try {
+        $process = Start-Process `
+            -FilePath $FilePath `
+            -ArgumentList $Arguments `
+            -RedirectStandardOutput $temporaryOutput `
+            -RedirectStandardError $temporaryError `
+            -PassThru `
+            -WindowStyle Hidden `
+            -Wait
+        if ($process.ExitCode -ne 0) {
+            $standardOutput = if (Test-Path -LiteralPath $temporaryOutput) {
+                [System.IO.File]::ReadAllText($temporaryOutput)
+            } else { "" }
+            $standardError = if (Test-Path -LiteralPath $temporaryError) {
+                [System.IO.File]::ReadAllText($temporaryError)
+            } else { "" }
+            $details = ($standardError + $standardOutput).Trim()
+            if (Test-Path -LiteralPath $temporaryError) {
+                Move-Item -LiteralPath $temporaryError -Destination $ErrorPath -Force
+            }
+            throw "$FilePath failed with exit code $($process.ExitCode).`n$details"
+        }
+        Move-Item -LiteralPath $temporaryOutput -Destination $OutputPath -Force
+        Move-Item -LiteralPath $temporaryError -Destination $ErrorPath -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporaryOutput) {
+            Remove-Item -LiteralPath $temporaryOutput -Force
+        }
+        if (Test-Path -LiteralPath $temporaryError) {
+            Remove-Item -LiteralPath $temporaryError -Force
+        }
     }
 }
 
@@ -115,6 +136,15 @@ if ($needsSequence) {
         $fixturePaths += $sequencePath
     }
 }
+$needsEvent = $fixturePaths | Where-Object {
+    [System.IO.File]::ReadAllText($_).Contains("import sys.event")
+}
+if ($needsEvent) {
+    $eventPath = (Resolve-Path (Join-Path $repoRoot "stdlib\sys\event.slg")).Path
+    if ($fixturePaths -notcontains $eventPath) {
+        $fixturePaths += $eventPath
+    }
+}
 
 $fixtureHash = Get-ContentFingerprint $fixturePaths
 $actionText = "$compilerHash|$fixtureHash|$Target"
@@ -124,7 +154,8 @@ $actionHash = [Convert]::ToHexString(
 $stage1Llvm = Join-Path $cacheRoot "$actionHash-stage1.ll"
 $stage1Error = Join-Path $cacheRoot "$actionHash-stage1.err"
 
-if (-not (Test-Path -LiteralPath $stage1Llvm)) {
+if (-not (Test-Path -LiteralPath $stage1Llvm) -or
+    (Get-Item -LiteralPath $stage1Llvm).Length -eq 0) {
     Write-Host "[fast 2/5] Focused Stage1 LLVM cache MISS."
     Invoke-ToFile $stage1Compiler (@($Target) + $fixturePaths) $stage1Llvm $stage1Error
 } else {

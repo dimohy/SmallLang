@@ -466,6 +466,20 @@ internal sealed partial class LlvmEmitter
 
         switch (value)
         {
+            case RuntimeProducerStream stream:
+                var hasDrop = NextTemp("stream_has_drop");
+                EmitCompare(hasDrop, "ne", "ptr", stream.DropName, "null");
+                var dropLabel = NextLabel("stream_drop");
+                var doneLabel = NextLabel("stream_drop_done");
+                EmitConditionalBranch(hasDrop, dropLabel, doneLabel);
+                EmitFunctionLine();
+                EmitLabel(dropLabel);
+                EmitIndirectCall(target: null, "void", stream.DropName, $"ptr {stream.ContextName}");
+                EmitBranch(doneLabel);
+                EmitFunctionLine();
+                EmitLabel(doneLabel);
+                _currentBlockLabel = doneLabel;
+                break;
             case RuntimeTask task:
                 EmitAwaitTask(task, discardResult: true);
                 break;
@@ -580,7 +594,8 @@ internal sealed partial class LlvmEmitter
             or RuntimeInlineDictionary { Storage: RuntimeContainerStorage.Heap }
             or RuntimeArena
             or RuntimeBox
-            or RuntimeTask;
+            or RuntimeTask
+            or RuntimeProducerStream;
     }
 
     private bool IsOwnedContainerRuntimeValue(RuntimeValue value)
@@ -1100,6 +1115,15 @@ internal sealed partial class LlvmEmitter
         string ContextName,
         BoundFunction? RuntimeFunction = null)
         : RuntimeValue(TaskType);
+
+    private sealed record RuntimeProducerStream(
+        BoundType StreamType,
+        BoundType ElementType,
+        string ContextName,
+        string NextName,
+        string DropName,
+        bool IsEvent)
+        : RuntimeValue(StreamType);
 
     private sealed record RuntimeStruct(BoundType StructType, string ValueName) : RuntimeValue(StructType);
 

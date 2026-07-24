@@ -435,6 +435,9 @@ internal sealed partial class LlvmEmitter
             RuntimeFloat floating => (LlvmType(floating.Type), floating.ValueName),
             RuntimeBool boolean => ("i1", boolean.ValueName),
             RuntimeTask task => ("%sollang.task", BuildTaskAggregate(task)),
+            RuntimeProducerStream stream => (
+                stream.IsEvent ? "%sollang.event_stream" : "%sollang.stream",
+                BuildProducerStreamAggregate(stream)),
             RuntimeText text => ("%sollang.text", BuildTextAggregate(text)),
             RuntimeSourceText source => ("%sollang.source_text", BuildSourceTextAggregate(source)),
             RuntimeMappedBytes mapped => ("%sollang.mapped_bytes", BuildMappedBytesAggregate(mapped)),
@@ -471,6 +474,18 @@ internal sealed partial class LlvmEmitter
         EmitAssign(withHandle, $"insertvalue %sollang.task poison, ptr {task.HandleName}, 0");
         var aggregate = NextTemp("task_with_context");
         EmitAssign(aggregate, $"insertvalue %sollang.task {withHandle}, ptr {task.ContextName}, 1");
+        return aggregate;
+    }
+
+    private string BuildProducerStreamAggregate(RuntimeProducerStream stream)
+    {
+        var llvmType = stream.IsEvent ? "%sollang.event_stream" : "%sollang.stream";
+        var withContext = NextTemp("stream_with_context");
+        EmitAssign(withContext, $"insertvalue {llvmType} poison, ptr {stream.ContextName}, 0");
+        var withNext = NextTemp("stream_with_next");
+        EmitAssign(withNext, $"insertvalue {llvmType} {withContext}, ptr {stream.NextName}, 1");
+        var aggregate = NextTemp("stream_with_drop");
+        EmitAssign(aggregate, $"insertvalue {llvmType} {withNext}, ptr {stream.DropName}, 2");
         return aggregate;
     }
 
@@ -512,6 +527,19 @@ internal sealed partial class LlvmEmitter
             var vtable = NextTemp("dyn_vtable");
             EmitAssign(vtable, $"extractvalue %sollang.dyn {valueName}, 1");
             return new RuntimeDynTrait(type, data, vtable);
+        }
+        if (_program.Types.TryGetStreamValue(type, out var streamElementType)
+            || _program.Types.TryGetEventStreamValue(type, out streamElementType))
+        {
+            var isEvent = _program.Types.IsEventStream(type);
+            var llvmType = isEvent ? "%sollang.event_stream" : "%sollang.stream";
+            var context = NextTemp("stream_context");
+            EmitAssign(context, $"extractvalue {llvmType} {valueName}, 0");
+            var next = NextTemp("stream_next");
+            EmitAssign(next, $"extractvalue {llvmType} {valueName}, 1");
+            var drop = NextTemp("stream_drop");
+            EmitAssign(drop, $"extractvalue {llvmType} {valueName}, 2");
+            return new RuntimeProducerStream(type, streamElementType, context, next, drop, isEvent);
         }
         if (type == BoundType.DynamicIntArray)
         {
@@ -720,6 +748,14 @@ internal sealed partial class LlvmEmitter
         if (_program.Types.IsTask(type))
         {
             return "%sollang.task";
+        }
+        if (_program.Types.IsStream(type))
+        {
+            return "%sollang.stream";
+        }
+        if (_program.Types.IsEventStream(type))
+        {
+            return "%sollang.event_stream";
         }
 
         return type switch

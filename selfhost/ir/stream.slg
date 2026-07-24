@@ -107,6 +107,15 @@ isStreamStage node: typed.TypedIrNode, prepared: semanticContext.SemanticSnapsho
     (node -> isStreamFunction(prepared)) or ((node -> streamSliceKind(prepared)) > 0)
 }
 
+isRuntimeProducer node: typed.TypedIrNode, prepared: semanticContext.SemanticSnapshot -> Bool {
+    false => producer!
+    (node.typeId >= 0 and node.typeId < (prepared.semantic.types -> len)) -> if {
+        prepared.semantic.types[node.typeId] => valueType
+        (valueType.kind == 7 and valueType.origin == 4 and (valueType.symbol == 3 or valueType.symbol == 4)) -> if { true => producer! }
+    }
+    producer!
+}
+
 stageParts prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode; ~], callIndex: Int -> StageParts {
     ir[callIndex] => call
     prepared.package.ranges[call.sourceModule] => sourceRange
@@ -140,7 +149,7 @@ stageParts prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode; ~
     0 => childIndex!
     childIndex! < (ir -> len) -> while {
         ir[childIndex!] => child
-        (hasBody! and child.sourceModule == call.sourceModule) -> if {
+        (hasBody! and child.sourceModule == call.sourceModule and child.astNode >= 0 and child.astNode < sourceRange.astCount) -> if {
             prepared.package.nodes[sourceRange.astStart + child.astNode] => bodyCandidateAst
             (bodyCandidateAst.start > bodyStart! and bodyCandidateAst.start < callAst.start + callAst.length) -> if {
                 bodyCandidateAst.parent => bodyAncestor!
@@ -158,7 +167,7 @@ stageParts prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode; ~
                 }
             }
         }
-        child.parent == callIndex -> if {
+        (child.parent == callIndex and child.sourceModule == call.sourceModule and child.astNode >= 0 and child.astNode < sourceRange.astCount) -> if {
             prepared.package.nodes[sourceRange.astStart + child.astNode] => childAst
             childAst.start < targetToken.span.start -> if {
                 (source0! < 0 or childAst.start < source0Start!) -> if {
@@ -215,7 +224,7 @@ public build prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode;
     0 => terminalIndex!
     terminalIndex! < (ir -> len) -> while {
         ir[terminalIndex!] => terminal
-        (terminal.kind == 6 and terminal.opcode == -208 and terminal.operand0 >= 0 and (ir[terminal.operand0] -> isStreamStage(prepared))) -> if {
+        (terminal.kind == 6 and terminal.opcode == -208 and terminal.operand0 >= 0 and ((ir[terminal.operand0] -> isStreamStage(prepared)) or (ir[terminal.operand0] -> isRuntimeProducer(prepared)))) -> if {
             [Int; ~] => reverseCalls!
             terminal.operand0 => stageIndex!
             (stageIndex! >= 0 and (ir[stageIndex!] -> isStreamStage(prepared))) -> while {
@@ -255,6 +264,14 @@ public build prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode;
                 stages![stageStart] => firstStage
                 firstStage.source0 => pipelineSource0!
                 firstStage.source1 => pipelineSource1!
+            } else {
+                terminal.operand0 => pipelineSource0!
+            }
+            0 => pipelineStatus!
+            (pipelineSource0! >= 0 and pipelineSource0! < (ir -> len) and ir[pipelineSource0!].typeId >= 0 and ir[pipelineSource0!].typeId < (prepared.semantic.types -> len)) -> if {
+                prepared.semantic.types[ir[pipelineSource0!].typeId] => pipelineSourceType
+                (pipelineSourceType.kind == 7 and pipelineSourceType.origin == 4 and pipelineSourceType.symbol == 3) -> if { 1 => pipelineStatus! }
+                (pipelineSourceType.kind == 7 and pipelineSourceType.origin == 4 and pipelineSourceType.symbol == 4) -> if { 2 => pipelineStatus! }
             }
             pipelines! -> push(StreamPipeline {
                 terminalIr: terminalIndex!
@@ -266,7 +283,7 @@ public build prepared: semanticContext.SemanticSnapshot, ir: [typed.TypedIrNode;
                 callbackEnd: terminalParts.callbackEnd
                 callbackRoot: terminalParts.callbackRoot
                 roleToken: terminalParts.roleToken
-                status: 0
+                status: pipelineStatus!
             })
         }
         terminalIndex! + 1 => terminalIndex!

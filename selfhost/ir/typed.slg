@@ -5023,6 +5023,16 @@ public movesFrom ir: [TypedIrNode; ~] -> [MoveEvent; ~] {
             }
             consumes! -> if { site.operand0 => movedValueIr! }
         }
+        # each consumes an affine Stream/EventStream source even though it is
+        # represented as a runtime intrinsic rather than a declared move
+        # parameter. Recording the source name here makes a second terminal
+        # use fail through the ordinary ownership checker.
+        (site.kind == 6 and site.opcode == -208 and site.operand0 >= 0) -> if {
+            ir[site.operand0] => eachSource
+            (eachSource.typeKind == 7 and eachSource.typeOrigin == 4 and (eachSource.typeSymbol == 3 or eachSource.typeSymbol == 4)) -> if {
+                site.operand0 => movedValueIr!
+            }
+        }
         # Scalar-only nominal fields are copyable values. A direct field
         # binding becomes a partial move only when the field reaches owned
         # heap storage and therefore carries a unique drop obligation.

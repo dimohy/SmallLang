@@ -7,6 +7,7 @@ import sollang.compiler.ir.typed as typedIr
 import sollang.compiler.llvm.target as llvmTarget
 import sollang.compiler.llvm.runtime as llvmRuntime
 import sollang.compiler.semantic.analysis as analysis
+import sollang.compiler.semantic.calls as calls
 import sollang.compiler.semantic.composite_types as compositeTypes
 import sollang.compiler.semantic.context as semanticContext
 import sollang.compiler.semantic.expression_type_ids as expressionTypeIds
@@ -149,6 +150,7 @@ struct EmitContext {
     nodes: [ast.AstNode; ~]
     tokens: [syntax.SyntaxToken; ~]
     symbols: [symbols.Symbol; ~]
+    calls: [calls.ModuleCallResolution; ~]
     interpolationRanges: [interpolation.InterpolationSourceRange; ~]
     interpolations: [interpolation.InterpolationNode; ~]
     ir: [typedIr.TypedIrNode; ~]
@@ -218,8 +220,11 @@ public layoutsFor request: TypeLayoutRequest -> TypeLayouts {
                         0 => status!
                     }
                     current.symbol == 1 -> if {
-                        pointerSize * 2 => size!
-                        pointerSize => align!
+                        # %sollang.text is { ptr, i64 }. The i64 member keeps
+                        # 8-byte ABI alignment on wasm32, so its size is 16 on
+                        # both 32-bit WebAssembly and 64-bit native targets.
+                        16 => size!
+                        8 => align!
                         0 => status!
                     }
                     (current.symbol == 2 or current.symbol == 5 or current.symbol == 10 or current.symbol == 14 or current.symbol == 19 or current.symbol == 20) -> if {
@@ -248,25 +253,28 @@ public layoutsFor request: TypeLayoutRequest -> TypeLayouts {
                         0 => status!
                     }
                     current.symbol == 24 -> if {
-                        pointerSize * 4 => size!
-                        pointerSize => align!
+                        # %sollang.source_text is { ptr, i64, ptr, i64 }.
+                        32 => size!
+                        8 => align!
                         0 => status!
                     }
                 }
             }
             current.kind == 2 -> if {
-                pointerSize * 2 => size!
-                pointerSize => align!
+                # Slices are { ptr, i64 }, not two pointer-width words.
+                16 => size!
+                8 => align!
                 0 => status!
             }
             current.kind == 3 -> if {
-                pointerSize + 16 => size!
-                pointerSize => align!
+                # Dynamic arrays are { ptr, i64, i64 }.
+                24 => size!
+                8 => align!
                 0 => status!
             }
             current.kind == 5 -> if {
                 pointerSize * 2 + 16 => size!
-                pointerSize => align!
+                8 => align!
                 0 => status!
             }
             current.kind == 6 -> if {
@@ -282,6 +290,11 @@ public layoutsFor request: TypeLayoutRequest -> TypeLayouts {
             current.kind == 7 -> if {
                 (current.origin == 4 and current.symbol == 2) -> if {
                     pointerSize * 2 => size!
+                    pointerSize => align!
+                    0 => status!
+                }
+                (current.origin == 4 and (current.symbol == 3 or current.symbol == 4)) -> if {
+                    pointerSize * 3 => size!
                     pointerSize => align!
                     0 => status!
                 }
@@ -525,6 +538,12 @@ prepare request: move PrepareRequest -> EmitContext {
         analysisSymbols! -> push(symbol)
         symbolCopyIndex367! + 1 => symbolCopyIndex367!
     }
+    [calls.ModuleCallResolution; ~] => analysisCalls!
+    0 => callCopyIndex368!
+    callCopyIndex368! < (prepared.calls -> len) -> while {
+        analysisCalls! -> push(prepared.calls[callCopyIndex368!])
+        callCopyIndex368! + 1 => callCopyIndex368!
+    }
     [interpolation.InterpolationSourceRange; ~] => analysisInterpolationRanges!
     [interpolation.InterpolationNode; ~] => analysisInterpolations!
     0 => interpolationSourceIndex!
@@ -710,6 +729,7 @@ prepare request: move PrepareRequest -> EmitContext {
         nodes: analysisNodes!
         tokens: analysisTokens!
         symbols: analysisSymbols!
+        calls: analysisCalls!
         interpolationRanges: analysisInterpolationRanges!
         interpolations: analysisInterpolations!
         ir: ir!
@@ -817,6 +837,16 @@ emitCore context: EmitContext -> Unit uses Console {
             }
             stageIndex! + 1 => stageIndex!
         }
+        (direct! == 0 and pipeline.terminalIr >= 0 and pipeline.terminalIr < (context.ir -> len)) -> if {
+            context.ir[pipeline.terminalIr] => terminal
+            context.ranges[terminal.sourceModule] => terminalRange
+            0 => terminalRoleSearch!
+            terminalRoleSearch! < terminalRange.symbolCount -> while {
+                context.symbols[terminalRange.symbolStart + terminalRoleSearch!] => terminalRole
+                (terminalRole.kind == 35 and terminalRole.astNode == terminal.astNode and roleSymbol == terminalRoleSearch!) -> if { 1 => direct! }
+                terminalRoleSearch! + 1 => terminalRoleSearch!
+            }
+        }
         direct!
     }
     isStreamFunctionIr functionIr: Int -> Bool {
@@ -839,6 +869,44 @@ emitCore context: EmitContext -> Unit uses Console {
             (candidateType.kind == 1 and candidateType.origin == 1 and candidateType.symbol == 25) -> if { true => range! }
         }
         range!
+    }
+    isRangeDeferCall callIr: Int -> Bool {
+        false => deferCall!
+        (callIr >= 0 and callIr < (context.ir -> len)) -> if {
+            context.ir[callIr] => candidate
+            (candidate.kind == 6 and candidate.typeId >= 0 and candidate.typeId < (context.types -> len) and candidate.operand0 >= 0 and candidate.operand0 < (context.ir -> len) and candidate.targetModule >= 0 and candidate.targetModule < (context.ranges -> len) and candidate.symbol >= 0) -> if {
+                context.types[candidate.typeId] => resultType
+                context.ir[candidate.operand0] => argument
+                context.ranges[candidate.targetModule] => targetRange
+                candidate.symbol < targetRange.symbolCount -> if {
+                    context.symbols[targetRange.symbolStart + candidate.symbol] => target
+                    (resultType.kind == 7 and resultType.origin == 4 and resultType.symbol == 3 and argument.typeId >= 0 and argument.typeId < (context.types -> len)) -> if {
+                        context.types[argument.typeId] => argumentType
+                        (argumentType.kind == 1 and argumentType.origin == 1 and argumentType.symbol == 25 and (candidate.targetModule -> sourceTokenIs(target.nameToken, "defer"))) -> if {
+                            true => deferCall!
+                        }
+                    }
+                }
+            }
+        }
+        deferCall!
+    }
+    isMouseEventsCall callIr: Int -> Bool {
+        false => mouseCall!
+        (callIr >= 0 and callIr < (context.ir -> len)) -> if {
+            context.ir[callIr] => candidate
+            (candidate.kind == 6 and candidate.typeId >= 0 and candidate.typeId < (context.types -> len) and candidate.targetModule >= 0 and candidate.targetModule < (context.ranges -> len) and candidate.symbol >= 0) -> if {
+                context.types[candidate.typeId] => resultType
+                context.ranges[candidate.targetModule] => targetRange
+                candidate.symbol < targetRange.symbolCount -> if {
+                    context.symbols[targetRange.symbolStart + candidate.symbol] => target
+                    (resultType.kind == 7 and resultType.origin == 4 and resultType.symbol == 4 and (candidate.targetModule -> sourceTokenIs(target.nameToken, "mouseEvents"))) -> if {
+                        true => mouseCall!
+                    }
+                }
+            }
+        }
+        mouseCall!
     }
     nodeDescendsFrom request: NodeAncestorRequest -> Bool {
         false => descends!
@@ -1597,6 +1665,17 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         resolved! => result
         result
+    }
+    producerValueIndex sourceIndex: Int -> Int {
+        sourceIndex => resolved!
+        (resolved! >= 0 and resolved! < (context.ir -> len) and context.ir[resolved!].kind == 5 and context.ir[resolved!].operand0 >= 0 and context.ir[resolved!].operand0 < (context.ir -> len)) -> if {
+            context.ir[resolved!].operand0 => producerBindingIndex
+            context.ir[producerBindingIndex] => producerBinding
+            (producerBinding.kind == 17 and producerBinding.flags != 1 and producerBinding.operand0 >= 0 and producerBinding.operand0 < (context.ir -> len)) -> if {
+                producerBinding.operand0 -> aggregateValueIndex => resolved!
+            }
+        }
+        resolved!
     }
     callArgumentIndex callIndex: Int -> Int {
         context.ir[callIndex] => call
@@ -2361,6 +2440,7 @@ emitCore context: EmitContext -> Unit uses Console {
             (dropType.kind == 1 and dropType.origin == 1 and dropType.symbol == 24) -> if { true => supported! }
             (dropType.kind == 1 and (dropType.origin == 0 or dropType.origin == 2)) -> if { true => supported! }
             (dropType.kind == 7 and dropType.origin == 4 and (dropType.symbol == 0 or dropType.symbol == 1)) -> if { true => supported! }
+            (dropType.kind == 7 and dropType.origin == 4 and (dropType.symbol == 3 or dropType.symbol == 4)) -> if { true => supported! }
             (active[dropTypeIndex!] == 1 and context.typeTraits[dropTypeIndex!] % 2 == 1 and supported!) -> if {
                 "define internal void @sollang_drop_t$(dropTypeIndex!)(" -> print
                 dropTypeIndex! -> writeSemanticTypeId
@@ -2521,6 +2601,19 @@ emitCore context: EmitContext -> Unit uses Console {
                             dropFieldIndex! + 1 => dropFieldIndex!
                         }
                     }
+                    "  ret void" -> println
+                }
+                (dropType.kind == 7 and dropType.origin == 4 and (dropType.symbol == 3 or dropType.symbol == 4)) -> if {
+                    "%sollang.stream" => producerDropType!
+                    dropType.symbol == 4 -> if { "%sollang.event_stream" => producerDropType! }
+                    "  %context = extractvalue $(producerDropType!) %value, 0" -> println
+                    "  %drop = extractvalue $(producerDropType!) %value, 2" -> println
+                    "  %has_drop = icmp ne ptr %drop, null" -> println
+                    "  br i1 %has_drop, label %drop_state, label %done" -> println
+                    "drop_state:" -> println
+                    "  call void %drop(ptr %context)" -> println
+                    "  br label %done" -> println
+                    "done:" -> println
                     "  ret void" -> println
                 }
                 (dropType.kind == 7 and dropType.origin == 4 and (dropType.symbol == 0 or dropType.symbol == 1)) -> if {
@@ -2796,6 +2889,8 @@ emitCore context: EmitContext -> Unit uses Console {
                 current.kind == 7 -> if {
                     (current.origin == 4 and (current.symbol == 0 or current.symbol == 1)) -> if { "%sollang.enum.t$(typeTask)" -> print }
                     (current.origin == 4 and current.symbol == 2) -> if { "%sollang.task" -> print }
+                    (current.origin == 4 and current.symbol == 3) -> if { "%sollang.stream" -> print }
+                    (current.origin == 4 and current.symbol == 4) -> if { "%sollang.event_stream" -> print }
                 }
                 current.kind == 4 -> if {
                     "[$(current.length) x " -> print
@@ -5772,6 +5867,23 @@ emitCore context: EmitContext -> Unit uses Console {
         "_b" -> print
         bindingIndex -> writeDecimal
     }
+    producerPipelineConsumesBinding bindingIndex: Int -> Bool {
+        false => consumed!
+        0 => pipelineIndex!
+        (pipelineIndex! < (context.streamPlan.pipelines -> len) and not consumed!) -> while {
+            context.streamPlan.pipelines[pipelineIndex!] => pipeline
+            pipeline.status > 0 -> if {
+                pipeline.source0 == bindingIndex -> if { true => consumed! }
+                (pipeline.source0 >= 0 and pipeline.source0 < (context.ir -> len)) -> if {
+                    context.ir[pipeline.source0] => source
+                    (source.kind == 5 and source.operand0 == bindingIndex) -> if { true => consumed! }
+                    (context.ir[bindingIndex].operand0 >= 0 and pipeline.source0 == context.ir[bindingIndex].operand0) -> if { true => consumed! }
+                }
+            }
+            pipelineIndex! + 1 => pipelineIndex!
+        }
+        consumed!
+    }
     emitOwnedDrops request: OwnedDropRequest -> Unit uses Console {
         context.pointerBitWidth / 8 => ownedPointerAlignment
         context.ir[request.regionIndex] => dropRegion
@@ -5799,6 +5911,7 @@ emitCore context: EmitContext -> Unit uses Console {
                 ownedDropRoot! != ownedDropIndex! -> if { false => ownedDropIsRoot! }
             }
             (ownedDropCandidate.kind == 17 and ((ownedDropCandidate -> ownsType) or (ownedDropCandidate.typeId >= 0 and (ownedDropCandidate.typeId -> semanticTypeOwns)))) -> if {
+                ownedDropIndex! -> producerPipelineConsumesBinding -> if { true => ownedDropMoved! }
                 0 => ownedMoveIndex!
                 (ownedMoveIndex! < (context.moves -> len) and not ownedDropMoved!) -> while {
                     context.moves[ownedMoveIndex!] => ownedMove
@@ -7952,7 +8065,11 @@ emitCore context: EmitContext -> Unit uses Console {
                     CallEnvironmentRequest { callerIndex: ownerIndex!, callIndex: regionNodeIndex!, targetModule: regionNode.targetModule, targetSymbol: regionNode.symbol, hasArgument: regionNode.operand0 >= 0 } -> emitCallEnvironmentValues
                     (regionNode.typeOrigin == 1 and regionNode.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(regionNodeIndex!) = call " -> print }
                     regionNode -> writeIrType
-                    " @sollang_m$(regionNode.targetModule)_s$(regionNode.symbol)(" -> print
+                    regionNodeIndex! -> isRangeDeferCall -> if {
+                        " @sollang_range_stream_create(" -> print
+                    } else {
+                        regionNodeIndex! -> isMouseEventsCall -> if { " @sollang_mouse_event_stream_make(" -> print } else { " @sollang_m$(regionNode.targetModule)_s$(regionNode.symbol)(" -> print }
+                    }
                     CallEnvironmentRequest { callerIndex: ownerIndex!, callIndex: regionNodeIndex!, targetModule: regionNode.targetModule, targetSymbol: regionNode.symbol, hasArgument: regionNode.operand0 >= 0 } -> emitCallEnvironment => regionCallEnvironment
                     regionNodeIndex! -> emitCallArguments(ownerIndex!)
                     ")" -> println
@@ -10336,7 +10453,11 @@ emitCore context: EmitContext -> Unit uses Console {
                     CallEnvironmentRequest { callerIndex: functionIndex!, callIndex: expressionIndex!, targetModule: expression.targetModule, targetSymbol: expression.symbol, hasArgument: expression.operand0 >= 0 } -> emitCallEnvironmentValues
                     (expression.typeOrigin == 1 and expression.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(expressionIndex!) = call " -> print }
                     expression -> writeIrType
-                    " @sollang_m$(expression.targetModule)_s$(expression.symbol)(" -> print
+                    expressionIndex! -> isRangeDeferCall -> if {
+                        " @sollang_range_stream_create(" -> print
+                    } else {
+                        expressionIndex! -> isMouseEventsCall -> if { " @sollang_mouse_event_stream_make(" -> print } else { " @sollang_m$(expression.targetModule)_s$(expression.symbol)(" -> print }
+                    }
                     CallEnvironmentRequest { callerIndex: functionIndex!, callIndex: expressionIndex!, targetModule: expression.targetModule, targetSymbol: expression.symbol, hasArgument: expression.operand0 >= 0 } -> emitCallEnvironment => functionCallEnvironment
                     expressionIndex! -> emitCallArguments(functionIndex!)
                     ")" -> println
@@ -10921,10 +11042,182 @@ emitCore context: EmitContext -> Unit uses Console {
         taskTypeSearch! + 1 => taskTypeSearch!
     }
     usesTaskType! -> if { "%sollang.task = type { ptr, ptr }" -> println }
+    false => usesStreamType!
+    false => usesEventStreamType!
+    0 => producerTypeSearch!
+    producerTypeSearch! < (context.types -> len) -> while {
+        context.types[producerTypeSearch!] => producerTypeCandidate
+        (producerTypeCandidate.status == 0 and producerTypeCandidate.kind == 7 and producerTypeCandidate.origin == 4 and producerTypeCandidate.symbol == 3) -> if { true => usesStreamType! }
+        (producerTypeCandidate.status == 0 and producerTypeCandidate.kind == 7 and producerTypeCandidate.origin == 4 and producerTypeCandidate.symbol == 4) -> if { true => usesEventStreamType! }
+        producerTypeSearch! + 1 => producerTypeSearch!
+    }
+    usesStreamType! -> if { "%sollang.stream = type { ptr, ptr, ptr }" -> println }
+    usesEventStreamType! -> if { "%sollang.event_stream = type { ptr, ptr, ptr }" -> println }
+    -1 => mouseEventTypeId!
+    -1 => mouseEventKindTypeId!
+    -1 => mouseOverflowTypeId!
+    0 => mouseCallSearch!
+    mouseCallSearch! < (context.ir -> len) -> while {
+        mouseCallSearch! -> isMouseEventsCall -> if {
+            context.ir[mouseCallSearch!] => mouseCall
+            context.types[mouseCall.typeId].first => mouseEventTypeId!
+            (mouseCall.operand0 >= 0 and context.ir[mouseCall.operand0].nextOperand >= 0) -> if {
+                context.ir[context.ir[mouseCall.operand0].nextOperand].typeId => mouseOverflowTypeId!
+            }
+        }
+        mouseCallSearch! + 1 => mouseCallSearch!
+    }
+    mouseEventTypeId! >= 0 -> if {
+        0 => mouseEventFieldSearch!
+        mouseEventFieldSearch! < (context.fields -> len) -> while {
+            context.fields[mouseEventFieldSearch!] => mouseEventField
+            (mouseEventField.status == 0 and mouseEventField.ownerType == mouseEventTypeId! and mouseEventField.ordinal == 4) -> if {
+                mouseEventField.fieldType => mouseEventKindTypeId!
+            }
+            mouseEventFieldSearch! + 1 => mouseEventFieldSearch!
+        }
+        "%sollang.enum.t$(mouseEventKindTypeId!) = type { i32, [0 x i64] }" -> println
+        "%sollang.enum.t$(mouseOverflowTypeId!) = type { i32, [0 x i64] }" -> println
+        context.types[mouseEventTypeId!] => mouseEventType
+        mouseEventType.module => mouseEventModule
+        mouseEventType.symbol => mouseEventSymbol
+        "%sollang.struct.m$(mouseEventModule)_s$(mouseEventSymbol) = type { " -> print
+        true => firstMouseEventField!
+        0 => mouseEventLayoutFieldIndex!
+        mouseEventLayoutFieldIndex! < (context.fields -> len) -> while {
+            context.fields[mouseEventLayoutFieldIndex!] => mouseEventLayoutField
+            (mouseEventLayoutField.status == 0 and mouseEventLayoutField.ownerType == mouseEventTypeId!) -> if {
+                not firstMouseEventField! -> if { ", " -> print }
+                mouseEventLayoutField.fieldType -> writeSemanticTypeId
+                false => firstMouseEventField!
+            }
+            mouseEventLayoutFieldIndex! + 1 => mouseEventLayoutFieldIndex!
+        }
+        " }" -> println
+        "declare void @llvm.trap()" -> println
+        "define internal i1 @sollang_mouse_event_stream_next(ptr %context, ptr %output) {" -> println
+        "entry:" -> println
+        "  %x = alloca i32, align 4" -> println
+        "  %y = alloca i32, align 4" -> println
+        "  %delta = alloca i32, align 4" -> println
+        "  %button = alloca i32, align 4" -> println
+        "  %kind = alloca i32, align 4" -> println
+        "  %available = call i1 @sollang_mouse_event_next_raw(ptr %context, ptr %x, ptr %y, ptr %delta, ptr %button, ptr %kind)" -> println
+        "  br i1 %available, label %write, label %done" -> println
+        "write:" -> println
+        "  %x_value = load i32, ptr %x, align 4" -> println
+        "  %y_value = load i32, ptr %y, align 4" -> println
+        "  %delta_value = load i32, ptr %delta, align 4" -> println
+        "  %button_value = load i32, ptr %button, align 4" -> println
+        "  %kind_value = load i32, ptr %kind, align 4" -> println
+        "  %x_address = getelementptr " -> print
+        mouseEventTypeId! -> writeSemanticTypeId
+        ", ptr %output, i32 0, i32 0" -> println
+        "  store i32 %x_value, ptr %x_address, align 4" -> println
+        "  %y_address = getelementptr " -> print
+        mouseEventTypeId! -> writeSemanticTypeId
+        ", ptr %output, i32 0, i32 1" -> println
+        "  store i32 %y_value, ptr %y_address, align 4" -> println
+        "  %delta_address = getelementptr " -> print
+        mouseEventTypeId! -> writeSemanticTypeId
+        ", ptr %output, i32 0, i32 2" -> println
+        "  store i32 %delta_value, ptr %delta_address, align 4" -> println
+        "  %button_address = getelementptr " -> print
+        mouseEventTypeId! -> writeSemanticTypeId
+        ", ptr %output, i32 0, i32 3" -> println
+        "  store i32 %button_value, ptr %button_address, align 4" -> println
+        "  %kind0 = insertvalue " -> print
+        mouseEventKindTypeId! -> writeSemanticTypeId
+        " poison, i32 %kind_value, 0" -> println
+        "  %kind1 = insertvalue " -> print
+        mouseEventKindTypeId! -> writeSemanticTypeId
+        " %kind0, [0 x i64] zeroinitializer, 1" -> println
+        "  %kind_address = getelementptr " -> print
+        mouseEventTypeId! -> writeSemanticTypeId
+        ", ptr %output, i32 0, i32 4" -> println
+        "  store " -> print
+        mouseEventKindTypeId! -> writeSemanticTypeId
+        " %kind1, ptr %kind_address, align 8" -> println
+        "  ret i1 true" -> println
+        "done:" -> println
+        "  ret i1 false" -> println
+        "}" -> println
+        "define internal %sollang.event_stream @sollang_mouse_event_stream_make(i32 %capacity, " -> print
+        mouseOverflowTypeId! -> writeSemanticTypeId
+        " %overflow) {" -> println
+        "entry:" -> println
+        "  %overflow_tag = extractvalue " -> print
+        mouseOverflowTypeId! -> writeSemanticTypeId
+        " %overflow, 0" -> println
+        "  %context = call ptr @sollang_mouse_event_stream_create(i32 %capacity, i32 %overflow_tag)" -> println
+        "  %created = icmp ne ptr %context, null" -> println
+        "  br i1 %created, label %ready, label %failed" -> println
+        "ready:" -> println
+        "  %with_context = insertvalue %sollang.event_stream poison, ptr %context, 0" -> println
+        "  %with_next = insertvalue %sollang.event_stream %with_context, ptr @sollang_mouse_event_stream_next, 1" -> println
+        "  %result = insertvalue %sollang.event_stream %with_next, ptr @sollang_mouse_event_stream_drop, 2" -> println
+        "  ret %sollang.event_stream %result" -> println
+        "failed:" -> println
+        "  call void @llvm.trap()" -> println
+        "  unreachable" -> println
+        "}" -> println
+    }
+    usesStreamType! -> if {
+        """
+        define internal i1 @sollang_range_stream_next(ptr %context, ptr %output) {
+        entry:
+          %done_address = getelementptr i8, ptr %context, i64 8
+          %done = load i1, ptr %done_address, align 1
+          br i1 %done, label %finished, label %active
+        active:
+          %current = load i32, ptr %context, align 4
+          %end_address = getelementptr i8, ptr %context, i64 4
+          %end = load i32, ptr %end_address, align 4
+          %past_end = icmp sgt i32 %current, %end
+          br i1 %past_end, label %mark_finished, label %yield
+        yield:
+          store i32 %current, ptr %output, align 4
+          %is_last = icmp eq i32 %current, %end
+          br i1 %is_last, label %mark_finished_after_yield, label %advance
+        advance:
+          %next = add i32 %current, 1
+          store i32 %next, ptr %context, align 4
+          ret i1 true
+        mark_finished_after_yield:
+          store i1 true, ptr %done_address, align 1
+          ret i1 true
+        mark_finished:
+          store i1 true, ptr %done_address, align 1
+          ret i1 false
+        finished:
+          ret i1 false
+        }
+        define internal void @sollang_stream_heap_drop(ptr %context) {
+        entry:
+          call void @free(ptr %context)
+          ret void
+        }
+        define internal %sollang.stream @sollang_range_stream_create({ i32, i32 } %range) {
+        entry:
+          %context = call ptr @malloc(i64 12)
+          %start = extractvalue { i32, i32 } %range, 0
+          %end = extractvalue { i32, i32 } %range, 1
+          store i32 %start, ptr %context, align 4
+          %end_address = getelementptr i8, ptr %context, i64 4
+          store i32 %end, ptr %end_address, align 4
+          %done_address = getelementptr i8, ptr %context, i64 8
+          store i1 false, ptr %done_address, align 1
+          %with_context = insertvalue %sollang.stream poison, ptr %context, 0
+          %with_next = insertvalue %sollang.stream %with_context, ptr @sollang_range_stream_next, 1
+          %result = insertvalue %sollang.stream %with_next, ptr @sollang_stream_heap_drop, 2
+          ret %sollang.stream %result
+        }
+        """ -> println
+    }
     0 => enumTypeIndex!
     enumTypeIndex! < (context.types -> len) -> while {
         context.types[enumTypeIndex!] => enumType
-        (enumType.status == 0 and ((enumType.kind == 7 and enumType.origin == 4 and (enumType.symbol == 0 or enumType.symbol == 1)) or (enumTypeIndex! -> isNominalEnumType))) -> if {
+        (enumType.status == 0 and enumTypeIndex! != mouseEventKindTypeId! and enumTypeIndex! != mouseOverflowTypeId! and ((enumType.kind == 7 and enumType.origin == 4 and (enumType.symbol == 0 or enumType.symbol == 1)) or (enumTypeIndex! -> isNominalEnumType))) -> if {
             0 => enumPayloadSize!
             enumTypeIndex! -> enumPayloadTypes => enumPayloads!
             0 => enumPayloadIndex!
@@ -10941,7 +11234,7 @@ emitCore context: EmitContext -> Unit uses Console {
     0 => structTypeIndex!
     structTypeIndex! < (context.types -> len) -> while {
         context.types[structTypeIndex!] => structType
-        (structType.status == 0 and structType.kind == 1 and (structType.origin == 0 or structType.origin == 2) and not (structTypeIndex! -> isNominalEnumType)) -> if {
+        (structType.status == 0 and structTypeIndex! != mouseEventTypeId! and structType.kind == 1 and (structType.origin == 0 or structType.origin == 2) and not (structTypeIndex! -> isNominalEnumType)) -> if {
             "%sollang.struct.m$(structType.module)_s$(structType.symbol) = type { " -> print
             true => firstField!
             0 => canonicalFieldIndex!
@@ -11213,7 +11506,7 @@ emitCore context: EmitContext -> Unit uses Console {
     0 => externalCallIndex!
     externalCallIndex! < (context.ir -> len) -> while {
         context.ir[externalCallIndex!] => externalCall
-        (externalCall.kind == 6 and externalCall.opcode != -205 and externalCall.opcode != -210 and externalCall.opcode != -211 and externalCall.opcode != -212 and externalCall.opcode != -222 and externalCall.targetModule >= 0 and externalCall.symbol >= 0) -> if {
+        (externalCall.kind == 6 and externalCall.opcode != -205 and externalCall.opcode != -210 and externalCall.opcode != -211 and externalCall.opcode != -212 and externalCall.opcode != -222 and externalCall.targetModule >= 0 and externalCall.symbol >= 0 and not (externalCallIndex! -> isRangeDeferCall) and not (externalCallIndex! -> isMouseEventsCall)) -> if {
             false => externalDefined!
             externalCall.targetModule < (context.ranges -> len) -> if {
                 context.ranges[externalCall.targetModule].symbolStart + externalCall.symbol => externalGlobalSymbol
@@ -11590,8 +11883,60 @@ emitCore context: EmitContext -> Unit uses Console {
                         entryScheduleCandidate! + 1 => entryScheduleCandidate!
                     }
                 }
+                # A runtime producer terminal has no ordinary stream stage whose
+                # callback root can release the final dependent effect. Finish
+                # scheduling its callback nodes once their operands are ready.
+                true => entryProducerCallbackProgress!
+                entryProducerCallbackProgress! -> while {
+                    false => entryProducerCallbackProgress!
+                    0 => entryProducerPipelineIndex!
+                    entryProducerPipelineIndex! < (context.streamPlan.pipelines -> len) -> while {
+                        context.streamPlan.pipelines[entryProducerPipelineIndex!] => entryProducerPipeline
+                        (entryProducerPipeline.status > 0 and entryProducerPipeline.terminalIr > functionIndex! and entryProducerPipeline.terminalIr < entryEnd! and entryProducerPipeline.callbackStart >= functionIndex! + 1 and entryProducerPipeline.callbackEnd < entryEnd!) -> if {
+                            entryProducerPipeline.stageStart => entryProducerStageIndex!
+                            entryProducerStageIndex! < entryProducerPipeline.stageStart + entryProducerPipeline.stageCount -> while {
+                                context.streamPlan.stages[entryProducerStageIndex!] => entryProducerStage
+                                (entryProducerStage.callbackStart >= functionIndex! + 1 and entryProducerStage.callbackEnd < entryEnd!) -> if {
+                                    entryProducerStage.callbackStart => entryProducerStageCallbackIndex!
+                                    entryProducerStageCallbackIndex! <= entryProducerStage.callbackEnd -> while {
+                                        not entryScheduled![entryProducerStageCallbackIndex! - functionIndex! - 1] -> if {
+                                            context.ir[entryProducerStageCallbackIndex!] => entryProducerStageCallback
+                                            true => entryProducerStageCallbackReady!
+                                            (entryProducerStageCallback.operand0 > functionIndex! and entryProducerStageCallback.operand0 < entryEnd! and not entryScheduled![entryProducerStageCallback.operand0 - functionIndex! - 1]) -> if { false => entryProducerStageCallbackReady! }
+                                            (entryProducerStageCallback.operand1 > functionIndex! and entryProducerStageCallback.operand1 < entryEnd! and not entryScheduled![entryProducerStageCallback.operand1 - functionIndex! - 1]) -> if { false => entryProducerStageCallbackReady! }
+                                            entryProducerStageCallbackReady! -> if {
+                                                entryOrder! -> push(entryProducerStageCallbackIndex!)
+                                                true => entryScheduled![entryProducerStageCallbackIndex! - functionIndex! - 1]
+                                                true => entryProducerCallbackProgress!
+                                            }
+                                        }
+                                        entryProducerStageCallbackIndex! + 1 => entryProducerStageCallbackIndex!
+                                    }
+                                }
+                                entryProducerStageIndex! + 1 => entryProducerStageIndex!
+                            }
+                            entryProducerPipeline.callbackStart => entryProducerCallbackIndex!
+                            entryProducerCallbackIndex! <= entryProducerPipeline.callbackEnd -> while {
+                                not entryScheduled![entryProducerCallbackIndex! - functionIndex! - 1] -> if {
+                                    context.ir[entryProducerCallbackIndex!] => entryProducerCallback
+                                    true => entryProducerCallbackReady!
+                                    (entryProducerCallback.operand0 > functionIndex! and entryProducerCallback.operand0 < entryEnd! and not entryScheduled![entryProducerCallback.operand0 - functionIndex! - 1]) -> if { false => entryProducerCallbackReady! }
+                                    (entryProducerCallback.operand1 > functionIndex! and entryProducerCallback.operand1 < entryEnd! and not entryScheduled![entryProducerCallback.operand1 - functionIndex! - 1]) -> if { false => entryProducerCallbackReady! }
+                                    entryProducerCallbackReady! -> if {
+                                        entryOrder! -> push(entryProducerCallbackIndex!)
+                                        true => entryScheduled![entryProducerCallbackIndex! - functionIndex! - 1]
+                                        true => entryProducerCallbackProgress!
+                                    }
+                                }
+                                entryProducerCallbackIndex! + 1 => entryProducerCallbackIndex!
+                            }
+                        }
+                        entryProducerPipelineIndex! + 1 => entryProducerPipelineIndex!
+                    }
+                }
                 [Int; ~] => entryActiveStreams!
                 [Int; ~] => entryStreamCurrentValues!
+                [Int; ~] => entryStreamStops!
                 0 => entryActiveStreamSize!
                 0 => entryOrderIndex!
                 entryOrderIndex! < (entryOrder! -> len) -> while {
@@ -11600,7 +11945,22 @@ emitCore context: EmitContext -> Unit uses Console {
                     entryExpressionIndex! -> plannedStreamPipeline => entryOpeningStreamPipeline
                     entryOpeningStreamPipeline >= 0 -> if {
                         context.streamPlan.pipelines[entryOpeningStreamPipeline] => entryOpeningPipeline
-                        "  %stream$(entryExpressionIndex!)_index_slot = alloca i32, align 4" -> println
+                        entryOpeningPipeline.status == 0 -> if {
+                            "  %stream$(entryExpressionIndex!)_index_slot = alloca i32, align 4" -> println
+                        } else {
+                            entryOpeningPipeline.source0 -> producerValueIndex => entryOpeningProducerValue
+                            context.ir[entryOpeningProducerValue] => entryOpeningProducer
+                            context.types[entryOpeningProducer.typeId] => entryOpeningProducerType
+                            "%sollang.stream" => entryOpeningProducerLlvmType!
+                            entryOpeningPipeline.status == 2 -> if { "%sollang.event_stream" => entryOpeningProducerLlvmType! }
+                            "  %stream$(entryExpressionIndex!)_producer_item_slot = alloca " -> print
+                            entryOpeningProducerType.first -> writeSemanticTypeId
+                            ", align " -> print
+                            context.typeAligns[entryOpeningProducerType.first] -> writeDecimalLine
+                            "  %stream$(entryExpressionIndex!)_producer_context = extractvalue $(entryOpeningProducerLlvmType!) %v$(entryOpeningProducerValue), 0" -> println
+                            "  %stream$(entryExpressionIndex!)_producer_next = extractvalue $(entryOpeningProducerLlvmType!) %v$(entryOpeningProducerValue), 1" -> println
+                            "  %stream$(entryExpressionIndex!)_producer_drop = extractvalue $(entryOpeningProducerLlvmType!) %v$(entryOpeningProducerValue), 2" -> println
+                        }
                         entryOpeningPipeline.stageStart => entryOpeningStateStageIndex!
                         entryOpeningStateStageIndex! < entryOpeningPipeline.stageStart + entryOpeningPipeline.stageCount -> while {
                             context.streamPlan.stages[entryOpeningStateStageIndex!] => entryOpeningStateStage
@@ -11639,17 +11999,30 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                             entryOpeningStateStageIndex! + 1 => entryOpeningStateStageIndex!
                         }
-                        "  store i32 " -> print
-                        WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: entryOpeningPipeline.source0 } -> writeWhileValue
-                        ", ptr %stream$(entryExpressionIndex!)_index_slot, align 4" -> println
-                        "  br label %stream$(entryExpressionIndex!)_header" -> println
-                        "stream$(entryExpressionIndex!)_header:" -> println
-                        "  %stream$(entryExpressionIndex!)_item = load i32, ptr %stream$(entryExpressionIndex!)_index_slot, align 4" -> println
-                        "  %stream$(entryExpressionIndex!)_done = icmp sgt i32 %stream$(entryExpressionIndex!)_item, " -> print
-                        WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: entryOpeningPipeline.source1 } -> writeWhileValue
-                        "" -> println
-                        "  br i1 %stream$(entryExpressionIndex!)_done, label %stream$(entryExpressionIndex!)_exit, label %stream$(entryExpressionIndex!)_body" -> println
-                        "stream$(entryExpressionIndex!)_body:" -> println
+                        entryOpeningPipeline.status == 0 -> if {
+                            "  store i32 " -> print
+                            WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: entryOpeningPipeline.source0 } -> writeWhileValue
+                            ", ptr %stream$(entryExpressionIndex!)_index_slot, align 4" -> println
+                            "  br label %stream$(entryExpressionIndex!)_header" -> println
+                            "stream$(entryExpressionIndex!)_header:" -> println
+                            "  %stream$(entryExpressionIndex!)_item = load i32, ptr %stream$(entryExpressionIndex!)_index_slot, align 4" -> println
+                            "  %stream$(entryExpressionIndex!)_done = icmp sgt i32 %stream$(entryExpressionIndex!)_item, " -> print
+                            WhileValueRequest { whileIndex: entryExpressionIndex!, ownerIndex: functionIndex!, nodeIndex: entryOpeningPipeline.source1 } -> writeWhileValue
+                            "" -> println
+                            "  br i1 %stream$(entryExpressionIndex!)_done, label %stream$(entryExpressionIndex!)_exit, label %stream$(entryExpressionIndex!)_body" -> println
+                            "stream$(entryExpressionIndex!)_body:" -> println
+                        } else {
+                            context.types[context.ir[entryOpeningPipeline.source0].typeId] => entryOpeningBodyProducerType
+                            "  br label %stream$(entryExpressionIndex!)_header" -> println
+                            "stream$(entryExpressionIndex!)_header:" -> println
+                            "  %stream$(entryExpressionIndex!)_has_item = call i1 %stream$(entryExpressionIndex!)_producer_next(ptr %stream$(entryExpressionIndex!)_producer_context, ptr %stream$(entryExpressionIndex!)_producer_item_slot)" -> println
+                            "  br i1 %stream$(entryExpressionIndex!)_has_item, label %stream$(entryExpressionIndex!)_body, label %stream$(entryExpressionIndex!)_exit" -> println
+                            "stream$(entryExpressionIndex!)_body:" -> println
+                            "  %stream$(entryExpressionIndex!)_item = load " -> print
+                            entryOpeningBodyProducerType.first -> writeSemanticTypeId
+                            ", ptr %stream$(entryExpressionIndex!)_producer_item_slot, align " -> print
+                            context.typeAligns[entryOpeningBodyProducerType.first] -> writeDecimalLine
+                        }
                         -1 => entryOpeningFlatMapStage!
                         -1 => entryOpeningBeforeEachStage!
                         -1 => entryOpeningAfterEachStage!
@@ -11747,9 +12120,11 @@ emitCore context: EmitContext -> Unit uses Console {
                         entryActiveStreamSize! == (entryActiveStreams! -> len) -> if {
                             entryActiveStreams! -> push(entryOpeningStreamPipeline)
                             entryStreamCurrentValues! -> push(-1)
+                            entryStreamStops! -> push(0)
                         } else {
                             entryOpeningStreamPipeline => entryActiveStreams![entryActiveStreamSize!]
                             -1 => entryStreamCurrentValues![entryActiveStreamSize!]
+                            0 => entryStreamStops![entryActiveStreamSize!]
                         }
                         entryActiveStreamSize! + 1 => entryActiveStreamSize!
                     }
@@ -12585,6 +12960,30 @@ emitCore context: EmitContext -> Unit uses Console {
                             }
                         }
                     }
+                    (entryExpression.kind == 8 and entryExpression.operand0 >= 0 and entryExpression.operand1 < 0 and entryActiveStreamSize! > 0) -> if {
+                        context.ir[entryExpression.operand0] => entryFlowRight
+                        entryActiveStreams![entryActiveStreamSize! - 1] => entryFlowPipelineIndex
+                        context.streamPlan.pipelines[entryFlowPipelineIndex].terminalIr => entryFlowTerminalIr
+                        "" => entryFlowOperation!
+                        entryExpression.opcode == grammar.tokenIdPlus -> if { "add" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdMinus -> if { "sub" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdStar -> if { "mul" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdSlash -> if { "sdiv" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdPercent -> if { "srem" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdEqualEqual -> if { "icmp eq" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdBangEqual -> if { "icmp ne" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdLess -> if { "icmp slt" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdLessEqual -> if { "icmp sle" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdGreater -> if { "icmp sgt" => entryFlowOperation! }
+                        entryExpression.opcode == grammar.tokenIdGreaterEqual -> if { "icmp sge" => entryFlowOperation! }
+                        "  %v$(entryExpressionIndex!) = $(entryFlowOperation!) i32 %stream$(entryFlowTerminalIr)_item, " -> print
+                        entryFlowRight.kind == 3 -> if {
+                            entryFlowRight -> sourceToken => entryFlowRightToken
+                            context.sources[entryFlowRight.sourceModule] -> slice(entryFlowRightToken.span.start, entryFlowRightToken.span.length) -> println
+                        } else {
+                            "%v$(entryExpression.operand0)" -> println
+                        }
+                    }
                     ((entryExpression.kind == 7 and entryExpression.operand0 >= 0) or (entryExpression.kind == 8 and entryExpression.operand0 >= 0 and entryExpression.operand1 >= 0)) -> if {
                         context.ir[entryExpression.operand0] => entryLeft
                         0 => entryBinaryWidth!
@@ -12837,9 +13236,12 @@ emitCore context: EmitContext -> Unit uses Console {
                     (entryExpression.kind == 6 and (entryExpressionIndex! -> plannedStreamStage) < 0 and entryExpression.symbol != -115 and not (entryExpression.symbol == -102 and entryExpression.operand0 < 0) and entryExpression.opcode != -205 and entryExpression.opcode != -207 and entryExpression.opcode != -208 and entryExpression.opcode != -209 and entryExpression.opcode != -210 and entryExpression.opcode != -211 and entryExpression.opcode != -212 and entryExpression.opcode != -215 and entryExpression.opcode != -222 and (entryExpression.opcode > -216 or entryExpression.opcode < -221) and not (entryExpression.parent >= 0 and context.ir[entryExpression.parent].kind == 6 and (context.ir[entryExpression.parent].opcode == -207 or context.ir[entryExpression.parent].opcode == -209) and context.ir[entryExpression.parent].operand1 == entryExpressionIndex!)) -> if {
                         (entryExpression.symbol == -101 or entryExpression.symbol == -102) -> if {
                             entryExpressionIndex! -> callArgumentIndex => entryRuntimeArgumentIndex!
+                            false => entryRuntimeStreamDirect!
+                            -1 => entryRuntimeStreamTerminalIr!
                             entryActiveStreamSize! > 0 -> if {
                                 entryActiveStreams![entryActiveStreamSize! - 1] => entryRuntimeStreamPipelineIndex
                                 context.streamPlan.pipelines[entryRuntimeStreamPipelineIndex] => entryRuntimeStreamPipeline
+                                entryRuntimeStreamPipeline.terminalIr => entryRuntimeStreamTerminalIr!
                                 context.ir[entryRuntimeStreamPipeline.terminalIr] => entryRuntimeStreamTerminal
                                 context.ranges[entryRuntimeStreamTerminal.sourceModule] => entryRuntimeStreamRange
                                 -1 => entryRuntimeStreamRoleSymbol!
@@ -12849,8 +13251,12 @@ emitCore context: EmitContext -> Unit uses Console {
                                     (entryRuntimeStreamRole.kind == 35 and entryRuntimeStreamRole.astNode == entryRuntimeStreamTerminal.astNode) -> if { entryRuntimeStreamRoleSearch! => entryRuntimeStreamRoleSymbol! }
                                     entryRuntimeStreamRoleSearch! + 1 => entryRuntimeStreamRoleSearch!
                                 }
-                                (context.ir[entryRuntimeArgumentIndex!].kind == 5 and context.ir[entryRuntimeArgumentIndex!].symbol == entryRuntimeStreamRoleSymbol! and entryStreamCurrentValues![entryActiveStreamSize! - 1] >= 0) -> if {
-                                    entryStreamCurrentValues![entryActiveStreamSize! - 1] => entryRuntimeArgumentIndex!
+                                (context.ir[entryRuntimeArgumentIndex!].kind == 5 and context.ir[entryRuntimeArgumentIndex!].symbol == entryRuntimeStreamRoleSymbol!) -> if {
+                                    entryStreamCurrentValues![entryActiveStreamSize! - 1] >= 0 -> if {
+                                        entryStreamCurrentValues![entryActiveStreamSize! - 1] => entryRuntimeArgumentIndex!
+                                    } else {
+                                        true => entryRuntimeStreamDirect!
+                                    }
                                 }
                             }
                             context.ir[entryRuntimeArgumentIndex!] => runtimeArgument
@@ -12862,7 +13268,11 @@ emitCore context: EmitContext -> Unit uses Console {
                                         "  call void @sollang_runtime_print_i64(i64 " -> print
                                     } else { "  call void @sollang_runtime_print_i32(i32 " -> print }
                                 }
-                                entryRuntimeArgumentIndex! -> writeValue(functionIndex!)
+                                entryRuntimeStreamDirect! -> if {
+                                    "%stream$(entryRuntimeStreamTerminalIr!)_item" -> print
+                                } else {
+                                    entryRuntimeArgumentIndex! -> writeValue(functionIndex!)
+                                }
                                 ", i1 " -> print
                                 entryExpression.symbol == -102 -> if { "true)" -> println } else { "false)" -> println }
                             } else {
@@ -13179,11 +13589,21 @@ emitCore context: EmitContext -> Unit uses Console {
                                                         entryExpressionStageIndex! + 1 => entryExpressionStageIndex!
                                                     }
                                                 }
+                                                (entryExpressionRootBinding! < 0 and entryExpressionRootStreamValue! < 0 and entryExpressionRootStreamDirect! == 0 and entryActiveStreamSize! > 0) -> if {
+                                                    entryActiveStreams![entryActiveStreamSize! - 1] => entryExpressionTerminalPipelineIndex
+                                                    context.streamPlan.pipelines[entryExpressionTerminalPipelineIndex] => entryExpressionTerminalPipeline
+                                                    (entryExpressionTerminalPipeline.callbackStart >= 0 and ((entryExpressionIndex! >= entryExpressionTerminalPipeline.callbackStart and entryExpressionIndex! <= entryExpressionTerminalPipeline.callbackEnd) or (entryRuntimeArgumentIndex! >= entryExpressionTerminalPipeline.callbackStart and entryRuntimeArgumentIndex! <= entryExpressionTerminalPipeline.callbackEnd))) -> if {
+                                                        1 => entryExpressionRootStreamDirect!
+                                                    }
+                                                }
                                             }
                                             false => entryExpressionRootMember!
                                             entryExpressionRoot.kind == 5 -> if {
                                                 entryExpressionInterpolation![entryExpressionRoot.operand0] => entryExpressionMemberBase
                                                 -1 => entryExpressionMemberBaseIr!
+                                                -1 => entryExpressionMemberBaseTypeId!
+                                                -1 => entryExpressionMemberStreamTerminalIr!
+                                                false => entryExpressionMemberStreamDirect!
                                                 functionIndex! + 1 => entryExpressionMemberBindingSearch!
                                                 entryExpressionMemberBindingSearch! < entryEnd! -> while {
                                                     (context.ir[entryExpressionMemberBindingSearch!].kind == 17 and context.ir[entryExpressionMemberBindingSearch!].symbol == entryExpressionMemberBase.symbol) -> if {
@@ -13194,6 +13614,7 @@ emitCore context: EmitContext -> Unit uses Console {
                                                 (entryExpressionMemberBaseIr! < 0 and entryActiveStreamSize! > 0) -> if {
                                                     entryActiveStreams![entryActiveStreamSize! - 1] => entryInterpolationStreamPipelineIndex
                                                     context.streamPlan.pipelines[entryInterpolationStreamPipelineIndex] => entryInterpolationStreamPipeline
+                                                    entryInterpolationStreamPipeline.terminalIr => entryExpressionMemberStreamTerminalIr!
                                                     context.ir[entryInterpolationStreamPipeline.terminalIr] => entryInterpolationTerminal
                                                     context.ranges[entryInterpolationTerminal.sourceModule] => entryInterpolationTerminalRange
                                                     -1 => entryInterpolationTerminalRoleSymbol!
@@ -13208,13 +13629,21 @@ emitCore context: EmitContext -> Unit uses Console {
                                                     (entryExpressionMemberBase.symbol == entryInterpolationTerminalRoleSymbol! and entryStreamCurrentValues![entryActiveStreamSize! - 1] >= 0) -> if {
                                                         entryStreamCurrentValues![entryActiveStreamSize! - 1] => entryExpressionMemberBaseIr!
                                                     }
+                                                    (entryExpressionMemberBaseIr! < 0 and entryInterpolationStreamPipeline.callbackStart >= 0 and ((entryExpressionIndex! >= entryInterpolationStreamPipeline.callbackStart and entryExpressionIndex! <= entryInterpolationStreamPipeline.callbackEnd) or (entryRuntimeArgumentIndex! >= entryInterpolationStreamPipeline.callbackStart and entryRuntimeArgumentIndex! <= entryInterpolationStreamPipeline.callbackEnd))) -> if {
+                                                        context.ir[entryInterpolationStreamPipeline.source0] => entryExpressionMemberProducer
+                                                        (entryExpressionMemberProducer.typeId >= 0 and context.types[entryExpressionMemberProducer.typeId].first >= 0) -> if {
+                                                            context.types[entryExpressionMemberProducer.typeId].first => entryExpressionMemberBaseTypeId!
+                                                            true => entryExpressionMemberStreamDirect!
+                                                        }
+                                                    }
                                                 }
                                                 entryExpressionMemberBaseIr! >= 0 -> if {
                                                     context.ir[entryExpressionMemberBaseIr!] => entryExpressionMemberBaseValue
-                                                    entryExpressionMemberBaseValue.typeModule => entryExpressionMemberOwnerSource!
-                                                    entryExpressionMemberBaseValue.typeOrigin == 2 -> if {
-                                                        context.modules[entryExpressionMemberBaseValue.typeModule].sourceIndex => entryExpressionMemberOwnerSource!
-                                                    }
+                                                    entryExpressionMemberBaseValue.typeId => entryExpressionMemberBaseTypeId!
+                                                }
+                                                entryExpressionMemberBaseTypeId! >= 0 -> if {
+                                                    context.types[entryExpressionMemberBaseTypeId!] => entryExpressionMemberBaseType
+                                                    entryExpressionMemberBaseType.module => entryExpressionMemberOwnerSource!
                                                     context.ranges[entryExpressionMemberOwnerSource!] => entryExpressionMemberOwnerRange
                                                     entryExpressionRoot.payloadStart => entryExpressionMemberDot!
                                                     entryExpressionRoot.payloadStart + entryExpressionRoot.payloadLength => entryExpressionMemberEnd
@@ -13229,7 +13658,7 @@ emitCore context: EmitContext -> Unit uses Console {
                                                     0 => entryExpressionMemberFieldSearch!
                                                     entryExpressionMemberFieldSearch! < entryExpressionMemberOwnerRange.symbolCount -> while {
                                                         context.symbols[entryExpressionMemberOwnerRange.symbolStart + entryExpressionMemberFieldSearch!] => entryExpressionMemberField
-                                                        (entryExpressionMemberField.kind == 26 and entryExpressionMemberField.parent == entryExpressionMemberBaseValue.typeSymbol) -> if {
+                                                        (entryExpressionMemberField.kind == 26 and entryExpressionMemberField.parent == entryExpressionMemberBaseType.symbol) -> if {
                                                             context.tokens[entryExpressionMemberOwnerRange.tokenStart + entryExpressionMemberField.nameToken] => entryExpressionMemberFieldName
                                                             entryExpressionMemberFieldName.span.length == entryExpressionMemberNameLength => entryExpressionMemberNameEqual!
                                                             UIntSize(0) => entryExpressionMemberNameByte!
@@ -13259,8 +13688,14 @@ emitCore context: EmitContext -> Unit uses Console {
                                                     }
                                                     entryExpressionMemberFieldOrdinal! >= 0 -> if {
                                                         "  %v$(entryExpressionIndex!)_expression$(entryExpressionRootSearch!) = extractvalue " -> print
-                                                        entryExpressionMemberBaseValue -> writeIrType
-                                                        " %v$(entryExpressionMemberBaseIr!), $(entryExpressionMemberFieldOrdinal!)" -> println
+                                                        entryExpressionMemberBaseTypeId! -> writeSemanticTypeId
+                                                        " " -> print
+                                                        entryExpressionMemberStreamDirect! -> if {
+                                                            "%stream$(entryExpressionMemberStreamTerminalIr!)_item" -> print
+                                                        } else {
+                                                            "%v$(entryExpressionMemberBaseIr!)" -> print
+                                                        }
+                                                        ", $(entryExpressionMemberFieldOrdinal!)" -> println
                                                         true => entryExpressionRootMember!
                                                     }
                                                 }
@@ -13470,7 +13905,11 @@ emitCore context: EmitContext -> Unit uses Console {
                         CallEnvironmentRequest { callerIndex: functionIndex!, callIndex: entryExpressionIndex!, targetModule: entryExpression.targetModule, targetSymbol: entryExpression.symbol, hasArgument: entryExpression.operand0 >= 0 } -> emitCallEnvironmentValues
                         (entryExpression.typeOrigin == 1 and entryExpression.typeSymbol == 0) -> if { "  call " -> print } else { "  %v$(entryExpressionIndex!) = call " -> print }
                         entryExpression -> writeIrType
-                        " @sollang_m$(entryExpression.targetModule)_s$(entryExpression.symbol)(" -> print
+                        entryExpressionIndex! -> isRangeDeferCall -> if {
+                            " @sollang_range_stream_create(" -> print
+                        } else {
+                            entryExpressionIndex! -> isMouseEventsCall -> if { " @sollang_mouse_event_stream_make(" -> print } else { " @sollang_m$(entryExpression.targetModule)_s$(entryExpression.symbol)(" -> print }
+                        }
                         entryExpressionIndex! -> emitCallArguments(functionIndex!)
                         ")" -> println
                         }
@@ -13533,6 +13972,9 @@ emitCore context: EmitContext -> Unit uses Console {
                         OwnedDropRequest { regionIndex: entryExpression.operand1, beforeAst: -1, edgeIndex: entryExpressionIndex! * 10 + 3, transferredSymbol: -1 } -> emitOwnedDrops
                         "  br label %while$(entryExpressionIndex!)_header" -> println
                         "while$(entryExpressionIndex!)_exit:" -> println
+                    }
+                    (entryExpression.kind == 30 and entryActiveStreamSize! > 0) -> if {
+                        1 => entryStreamStops![entryActiveStreamSize! - 1]
                     }
                     0 => entryStreamBoundaryActiveIndex!
                     entryStreamBoundaryActiveIndex! < entryActiveStreamSize! -> while {
@@ -13757,8 +14199,15 @@ emitCore context: EmitContext -> Unit uses Console {
                                 context.streamPlan.stages[entryCloseStageSearch!].flags == 3 -> if { entryCloseStageSearch! => entryCloseFlatMapStage! }
                                 entryCloseStageSearch! + 1 => entryCloseStageSearch!
                             }
-                            "  br label %stream$(entryCloseStreamPipeline.terminalIr)_continue" -> println
+                            entryStreamStops![entryActiveStreamSize! - 1] == 1 -> if {
+                                "  br label %stream$(entryCloseStreamPipeline.terminalIr)_exit" -> println
+                            } else {
+                                "  br label %stream$(entryCloseStreamPipeline.terminalIr)_continue" -> println
+                            }
                             "stream$(entryCloseStreamPipeline.terminalIr)_continue:" -> println
+                            entryCloseStreamPipeline.status > 0 -> if {
+                                "  br label %stream$(entryCloseStreamPipeline.terminalIr)_header" -> println
+                            } else {
                             entryCloseFlatMapStage! >= 0 -> if {
                                 "  %stream$(entryCloseStreamPipeline.terminalIr)_inner_current = load i32, ptr %stream$(entryCloseStreamPipeline.terminalIr)_inner_index_slot, align 4" -> println
                                 "  %stream$(entryCloseStreamPipeline.terminalIr)_inner_next = add i32 %stream$(entryCloseStreamPipeline.terminalIr)_inner_current, 1" -> println
@@ -13795,7 +14244,16 @@ emitCore context: EmitContext -> Unit uses Console {
                                     "  br label %stream$(entryCloseStreamPipeline.terminalIr)_header" -> println
                                 }
                             }
+                            }
                             "stream$(entryCloseStreamPipeline.terminalIr)_exit:" -> println
+                            entryCloseStreamPipeline.status > 0 -> if {
+                                "  %stream$(entryCloseStreamPipeline.terminalIr)_has_drop = icmp ne ptr %stream$(entryCloseStreamPipeline.terminalIr)_producer_drop, null" -> println
+                                "  br i1 %stream$(entryCloseStreamPipeline.terminalIr)_has_drop, label %stream$(entryCloseStreamPipeline.terminalIr)_drop, label %stream$(entryCloseStreamPipeline.terminalIr)_drop_done" -> println
+                                "stream$(entryCloseStreamPipeline.terminalIr)_drop:" -> println
+                                "  call void %stream$(entryCloseStreamPipeline.terminalIr)_producer_drop(ptr %stream$(entryCloseStreamPipeline.terminalIr)_producer_context)" -> println
+                                "  br label %stream$(entryCloseStreamPipeline.terminalIr)_drop_done" -> println
+                                "stream$(entryCloseStreamPipeline.terminalIr)_drop_done:" -> println
+                            }
                             entryActiveStreamSize! - 1 => entryActiveStreamSize!
                         }
                     }
@@ -15319,6 +15777,18 @@ emitOwnershipDiagnostics context: EmitContext -> Unit uses Console {
                                     diagnosticSpan.start => diagnosticStart
                                     diagnostic.span.length => diagnosticLength
                                     "; sollang error[E23]: owner mutation conflicts with a live readonly reference (source $(diagnostic.sourceModule), byte $diagnosticStart, length $diagnosticLength)" -> println
+                                } else {
+                                    diagnostic.code == 24 -> if {
+                                        context.ir[diagnostic.actualSymbol] => affineReuse
+                                        context.ranges[affineReuse.sourceModule] => affineReuseRange
+                                        affineReuse.payloadToken >= 0 -> if {
+                                            context.tokens[affineReuseRange.tokenStart + affineReuse.payloadToken] => affineReuseName
+                                            context.sources[affineReuse.sourceModule] -> slice(affineReuseName.span.start, affineReuseName.span.length) => affineName
+                                            "; sollang semantic error: unknown binding '$affineName'" -> println
+                                        } else {
+                                            "; sollang semantic error: affine producer was already consumed" -> println
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -15347,7 +15817,7 @@ emitInterpolationDiagnostics context: EmitContext -> Unit uses Console {
     0 => nodeIndex!
     nodeIndex! < (context.interpolations -> len) -> while {
         context.interpolations[nodeIndex!] => interpolationNode
-        (interpolationNode.kind == 1 and interpolationNode.symbol < 0) -> if {
+        context -> isBlockingUnknownInterpolation(nodeIndex!) -> if {
             context -> interpolationSourceModule(nodeIndex!) => sourceModule
             sourceModule >= 0 -> if {
                 context.sources[sourceModule] -> slice(interpolationNode.payloadStart, interpolationNode.payloadLength) => name
@@ -15358,6 +15828,245 @@ emitInterpolationDiagnostics context: EmitContext -> Unit uses Console {
             }
         }
         nodeIndex! + 1 => nodeIndex!
+    }
+}
+
+isBlockingUnknownInterpolation context: EmitContext, nodeIndex: Int -> Bool {
+    false => blocking!
+    (nodeIndex >= 0 and nodeIndex < (context.interpolations -> len)) -> if {
+        context.interpolations[nodeIndex] => candidate
+        (candidate.kind == 1 and candidate.symbol < 0) -> if {
+            context -> interpolationSourceModule(nodeIndex) => sourceModule
+            sourceModule >= 0 -> if {
+                true => blocking!
+                context.ranges[sourceModule] => sourceRange
+                0 => symbolIndex!
+                (symbolIndex! < sourceRange.symbolCount and blocking!) -> while {
+                    context.symbols[sourceRange.symbolStart + symbolIndex!] => knownSymbol
+                    knownSymbol.nameToken >= 0 -> if {
+                        context.tokens[sourceRange.tokenStart + knownSymbol.nameToken] => knownName
+                        knownName.span.length == candidate.payloadLength => sameName!
+                        UIntSize(0) => nameByte!
+                        (sameName! and nameByte! < knownName.span.length) -> while {
+                            (context.sources[sourceModule] -> byte(knownName.span.start + nameByte!)) != (context.sources[sourceModule] -> byte(candidate.payloadStart + nameByte!)) -> if {
+                                false => sameName!
+                            }
+                            nameByte! + UIntSize(1) => nameByte!
+                        }
+                        sameName! -> if { false => blocking! }
+                    }
+                    symbolIndex! + 1 => symbolIndex!
+                }
+                0 => patternIndex!
+                (patternIndex! < sourceRange.astCount and blocking!) -> while {
+                    context.nodes[sourceRange.astStart + patternIndex!] => patternNode
+                    (patternNode.kind == 59 and patternNode.secondaryToken >= 0) -> if {
+                        context.tokens[sourceRange.tokenStart + patternNode.secondaryToken] => patternName
+                        patternName.span.length == candidate.payloadLength => samePatternName!
+                        UIntSize(0) => patternNameByte!
+                        (samePatternName! and patternNameByte! < patternName.span.length) -> while {
+                            (context.sources[sourceModule] -> byte(patternName.span.start + patternNameByte!)) != (context.sources[sourceModule] -> byte(candidate.payloadStart + patternNameByte!)) -> if {
+                                false => samePatternName!
+                            }
+                            patternNameByte! + UIntSize(1) => patternNameByte!
+                        }
+                        samePatternName! -> if { false => blocking! }
+                    }
+                    patternIndex! + 1 => patternIndex!
+                }
+                0 => tokenIndex!
+                (tokenIndex! < sourceRange.tokenCount and blocking!) -> while {
+                    context.tokens[sourceRange.tokenStart + tokenIndex!] => knownToken
+                    knownToken.kind == grammar.tokenIdIdentifier -> if {
+                        knownToken.span.length == candidate.payloadLength => sameTokenName!
+                        UIntSize(0) => tokenNameByte!
+                        (sameTokenName! and tokenNameByte! < knownToken.span.length) -> while {
+                            (context.sources[sourceModule] -> byte(knownToken.span.start + tokenNameByte!)) != (context.sources[sourceModule] -> byte(candidate.payloadStart + tokenNameByte!)) -> if {
+                                false => sameTokenName!
+                            }
+                            tokenNameByte! + UIntSize(1) => tokenNameByte!
+                        }
+                        sameTokenName! -> if { false => blocking! }
+                    }
+                    tokenIndex! + 1 => tokenIndex!
+                }
+            }
+        }
+    }
+    blocking!
+}
+
+unresolvedCallNameToken context: EmitContext, callIndex: Int -> Int {
+    -1 => nameToken!
+    (callIndex >= 0 and callIndex < (context.calls -> len)) -> if {
+        context.calls[callIndex] => call
+        context.ranges[call.sourceModule] => sourceRange
+        context.nodes[sourceRange.astStart + call.callAst] => callNode
+        callNode.kind == 48 -> if { callNode.payloadToken => nameToken! }
+        callNode.kind == 10 -> if {
+            false => afterArrow!
+            false => insideArguments!
+            callNode.firstToken => tokenIndex!
+            tokenIndex! < callNode.firstToken + callNode.tokenCount -> while {
+                context.tokens[sourceRange.tokenStart + tokenIndex!] => token
+                token.kind == grammar.tokenIdArrow -> if {
+                    true => afterArrow!
+                    false => insideArguments!
+                    -1 => nameToken!
+                }
+                (afterArrow! and token.kind == grammar.tokenIdLeftParen) -> if { true => insideArguments! }
+                (afterArrow! and token.kind == grammar.tokenIdRightParen) -> if { false => insideArguments! }
+                (afterArrow! and not insideArguments! and token.kind == grammar.tokenIdIdentifier) -> if { tokenIndex! => nameToken! }
+                tokenIndex! + 1 => tokenIndex!
+            }
+        }
+    }
+    nameToken!
+}
+
+isBlockingUnresolvedCall context: EmitContext, callIndex: Int -> Bool {
+    false => blocking!
+    (callIndex >= 0 and callIndex < (context.calls -> len)) -> if {
+        context.calls[callIndex] => candidate
+        (candidate.status == 2 or candidate.status == 3) -> if {
+            context.ranges[candidate.sourceModule] => candidateRange
+            context.nodes[candidateRange.astStart + candidate.callAst] => candidateNode
+            # Type conversions and nominal/enum constructors share the direct
+            # call CST shape but are resolved by type analysis rather than the
+            # function-call table. Only flow and block-call targets are
+            # authoritative unresolved function diagnostics here.
+            false => qualifiedTarget!
+            false => dynConversionTarget!
+            context -> unresolvedCallNameToken(callIndex) => candidateNameToken!
+            candidateNode.firstToken => qualifiedTokenSearch!
+            qualifiedTokenSearch! < candidateNode.firstToken + candidateNode.tokenCount -> while {
+                context.tokens[candidateRange.tokenStart + qualifiedTokenSearch!] => qualifiedToken
+                qualifiedToken.kind == grammar.tokenIdDot -> if { true => qualifiedTarget! }
+                (qualifiedToken.kind == grammar.tokenIdLess and qualifiedTokenSearch! > candidateNode.firstToken) -> if {
+                    context.tokens[candidateRange.tokenStart + qualifiedTokenSearch! - 1] => conversionToken
+                    conversionToken.span.length == UIntSize(3) -> if {
+                        context.sources[candidate.sourceModule] -> byte(conversionToken.span.start) => conversionByte0
+                        context.sources[candidate.sourceModule] -> byte(conversionToken.span.start + UIntSize(1)) => conversionByte1
+                        context.sources[candidate.sourceModule] -> byte(conversionToken.span.start + UIntSize(2)) => conversionByte2
+                        (conversionByte0 == UInt8(100) and conversionByte1 == UInt8(121) and conversionByte2 == UInt8(110)) -> if { true => dynConversionTarget! }
+                    }
+                }
+                qualifiedTokenSearch! + 1 => qualifiedTokenSearch!
+            }
+            candidateNameToken! > 0 -> if {
+                context.tokens[candidateRange.tokenStart + candidateNameToken! - 1] => previousToken
+                previousToken.kind == grammar.tokenIdDot -> if { true => qualifiedTarget! }
+            }
+            false => resultBindingTarget!
+            (candidateNode.kind == 10 and not qualifiedTarget!) -> if {
+                0 => sourceCallIndex!
+                sourceCallIndex! < (context.calls -> len) -> while {
+                    context.calls[sourceCallIndex!] => sourceCall
+                    (sourceCall.status == 0 and sourceCall.sourceModule == candidate.sourceModule and sourceCall.callAst != candidate.callAst) -> if {
+                        context.nodes[candidateRange.astStart + sourceCall.callAst] => sourceCallNode
+                        sourceCallNode.parent => sourceCallAncestor!
+                        false => sourceBelongsToCandidate!
+                        (sourceCallAncestor! >= 0 and not sourceBelongsToCandidate!) -> while {
+                            sourceCallAncestor! == candidate.callAst -> if {
+                                true => sourceBelongsToCandidate!
+                            } else {
+                                context.nodes[candidateRange.astStart + sourceCallAncestor!].parent => sourceCallAncestor!
+                            }
+                        }
+                        false => sourceCallHasArguments!
+                        sourceCallNode.firstToken => sourceCallToken!
+                        sourceCallToken! < sourceCallNode.firstToken + sourceCallNode.tokenCount -> while {
+                            context.tokens[candidateRange.tokenStart + sourceCallToken!].kind == grammar.tokenIdLeftParen -> if { true => sourceCallHasArguments! }
+                            sourceCallToken! + 1 => sourceCallToken!
+                        }
+                        (sourceBelongsToCandidate! and not sourceCallHasArguments! and sourceCallNode.start < candidateNode.start + candidateNode.length) -> if {
+                            true => resultBindingTarget!
+                        }
+                    }
+                    sourceCallIndex! + 1 => sourceCallIndex!
+                }
+            }
+            ((candidateNode.kind == 10 or candidateNode.kind == 48) and not qualifiedTarget! and not dynConversionTarget! and not resultBindingTarget!) -> if {
+                true => blocking!
+            }
+        }
+    }
+    blocking!
+}
+
+emitCallDiagnostics context: EmitContext -> Unit uses Console {
+    0 => callIndex!
+    callIndex! < (context.calls -> len) -> while {
+        context.calls[callIndex!] => call
+        context -> isBlockingUnresolvedCall(callIndex!) -> if {
+            context.ranges[call.sourceModule] => sourceRange
+            context -> unresolvedCallNameToken(callIndex!) => callNameToken!
+            context.tokens[sourceRange.tokenStart + callNameToken!] => nameToken
+            nameToken.span.start => nameStart
+            nameToken.span.length => nameLength
+            context.sources[call.sourceModule] -> slice(nameStart, nameLength) => name
+            "; sollang semantic error: unresolved call target '$name' (source $(call.sourceModule), byte $nameStart, length $nameLength)" -> println
+        }
+        callIndex! + 1 => callIndex!
+    }
+}
+
+mouseEventLiteralCapacity context: EmitContext, callIndex: Int -> Int {
+    -1 => capacity!
+    (callIndex >= 0 and callIndex < (context.ir -> len)) -> if {
+        context.ir[callIndex] => call
+        (call.kind == 6 and call.typeId >= 0 and call.typeId < (context.types -> len) and call.targetModule >= 0 and call.targetModule < (context.ranges -> len) and call.symbol >= 0 and call.operand0 >= 0) -> if {
+            context.types[call.typeId] => callType
+            context.ranges[call.targetModule] => targetRange
+            call.symbol < targetRange.symbolCount -> if {
+                context.symbols[targetRange.symbolStart + call.symbol] => targetSymbol
+                context.tokens[targetRange.tokenStart + targetSymbol.nameToken] => targetName
+                targetName.span.length == UIntSize(11) => nameEqual!
+                "mouseEvents" => expectedName
+                UIntSize(0) => nameByte!
+                (nameEqual! and nameByte! < targetName.span.length) -> while {
+                    (context.sources[call.targetModule] -> byte(targetName.span.start + nameByte!)) != (expectedName -> byte(nameByte!)) -> if { false => nameEqual! }
+                    nameByte! + UIntSize(1) => nameByte!
+                }
+                (nameEqual! and callType.kind == 7 and callType.origin == 4 and callType.symbol == 4) -> if {
+                    context.ir[call.operand0] => capacityNode
+                    (capacityNode.kind == 3 and capacityNode.payloadToken >= 0) -> if {
+                        context.ranges[capacityNode.sourceModule] => capacityRange
+                        context.tokens[capacityRange.tokenStart + capacityNode.payloadToken] => capacityToken
+                        0 => capacity!
+                        UIntSize(0) => capacityByte!
+                        capacityByte! < capacityToken.span.length -> while {
+                            context.sources[capacityNode.sourceModule] -> byte(capacityToken.span.start + capacityByte!) => digit
+                            capacity! * 10 + Int(digit - UInt8(48)) => capacity!
+                            capacityByte! + UIntSize(1) => capacityByte!
+                        }
+                    }
+                }
+            }
+        }
+    }
+    capacity!
+}
+
+invalidMouseEventCapacityCount context: EmitContext -> Int {
+    0 => count!
+    0 => callIndex!
+    callIndex! < (context.ir -> len) -> while {
+        context -> mouseEventLiteralCapacity(callIndex!) => capacity
+        (capacity >= 0 and (capacity < 2 or capacity > 65536)) -> if { count! + 1 => count! }
+        callIndex! + 1 => callIndex!
+    }
+    count!
+}
+
+emitMouseEventDiagnostics context: EmitContext -> Unit uses Console {
+    0 => callIndex!
+    callIndex! < (context.ir -> len) -> while {
+        context -> mouseEventLiteralCapacity(callIndex!) => capacity
+        (capacity >= 0 and (capacity < 2 or capacity > 65536)) -> if {
+            "; sollang semantic error: mouse event capacity must be between 2 and 65536 but received $capacity" -> println
+        }
+        callIndex! + 1 => callIndex!
     }
 }
 
@@ -15373,20 +16082,819 @@ blockingDiagnosticCount context: EmitContext -> Int {
         diagnosticCode == 21 -> if { count! + 1 => count! }
         diagnosticCode == 22 -> if { count! + 1 => count! }
         diagnosticCode == 23 -> if { count! + 1 => count! }
+        diagnosticCode == 24 -> if { count! + 1 => count! }
         diagnosticIndex! + 1 => diagnosticIndex!
     }
     0 => interpolationIndex!
     interpolationIndex! < (context.interpolations -> len) -> while {
-        context.interpolations[interpolationIndex!] => interpolationNode
-        (interpolationNode.kind == 1 and interpolationNode.symbol < 0) -> if { count! + 1 => count! }
+        context -> isBlockingUnknownInterpolation(interpolationIndex!) -> if { count! + 1 => count! }
         interpolationIndex! + 1 => interpolationIndex!
     }
+    0 => callIndex!
+    callIndex! < (context.calls -> len) -> while {
+        context -> isBlockingUnresolvedCall(callIndex!) -> if { count! + 1 => count! }
+        callIndex! + 1 => callIndex!
+    }
+    context -> invalidMouseEventCapacityCount => invalidMouseCapacities
+    count! + invalidMouseCapacities => count!
     count!
 }
 
 emitBlockingDiagnostics context: EmitContext -> Unit uses Console {
     context -> emitOwnershipDiagnostics
     context -> emitInterpolationDiagnostics
+    context -> emitCallDiagnostics
+    context -> emitMouseEventDiagnostics
+}
+
+emitWindowsMouseEventRuntime context: EmitContext -> Unit uses Console {
+    """
+    declare dllimport i32 @SetConsoleMode(ptr, i32)
+    declare dllimport i32 @ReadConsoleInputW(ptr, ptr, i32, ptr)
+    declare dllimport ptr @CreateThread(ptr, i64, ptr, ptr, i32, ptr)
+    declare dllimport ptr @CreateEventA(ptr, i32, i32, ptr)
+    declare dllimport i32 @SetEvent(ptr)
+    declare dllimport i32 @WaitForSingleObject(ptr, i32)
+    declare dllimport i32 @CloseHandle(ptr)
+    declare dllimport i32 @CancelSynchronousIo(ptr)
+    define internal i32 @sollang_mouse_event_worker(ptr %context) {
+    entry:
+      %input = load ptr, ptr %context, align 8
+      %record = alloca [20 x i8], align 4
+      %read = alloca i32, align 4
+      br label %wait
+    wait:
+      %cancel_address = getelementptr i8, ptr %context, i64 32
+      %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+      %active = icmp eq i32 %cancelled, 0
+      br i1 %active, label %read_input, label %done
+    read_input:
+      %ok = call i32 @ReadConsoleInputW(ptr %input, ptr %record, i32 1, ptr %read)
+      %read_ok = icmp ne i32 %ok, 0
+      br i1 %read_ok, label %inspect, label %closed
+    inspect:
+      %event_type = load i16, ptr %record, align 2
+      %is_mouse = icmp eq i16 %event_type, 2
+      br i1 %is_mouse, label %mouse, label %wait
+    mouse:
+      %x_slot = getelementptr i8, ptr %record, i64 4
+      %x16 = load i16, ptr %x_slot, align 2
+      %x = sext i16 %x16 to i32
+      %y_slot = getelementptr i8, ptr %record, i64 6
+      %y16 = load i16, ptr %y_slot, align 2
+      %y = sext i16 %y16 to i32
+      %buttons_address = getelementptr i8, ptr %record, i64 8
+      %buttons = load i32, ptr %buttons_address, align 4
+      %flags_address = getelementptr i8, ptr %record, i64 16
+      %flags = load i32, ptr %flags_address, align 4
+      %wheel_bits = and i32 %flags, 12
+      %is_wheel = icmp ne i32 %wheel_bits, 0
+      br i1 %is_wheel, label %wheel, label %non_wheel
+    wheel:
+      %wheel_delta = ashr i32 %buttons, 16
+      br label %enqueue
+    non_wheel:
+      %previous_address = getelementptr i8, ptr %context, i64 64
+      %previous = load i32, ptr %previous_address, align 4
+      %changed = xor i32 %previous, %buttons
+      store i32 %buttons, ptr %previous_address, align 4
+      %has_change = icmp ne i32 %changed, 0
+      br i1 %has_change, label %button_change, label %move
+    button_change:
+      %changed0 = and i32 %changed, 1
+      %is0 = icmp ne i32 %changed0, 0
+      %changed1 = and i32 %changed, 4
+      %is1 = icmp ne i32 %changed1, 0
+      %changed2 = and i32 %changed, 2
+      %is2 = icmp ne i32 %changed2, 0
+      %button12 = select i1 %is2, i32 2, i32 3
+      %button1 = select i1 %is1, i32 1, i32 %button12
+      %button_index = select i1 %is0, i32 0, i32 %button1
+      %pressed_bits = and i32 %buttons, %changed
+      %pressed = icmp ne i32 %pressed_bits, 0
+      %button_kind = select i1 %pressed, i32 1, i32 2
+      br label %enqueue
+    move:
+      br label %enqueue
+    enqueue:
+      %delta = phi i32 [ %wheel_delta, %wheel ], [ 0, %button_change ], [ 0, %move ]
+      %button = phi i32 [ -1, %wheel ], [ %button_index, %button_change ], [ -1, %move ]
+      %kind = phi i32 [ 3, %wheel ], [ %button_kind, %button_change ], [ 0, %move ]
+      br label %queue_lock
+    queue_lock:
+      %lock_address = getelementptr i8, ptr %context, i64 68
+      %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+      %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+      br i1 %lock_acquired, label %queue_state, label %queue_lock
+    queue_state:
+      %capacity_address = getelementptr i8, ptr %context, i64 12
+      %capacity = load i32, ptr %capacity_address, align 4
+      %head_address = getelementptr i8, ptr %context, i64 20
+      %head = load i32, ptr %head_address, align 4
+      %tail_address = getelementptr i8, ptr %context, i64 24
+      %tail = load i32, ptr %tail_address, align 4
+      %count_address = getelementptr i8, ptr %context, i64 28
+      %count = load i32, ptr %count_address, align 4
+      %full = icmp uge i32 %count, %capacity
+      br i1 %full, label %overflow, label %write
+    overflow:
+      %policy_address = getelementptr i8, ptr %context, i64 16
+      %policy = load i32, ptr %policy_address, align 4
+      %drop_newest = icmp eq i32 %policy, 0
+      br i1 %drop_newest, label %unlock_drop, label %not_drop_newest
+    not_drop_newest:
+      %coalesce = icmp eq i32 %policy, 2
+      %is_move = icmp eq i32 %kind, 0
+      %coalesce_move = and i1 %coalesce, %is_move
+      br i1 %coalesce_move, label %replace_move_check, label %drop_oldest
+    replace_move_check:
+      %last_tail_unwrapped = add i32 %tail, %capacity
+      %last_tail = sub i32 %last_tail_unwrapped, 1
+      %last_index = urem i32 %last_tail, %capacity
+      %last_index64 = zext i32 %last_index to i64
+      %last_offset = mul i64 %last_index64, 20
+      %buffer_address0 = getelementptr i8, ptr %context, i64 56
+      %buffer0 = load ptr, ptr %buffer_address0, align 8
+      %last_record = getelementptr i8, ptr %buffer0, i64 %last_offset
+      %last_kind_address = getelementptr i8, ptr %last_record, i64 16
+      %last_kind = load i32, ptr %last_kind_address, align 4
+      %last_is_move = icmp eq i32 %last_kind, 0
+      br i1 %last_is_move, label %replace_move, label %unlock_drop
+    replace_move:
+      store i32 %x, ptr %last_record, align 4
+      %last_y = getelementptr i8, ptr %last_record, i64 4
+      store i32 %y, ptr %last_y, align 4
+      br label %signal
+    drop_oldest:
+      %next_head_unwrapped = add i32 %head, 1
+      %next_head = urem i32 %next_head_unwrapped, %capacity
+      store i32 %next_head, ptr %head_address, align 4
+      %reduced_count = sub i32 %count, 1
+      store i32 %reduced_count, ptr %count_address, align 4
+      br label %write
+    write:
+      %index64 = zext i32 %tail to i64
+      %offset = mul i64 %index64, 20
+      %buffer_address = getelementptr i8, ptr %context, i64 56
+      %buffer = load ptr, ptr %buffer_address, align 8
+      %slot = getelementptr i8, ptr %buffer, i64 %offset
+      store i32 %x, ptr %slot, align 4
+      %slot_y = getelementptr i8, ptr %slot, i64 4
+      store i32 %y, ptr %slot_y, align 4
+      %slot_delta = getelementptr i8, ptr %slot, i64 8
+      store i32 %delta, ptr %slot_delta, align 4
+      %slot_button = getelementptr i8, ptr %slot, i64 12
+      store i32 %button, ptr %slot_button, align 4
+      %slot_kind = getelementptr i8, ptr %slot, i64 16
+      store i32 %kind, ptr %slot_kind, align 4
+      %next_tail_unwrapped = add i32 %tail, 1
+      %next_tail = urem i32 %next_tail_unwrapped, %capacity
+      store i32 %next_tail, ptr %tail_address, align 4
+      %current_count = load i32, ptr %count_address, align 4
+      %next_count = add i32 %current_count, 1
+      store i32 %next_count, ptr %count_address, align 4
+      br label %signal
+    unlock_drop:
+      store atomic i32 0, ptr %lock_address release, align 4
+      br label %wait
+    signal:
+      store atomic i32 0, ptr %lock_address release, align 4
+      %event_address = getelementptr i8, ptr %context, i64 48
+      %event = load ptr, ptr %event_address, align 8
+      %signalled = call i32 @SetEvent(ptr %event)
+      br label %wait
+    closed:
+      store atomic i32 1, ptr %cancel_address release, align 4
+      %closed_event_address = getelementptr i8, ptr %context, i64 48
+      %closed_event = load ptr, ptr %closed_event_address, align 8
+      %closed_signalled = call i32 @SetEvent(ptr %closed_event)
+      br label %done
+    done:
+      ret i32 0
+    }
+    define internal ptr @sollang_mouse_event_stream_create(i32 %requested_capacity, i32 %overflow) {
+    entry:
+      %capacity_low = icmp slt i32 %requested_capacity, 2
+      %capacity_high = icmp sgt i32 %requested_capacity, 65536
+      %capacity_invalid = or i1 %capacity_low, %capacity_high
+      %overflow_invalid = icmp ugt i32 %overflow, 2
+      %invalid = or i1 %capacity_invalid, %overflow_invalid
+      br i1 %invalid, label %fail, label %input_handle
+    input_handle:
+      %input = call ptr @GetStdHandle(i32 -10)
+      %valid = icmp ne ptr %input, inttoptr (i64 -1 to ptr)
+      br i1 %valid, label %mode, label %fail
+    mode:
+      %original_address = alloca i32, align 4
+      %got_mode = call i32 @GetConsoleMode(ptr %input, ptr %original_address)
+      %mode_ok = icmp ne i32 %got_mode, 0
+      br i1 %mode_ok, label %allocate_context, label %fail
+    allocate_context:
+      %context = call ptr @malloc(i64 72)
+      %allocated = icmp ne ptr %context, null
+      br i1 %allocated, label %allocate_buffer, label %fail
+    allocate_buffer:
+      %capacity64 = zext i32 %requested_capacity to i64
+      %buffer_bytes = mul i64 %capacity64, 20
+      %buffer = call ptr @malloc(i64 %buffer_bytes)
+      %buffer_allocated = icmp ne ptr %buffer, null
+      br i1 %buffer_allocated, label %create_event, label %free_context
+    create_event:
+      %event = call ptr @CreateEventA(ptr null, i32 0, i32 0, ptr null)
+      %event_ok = icmp ne ptr %event, null
+      br i1 %event_ok, label %initialize, label %free_buffer
+    initialize:
+      %original = load i32, ptr %original_address, align 4
+      %with_mouse = or i32 %original, 144
+      %interactive = and i32 %with_mouse, -65
+      %enabled = call i32 @SetConsoleMode(ptr %input, i32 %interactive)
+      %enabled_ok = icmp ne i32 %enabled, 0
+      br i1 %enabled_ok, label %initialize_context, label %close_event
+    initialize_context:
+      store ptr %input, ptr %context, align 8
+      %mode_slot = getelementptr i8, ptr %context, i64 8
+      store i32 %original, ptr %mode_slot, align 4
+      %capacity_slot = getelementptr i8, ptr %context, i64 12
+      store i32 %requested_capacity, ptr %capacity_slot, align 4
+      %overflow_slot = getelementptr i8, ptr %context, i64 16
+      store i32 %overflow, ptr %overflow_slot, align 4
+      %head_slot = getelementptr i8, ptr %context, i64 20
+      store i32 0, ptr %head_slot, align 4
+      %tail_slot = getelementptr i8, ptr %context, i64 24
+      store i32 0, ptr %tail_slot, align 4
+      %count_slot = getelementptr i8, ptr %context, i64 28
+      store i32 0, ptr %count_slot, align 4
+      %cancel_slot = getelementptr i8, ptr %context, i64 32
+      store atomic i32 0, ptr %cancel_slot release, align 4
+      %event_slot = getelementptr i8, ptr %context, i64 48
+      store ptr %event, ptr %event_slot, align 8
+      %buffer_slot = getelementptr i8, ptr %context, i64 56
+      store ptr %buffer, ptr %buffer_slot, align 8
+      %buttons_slot = getelementptr i8, ptr %context, i64 64
+      store i32 0, ptr %buttons_slot, align 4
+      %lock_slot = getelementptr i8, ptr %context, i64 68
+      store atomic i32 0, ptr %lock_slot release, align 4
+      %thread = call ptr @CreateThread(ptr null, i64 0, ptr @sollang_mouse_event_worker, ptr %context, i32 0, ptr null)
+      %thread_ok = icmp ne ptr %thread, null
+      br i1 %thread_ok, label %ready, label %restore
+    ready:
+      %thread_slot = getelementptr i8, ptr %context, i64 40
+      store ptr %thread, ptr %thread_slot, align 8
+      ret ptr %context
+    restore:
+      %restored_after_thread = call i32 @SetConsoleMode(ptr %input, i32 %original)
+      br label %close_event
+    close_event:
+      %event_closed = call i32 @CloseHandle(ptr %event)
+      br label %free_buffer
+    free_buffer:
+      call void @free(ptr %buffer)
+      br label %free_context
+    free_context:
+      call void @free(ptr %context)
+      br label %fail
+    fail:
+      ret ptr null
+    }
+    define internal i1 @sollang_mouse_event_next_raw(ptr %context, ptr %x, ptr %y, ptr %delta, ptr %button, ptr %kind) {
+    entry:
+      br label %queue_lock
+    queue_lock:
+      %lock_address = getelementptr i8, ptr %context, i64 68
+      %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+      %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+      br i1 %lock_acquired, label %poll, label %queue_lock
+    poll:
+      %count_address = getelementptr i8, ptr %context, i64 28
+      %count = load i32, ptr %count_address, align 4
+      %available = icmp ugt i32 %count, 0
+      br i1 %available, label %read, label %unlock_empty
+    unlock_empty:
+      store atomic i32 0, ptr %lock_address release, align 4
+      br label %empty
+    empty:
+      %cancel_address = getelementptr i8, ptr %context, i64 32
+      %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+      %active = icmp eq i32 %cancelled, 0
+      br i1 %active, label %wait, label %closed
+    wait:
+      %event_address = getelementptr i8, ptr %context, i64 48
+      %event = load ptr, ptr %event_address, align 8
+      %waited = call i32 @WaitForSingleObject(ptr %event, i32 -1)
+      br label %queue_lock
+    read:
+      %capacity_address = getelementptr i8, ptr %context, i64 12
+      %capacity = load i32, ptr %capacity_address, align 4
+      %head_address = getelementptr i8, ptr %context, i64 20
+      %head = load i32, ptr %head_address, align 4
+      %index64 = zext i32 %head to i64
+      %offset = mul i64 %index64, 20
+      %buffer_address = getelementptr i8, ptr %context, i64 56
+      %buffer = load ptr, ptr %buffer_address, align 8
+      %slot = getelementptr i8, ptr %buffer, i64 %offset
+      %x_value = load i32, ptr %slot, align 4
+      store i32 %x_value, ptr %x, align 4
+      %slot_y = getelementptr i8, ptr %slot, i64 4
+      %y_value = load i32, ptr %slot_y, align 4
+      store i32 %y_value, ptr %y, align 4
+      %slot_delta = getelementptr i8, ptr %slot, i64 8
+      %delta_value = load i32, ptr %slot_delta, align 4
+      store i32 %delta_value, ptr %delta, align 4
+      %slot_button = getelementptr i8, ptr %slot, i64 12
+      %button_value = load i32, ptr %slot_button, align 4
+      store i32 %button_value, ptr %button, align 4
+      %slot_kind = getelementptr i8, ptr %slot, i64 16
+      %kind_value = load i32, ptr %slot_kind, align 4
+      store i32 %kind_value, ptr %kind, align 4
+      %next_head_unwrapped = add i32 %head, 1
+      %next_head = urem i32 %next_head_unwrapped, %capacity
+      store i32 %next_head, ptr %head_address, align 4
+      %next_count = sub i32 %count, 1
+      store i32 %next_count, ptr %count_address, align 4
+      store atomic i32 0, ptr %lock_address release, align 4
+      ret i1 true
+    closed:
+      ret i1 false
+    }
+    define internal void @sollang_mouse_event_stream_drop(ptr %context) {
+    entry:
+      %cancel_address = getelementptr i8, ptr %context, i64 32
+      store atomic i32 1, ptr %cancel_address release, align 4
+      %thread_address = getelementptr i8, ptr %context, i64 40
+      %thread = load ptr, ptr %thread_address, align 8
+      %cancelled = call i32 @CancelSynchronousIo(ptr %thread)
+      %event_address = getelementptr i8, ptr %context, i64 48
+      %event = load ptr, ptr %event_address, align 8
+      %signalled = call i32 @SetEvent(ptr %event)
+      %joined = call i32 @WaitForSingleObject(ptr %thread, i32 -1)
+      %thread_closed = call i32 @CloseHandle(ptr %thread)
+      %event_closed = call i32 @CloseHandle(ptr %event)
+      %input = load ptr, ptr %context, align 8
+      %mode_slot = getelementptr i8, ptr %context, i64 8
+      %original = load i32, ptr %mode_slot, align 4
+      %restored = call i32 @SetConsoleMode(ptr %input, i32 %original)
+      %buffer_address = getelementptr i8, ptr %context, i64 56
+      %buffer = load ptr, ptr %buffer_address, align 8
+      call void @free(ptr %buffer)
+      call void @free(ptr %context)
+      ret void
+    }
+    """ -> println
+}
+
+emitLinuxMouseEventRuntime context: EmitContext -> Unit uses Console {
+    context -> usesTextRuntime -> if {
+    } else {
+        "declare i64 @write(i32, ptr, i64)" -> println
+    }
+    """
+    declare i32 @isatty(i32)
+    declare i64 @read(i32, ptr, i64)
+    declare i32 @close(i32)
+    declare i32 @poll(ptr, i64, i32)
+    declare i32 @eventfd(i32, i32)
+    declare i32 @pthread_create(ptr, ptr, ptr, ptr)
+    declare i32 @pthread_join(i64, ptr)
+    declare i32 @tcgetattr(i32, ptr)
+    declare i32 @tcsetattr(i32, i32, ptr)
+    declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
+    @sollang_mouse_enable = private constant [16 x i8] c"\1B[?1003h\1B[?1006h"
+    @sollang_mouse_disable = private constant [16 x i8] c"\1B[?1003l\1B[?1006l"
+    define internal i32 @sollang_linux_mouse_read_byte(ptr %context) {
+    entry:
+      %poll_record = alloca [8 x i8], align 4
+      %byte = alloca i8, align 1
+      store i32 0, ptr %poll_record, align 4
+      %events = getelementptr i8, ptr %poll_record, i64 4
+      store i16 1, ptr %events, align 2
+      br label %wait
+    wait:
+      %cancel_address = getelementptr i8, ptr %context, i64 20
+      %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+      %active = icmp eq i32 %cancelled, 0
+      br i1 %active, label %poll, label %closed
+    poll:
+      %ready = call i32 @poll(ptr %poll_record, i64 1, i32 50)
+      %has_input = icmp sgt i32 %ready, 0
+      br i1 %has_input, label %read_byte, label %wait
+    read_byte:
+      %read_count = call i64 @read(i32 0, ptr %byte, i64 1)
+      %read_ok = icmp eq i64 %read_count, 1
+      br i1 %read_ok, label %got_value, label %wait
+    got_value:
+      %raw = load i8, ptr %byte, align 1
+      %byte_value = zext i8 %raw to i32
+      ret i32 %byte_value
+    closed:
+      ret i32 -1
+    }
+    define internal void @sollang_linux_mouse_signal(ptr %context) {
+    entry:
+      %one = alloca i64, align 8
+      store i64 1, ptr %one, align 8
+      %fd_address = getelementptr i8, ptr %context, i64 28
+      %fd = load i32, ptr %fd_address, align 4
+      %written = call i64 @write(i32 %fd, ptr %one, i64 8)
+      ret void
+    }
+    define internal void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 %delta, i32 %button, i32 %kind) {
+    entry:
+      br label %queue_lock
+    queue_lock:
+      %lock_address = getelementptr i8, ptr %context, i64 24
+      %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+      %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+      br i1 %lock_acquired, label %queue_state, label %queue_lock
+    queue_state:
+      %capacity = load i32, ptr %context, align 4
+      %policy_address = getelementptr i8, ptr %context, i64 4
+      %policy = load i32, ptr %policy_address, align 4
+      %count_address = getelementptr i8, ptr %context, i64 16
+      %count = load i32, ptr %count_address, align 4
+      %full = icmp uge i32 %count, %capacity
+      br i1 %full, label %overflow, label %write
+    overflow:
+      %drop_newest = icmp eq i32 %policy, 0
+      br i1 %drop_newest, label %unlock_drop, label %not_drop_newest
+    not_drop_newest:
+      %coalesce = icmp eq i32 %policy, 2
+      %is_move = icmp eq i32 %kind, 0
+      %coalesce_move = and i1 %coalesce, %is_move
+      br i1 %coalesce_move, label %replace_move_check, label %drop_oldest
+    replace_move_check:
+      %tail_address0 = getelementptr i8, ptr %context, i64 12
+      %tail0 = load i32, ptr %tail_address0, align 4
+      %tail_plus_capacity = add i32 %tail0, %capacity
+      %last_unwrapped = sub i32 %tail_plus_capacity, 1
+      %last_index = urem i32 %last_unwrapped, %capacity
+      %last_index64 = zext i32 %last_index to i64
+      %last_offset = mul i64 %last_index64, 20
+      %buffer_address0 = getelementptr i8, ptr %context, i64 40
+      %buffer0 = load ptr, ptr %buffer_address0, align 8
+      %last_record = getelementptr i8, ptr %buffer0, i64 %last_offset
+      %last_kind_address = getelementptr i8, ptr %last_record, i64 16
+      %last_kind = load i32, ptr %last_kind_address, align 4
+      %last_is_move = icmp eq i32 %last_kind, 0
+      br i1 %last_is_move, label %replace_move, label %unlock_drop
+    replace_move:
+      store i32 %x, ptr %last_record, align 4
+      %last_y = getelementptr i8, ptr %last_record, i64 4
+      store i32 %y, ptr %last_y, align 4
+      br label %unlock_signal
+    drop_oldest:
+      %head_address = getelementptr i8, ptr %context, i64 8
+      %head = load i32, ptr %head_address, align 4
+      %next_head_unwrapped = add i32 %head, 1
+      %next_head = urem i32 %next_head_unwrapped, %capacity
+      store i32 %next_head, ptr %head_address, align 4
+      %reduced_count = sub i32 %count, 1
+      store i32 %reduced_count, ptr %count_address, align 4
+      br label %write
+    write:
+      %tail_address = getelementptr i8, ptr %context, i64 12
+      %tail = load i32, ptr %tail_address, align 4
+      %tail64 = zext i32 %tail to i64
+      %offset = mul i64 %tail64, 20
+      %buffer_address = getelementptr i8, ptr %context, i64 40
+      %buffer = load ptr, ptr %buffer_address, align 8
+      %slot = getelementptr i8, ptr %buffer, i64 %offset
+      store i32 %x, ptr %slot, align 4
+      %slot_y = getelementptr i8, ptr %slot, i64 4
+      store i32 %y, ptr %slot_y, align 4
+      %slot_delta = getelementptr i8, ptr %slot, i64 8
+      store i32 %delta, ptr %slot_delta, align 4
+      %slot_button = getelementptr i8, ptr %slot, i64 12
+      store i32 %button, ptr %slot_button, align 4
+      %slot_kind = getelementptr i8, ptr %slot, i64 16
+      store i32 %kind, ptr %slot_kind, align 4
+      %next_tail_unwrapped = add i32 %tail, 1
+      %next_tail = urem i32 %next_tail_unwrapped, %capacity
+      store i32 %next_tail, ptr %tail_address, align 4
+      %current_count = load i32, ptr %count_address, align 4
+      %next_count = add i32 %current_count, 1
+      store i32 %next_count, ptr %count_address, align 4
+      br label %unlock_signal
+    unlock_drop:
+      store atomic i32 0, ptr %lock_address release, align 4
+      ret void
+    unlock_signal:
+      store atomic i32 0, ptr %lock_address release, align 4
+      call void @sollang_linux_mouse_signal(ptr %context)
+      ret void
+    }
+    define internal ptr @sollang_linux_mouse_worker(ptr %context) {
+    entry:
+      %button_value = alloca i32, align 4
+      %x_value = alloca i32, align 4
+      %y_value = alloca i32, align 4
+      br label %seek_escape
+    seek_escape:
+      %escape = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %escape_closed = icmp slt i32 %escape, 0
+      br i1 %escape_closed, label %done, label %check_escape
+    check_escape:
+      %is_escape = icmp eq i32 %escape, 27
+      br i1 %is_escape, label %expect_bracket, label %seek_escape
+    expect_bracket:
+      %bracket = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %is_bracket = icmp eq i32 %bracket, 91
+      br i1 %is_bracket, label %expect_less, label %seek_escape
+    expect_less:
+      %less = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %is_less = icmp eq i32 %less, 60
+      br i1 %is_less, label %button_start, label %seek_escape
+    button_start:
+      store i32 0, ptr %button_value, align 4
+      br label %button_digit
+    button_digit:
+      %button_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %button_is_digit_low = icmp sge i32 %button_char, 48
+      %button_is_digit_high = icmp sle i32 %button_char, 57
+      %button_is_digit = and i1 %button_is_digit_low, %button_is_digit_high
+      br i1 %button_is_digit, label %button_accumulate, label %button_separator
+    button_accumulate:
+      %button_old = load i32, ptr %button_value, align 4
+      %button_times_ten = mul i32 %button_old, 10
+      %button_digit_value = sub i32 %button_char, 48
+      %button_next = add i32 %button_times_ten, %button_digit_value
+      store i32 %button_next, ptr %button_value, align 4
+      br label %button_digit
+    button_separator:
+      %button_has_separator = icmp eq i32 %button_char, 59
+      br i1 %button_has_separator, label %x_start, label %seek_escape
+    x_start:
+      store i32 0, ptr %x_value, align 4
+      br label %x_digit
+    x_digit:
+      %x_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %x_is_digit_low = icmp sge i32 %x_char, 48
+      %x_is_digit_high = icmp sle i32 %x_char, 57
+      %x_is_digit = and i1 %x_is_digit_low, %x_is_digit_high
+      br i1 %x_is_digit, label %x_accumulate, label %x_separator
+    x_accumulate:
+      %x_old = load i32, ptr %x_value, align 4
+      %x_times_ten = mul i32 %x_old, 10
+      %x_digit_value = sub i32 %x_char, 48
+      %x_next = add i32 %x_times_ten, %x_digit_value
+      store i32 %x_next, ptr %x_value, align 4
+      br label %x_digit
+    x_separator:
+      %x_has_separator = icmp eq i32 %x_char, 59
+      br i1 %x_has_separator, label %y_start, label %seek_escape
+    y_start:
+      store i32 0, ptr %y_value, align 4
+      br label %y_digit
+    y_digit:
+      %y_char = call i32 @sollang_linux_mouse_read_byte(ptr %context)
+      %y_is_digit_low = icmp sge i32 %y_char, 48
+      %y_is_digit_high = icmp sle i32 %y_char, 57
+      %y_is_digit = and i1 %y_is_digit_low, %y_is_digit_high
+      br i1 %y_is_digit, label %y_accumulate, label %finish_event
+    y_accumulate:
+      %y_old = load i32, ptr %y_value, align 4
+      %y_times_ten = mul i32 %y_old, 10
+      %y_digit_value = sub i32 %y_char, 48
+      %y_next = add i32 %y_times_ten, %y_digit_value
+      store i32 %y_next, ptr %y_value, align 4
+      br label %y_digit
+    finish_event:
+      %is_press = icmp eq i32 %y_char, 77
+      %is_release = icmp eq i32 %y_char, 109
+      %valid_final = or i1 %is_press, %is_release
+      br i1 %valid_final, label %classify, label %seek_escape
+    classify:
+      %raw_button = load i32, ptr %button_value, align 4
+      %raw_x = load i32, ptr %x_value, align 4
+      %raw_y = load i32, ptr %y_value, align 4
+      %x = sub i32 %raw_x, 1
+      %y = sub i32 %raw_y, 1
+      %wheel_bit = and i32 %raw_button, 64
+      %is_wheel = icmp ne i32 %wheel_bit, 0
+      br i1 %is_wheel, label %wheel, label %non_wheel
+    wheel:
+      %wheel_direction = and i32 %raw_button, 1
+      %wheel_down = icmp ne i32 %wheel_direction, 0
+      %delta = select i1 %wheel_down, i32 -120, i32 120
+      call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 %delta, i32 -1, i32 3)
+      br label %seek_escape
+    non_wheel:
+      %motion_bit = and i32 %raw_button, 32
+      %is_motion = icmp ne i32 %motion_bit, 0
+      br i1 %is_motion, label %move, label %button
+    move:
+      call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 0, i32 -1, i32 0)
+      br label %seek_escape
+    button:
+      %button_index = and i32 %raw_button, 3
+      %kind = select i1 %is_release, i32 2, i32 1
+      call void @sollang_linux_mouse_enqueue(ptr %context, i32 %x, i32 %y, i32 0, i32 %button_index, i32 %kind)
+      br label %seek_escape
+    done:
+      call void @sollang_linux_mouse_signal(ptr %context)
+      ret ptr null
+    }
+    define internal ptr @sollang_mouse_event_stream_create(i32 %requested_capacity, i32 %overflow) {
+    entry:
+      %capacity_low = icmp slt i32 %requested_capacity, 2
+      %capacity_high = icmp sgt i32 %requested_capacity, 65536
+      %capacity_invalid = or i1 %capacity_low, %capacity_high
+      %overflow_invalid = icmp ugt i32 %overflow, 2
+      %invalid = or i1 %capacity_invalid, %overflow_invalid
+      br i1 %invalid, label %fail, label %tty
+    tty:
+      %interactive = call i32 @isatty(i32 0)
+      %is_tty = icmp ne i32 %interactive, 0
+      br i1 %is_tty, label %allocate_context, label %fail
+    allocate_context:
+      %context = call ptr @malloc(i64 64)
+      %context_ok = icmp ne ptr %context, null
+      br i1 %context_ok, label %allocate_buffer, label %fail
+    allocate_buffer:
+      %capacity64 = zext i32 %requested_capacity to i64
+      %buffer_bytes = mul i64 %capacity64, 20
+      %buffer = call ptr @malloc(i64 %buffer_bytes)
+      %buffer_ok = icmp ne ptr %buffer, null
+      br i1 %buffer_ok, label %allocate_termios, label %free_context
+    allocate_termios:
+      %original = call ptr @malloc(i64 64)
+      %original_ok = icmp ne ptr %original, null
+      br i1 %original_ok, label %read_termios, label %free_buffer
+    read_termios:
+      %got_termios = call i32 @tcgetattr(i32 0, ptr %original)
+      %termios_ok = icmp eq i32 %got_termios, 0
+      br i1 %termios_ok, label %configure_termios, label %free_termios
+    configure_termios:
+      %current = alloca [64 x i8], align 8
+      call void @llvm.memcpy.p0.p0.i64(ptr %current, ptr %original, i64 64, i1 false)
+      %lflag_address = getelementptr i8, ptr %current, i64 12
+      %lflag = load i32, ptr %lflag_address, align 4
+      %raw_lflag = and i32 %lflag, -11
+      store i32 %raw_lflag, ptr %lflag_address, align 4
+      %vtime = getelementptr i8, ptr %current, i64 22
+      store i8 0, ptr %vtime, align 1
+      %vmin = getelementptr i8, ptr %current, i64 23
+      store i8 1, ptr %vmin, align 1
+      %set_termios = call i32 @tcsetattr(i32 0, i32 0, ptr %current)
+      %termios_set = icmp eq i32 %set_termios, 0
+      br i1 %termios_set, label %create_event, label %free_termios
+    create_event:
+      %event_fd = call i32 @eventfd(i32 0, i32 0)
+      %event_ok = icmp sge i32 %event_fd, 0
+      br i1 %event_ok, label %initialize, label %restore
+    initialize:
+      store i32 %requested_capacity, ptr %context, align 4
+      %policy_address = getelementptr i8, ptr %context, i64 4
+      store i32 %overflow, ptr %policy_address, align 4
+      %head_address = getelementptr i8, ptr %context, i64 8
+      store i32 0, ptr %head_address, align 4
+      %tail_address = getelementptr i8, ptr %context, i64 12
+      store i32 0, ptr %tail_address, align 4
+      %count_address = getelementptr i8, ptr %context, i64 16
+      store i32 0, ptr %count_address, align 4
+      %cancel_address = getelementptr i8, ptr %context, i64 20
+      store atomic i32 0, ptr %cancel_address release, align 4
+      %lock_address = getelementptr i8, ptr %context, i64 24
+      store atomic i32 0, ptr %lock_address release, align 4
+      %event_address = getelementptr i8, ptr %context, i64 28
+      store i32 %event_fd, ptr %event_address, align 4
+      %buffer_address = getelementptr i8, ptr %context, i64 40
+      store ptr %buffer, ptr %buffer_address, align 8
+      %termios_address = getelementptr i8, ptr %context, i64 48
+      store ptr %original, ptr %termios_address, align 8
+      %enabled = call i64 @write(i32 1, ptr @sollang_mouse_enable, i64 16)
+      %thread_slot = alloca i64, align 8
+      %created = call i32 @pthread_create(ptr %thread_slot, ptr null, ptr @sollang_linux_mouse_worker, ptr %context)
+      %thread_ok = icmp eq i32 %created, 0
+      br i1 %thread_ok, label %ready, label %close_event
+    ready:
+      %thread = load i64, ptr %thread_slot, align 8
+      %thread_address = getelementptr i8, ptr %context, i64 32
+      store i64 %thread, ptr %thread_address, align 8
+      ret ptr %context
+    close_event:
+      %closed_event = call i32 @close(i32 %event_fd)
+      br label %restore
+    restore:
+      %restored = call i32 @tcsetattr(i32 0, i32 0, ptr %original)
+      br label %free_termios
+    free_termios:
+      call void @free(ptr %original)
+      br label %free_buffer
+    free_buffer:
+      call void @free(ptr %buffer)
+      br label %free_context
+    free_context:
+      call void @free(ptr %context)
+      br label %fail
+    fail:
+      ret ptr null
+    }
+    define internal i1 @sollang_mouse_event_next_raw(ptr %context, ptr %x, ptr %y, ptr %delta, ptr %button, ptr %kind) {
+    entry:
+      br label %queue_lock
+    queue_lock:
+      %lock_address = getelementptr i8, ptr %context, i64 24
+      %lock_result = cmpxchg ptr %lock_address, i32 0, i32 1 acquire monotonic, align 4
+      %lock_acquired = extractvalue { i32, i1 } %lock_result, 1
+      br i1 %lock_acquired, label %queue_state, label %queue_lock
+    queue_state:
+      %count_address = getelementptr i8, ptr %context, i64 16
+      %count = load i32, ptr %count_address, align 4
+      %available = icmp ugt i32 %count, 0
+      br i1 %available, label %read, label %unlock_empty
+    unlock_empty:
+      store atomic i32 0, ptr %lock_address release, align 4
+      %cancel_address = getelementptr i8, ptr %context, i64 20
+      %cancelled = load atomic i32, ptr %cancel_address acquire, align 4
+      %active = icmp eq i32 %cancelled, 0
+      br i1 %active, label %wait, label %closed
+    wait:
+      %counter = alloca i64, align 8
+      %event_address = getelementptr i8, ptr %context, i64 28
+      %event_fd = load i32, ptr %event_address, align 4
+      %read_signal = call i64 @read(i32 %event_fd, ptr %counter, i64 8)
+      br label %queue_lock
+    read:
+      %capacity = load i32, ptr %context, align 4
+      %head_address = getelementptr i8, ptr %context, i64 8
+      %head = load i32, ptr %head_address, align 4
+      %head64 = zext i32 %head to i64
+      %offset = mul i64 %head64, 20
+      %buffer_address = getelementptr i8, ptr %context, i64 40
+      %buffer = load ptr, ptr %buffer_address, align 8
+      %slot = getelementptr i8, ptr %buffer, i64 %offset
+      %x_value = load i32, ptr %slot, align 4
+      store i32 %x_value, ptr %x, align 4
+      %slot_y = getelementptr i8, ptr %slot, i64 4
+      %y_value = load i32, ptr %slot_y, align 4
+      store i32 %y_value, ptr %y, align 4
+      %slot_delta = getelementptr i8, ptr %slot, i64 8
+      %delta_value = load i32, ptr %slot_delta, align 4
+      store i32 %delta_value, ptr %delta, align 4
+      %slot_button = getelementptr i8, ptr %slot, i64 12
+      %button_value = load i32, ptr %slot_button, align 4
+      store i32 %button_value, ptr %button, align 4
+      %slot_kind = getelementptr i8, ptr %slot, i64 16
+      %kind_value = load i32, ptr %slot_kind, align 4
+      store i32 %kind_value, ptr %kind, align 4
+      %next_head_unwrapped = add i32 %head, 1
+      %next_head = urem i32 %next_head_unwrapped, %capacity
+      store i32 %next_head, ptr %head_address, align 4
+      %next_count = sub i32 %count, 1
+      store i32 %next_count, ptr %count_address, align 4
+      store atomic i32 0, ptr %lock_address release, align 4
+      ret i1 true
+    closed:
+      ret i1 false
+    }
+    define internal void @sollang_mouse_event_stream_drop(ptr %context) {
+    entry:
+      %cancel_address = getelementptr i8, ptr %context, i64 20
+      store atomic i32 1, ptr %cancel_address release, align 4
+      %thread_address = getelementptr i8, ptr %context, i64 32
+      %thread = load i64, ptr %thread_address, align 8
+      %joined = call i32 @pthread_join(i64 %thread, ptr null)
+      %disabled = call i64 @write(i32 1, ptr @sollang_mouse_disable, i64 16)
+      %termios_address = getelementptr i8, ptr %context, i64 48
+      %original = load ptr, ptr %termios_address, align 8
+      %restored = call i32 @tcsetattr(i32 0, i32 0, ptr %original)
+      %event_address = getelementptr i8, ptr %context, i64 28
+      %event_fd = load i32, ptr %event_address, align 4
+      %closed_event = call i32 @close(i32 %event_fd)
+      %buffer_address = getelementptr i8, ptr %context, i64 40
+      %buffer = load ptr, ptr %buffer_address, align 8
+      call void @free(ptr %original)
+      call void @free(ptr %buffer)
+      call void @free(ptr %context)
+      ret void
+    }
+    """ -> println
+}
+
+usesMouseEventsRuntime context: EmitContext -> Bool {
+    false => usesMouse!
+    0 => callIndex!
+    (callIndex! < (context.ir -> len) and not usesMouse!) -> while {
+        context.ir[callIndex!] => call
+        (call.kind == 6 and call.typeId >= 0 and call.typeId < (context.types -> len) and call.targetModule >= 0 and call.targetModule < (context.ranges -> len) and call.symbol >= 0) -> if {
+            context.types[call.typeId] => callType
+            context.ranges[call.targetModule] => targetRange
+            call.symbol < targetRange.symbolCount -> if {
+                context.symbols[targetRange.symbolStart + call.symbol] => targetSymbol
+                context.tokens[targetRange.tokenStart + targetSymbol.nameToken] => targetName
+                targetName.span.length == UIntSize(11) => nameEqual!
+                "mouseEvents" => expectedName
+                UIntSize(0) => nameByte!
+                (nameEqual! and nameByte! < targetName.span.length) -> while {
+                    (context.sources[call.targetModule] -> byte(targetName.span.start + nameByte!)) != (expectedName -> byte(nameByte!)) -> if { false => nameEqual! }
+                    nameByte! + UIntSize(1) => nameByte!
+                }
+                (nameEqual! and callType.kind == 7 and callType.origin == 4 and callType.symbol == 4) -> if { true => usesMouse! }
+            }
+        }
+        callIndex! + 1 => callIndex!
+    }
+    usesMouse!
 }
 
 emitWindowsContext context: EmitContext -> Unit uses Console {
@@ -15395,6 +16903,7 @@ emitWindowsContext context: EmitContext -> Unit uses Console {
     context -> usesProcessRuntime => needsProcessRuntime
     context -> usesDirectoryRuntime => needsDirectoryRuntime
     context -> usesOwnedFileRuntime => needsOwnedFileRuntime
+    context -> usesMouseEventsRuntime => needsMouseEventsRuntime
     capturesParallelOutput -> if { emitMemoryOutputSinkRuntime }
     (usesTextOutput or capturesParallelOutput) -> if { capturesParallelOutput -> emitWindowsTextRuntime }
     capturesParallelOutput -> if { emitWindowsComputeRuntime }
@@ -15435,6 +16944,7 @@ emitWindowsContext context: EmitContext -> Unit uses Console {
     }
     needsProcessRuntime -> if { emitProcessTypeRuntime }
     context -> emitCore
+    needsMouseEventsRuntime -> if { context -> emitWindowsMouseEventRuntime }
     needsProcessRuntime -> if { emitWindowsProcessRuntime }
     needsDirectoryRuntime -> if { llvmRuntime.emitWindowsDirectory }
     needsOwnedFileRuntime -> if { llvmRuntime.emitWindowsOwnedFile }
@@ -15454,6 +16964,7 @@ emitLinuxContext context: EmitContext -> Unit uses Console {
     context -> usesSourceTextRuntime => needsSourceTextRuntime
     context -> usesDirectoryRuntime => needsDirectoryRuntime
     context -> usesOwnedFileRuntime => needsOwnedFileRuntime
+    context -> usesMouseEventsRuntime => needsMouseEventsRuntime
     capturesParallelOutput -> if { emitMemoryOutputSinkRuntime }
     (usesTextOutput or capturesParallelOutput) -> if { capturesParallelOutput -> emitLinuxTextRuntime }
     capturesParallelOutput -> if { emitLinuxComputeRuntime }
@@ -15461,6 +16972,7 @@ emitLinuxContext context: EmitContext -> Unit uses Console {
     context -> usesBoolInterpolation -> if { emitBoolTextRuntime }
     needsProcessRuntime -> if { emitProcessTypeRuntime }
     context -> emitCore
+    needsMouseEventsRuntime -> if { context -> emitLinuxMouseEventRuntime }
     needsProcessRuntime -> if { capturesParallelOutput -> emitLinuxProcessRuntime }
     needsDirectoryRuntime -> if { llvmRuntime.emitLinuxDirectory }
     needsOwnedFileRuntime -> if { not needsProcessRuntime -> llvmRuntime.emitLinuxOwnedFile }
@@ -15536,13 +17048,20 @@ public emitWasmChecked sources: move [Text; ~] -> Int uses Console {
     llvmTarget.wasm32Browser => target
     PrepareRequest { sources: sources, pointerBitWidth: target.pointerBitWidth, supportsComputePool: false, expectedPathStyle: 0 } => prepareRequest!
     prepareRequest! -> prepare => context!
-    context! -> blockingDiagnosticCount => diagnosticCount
-    diagnosticCount == 0 -> if {
+    context! -> blockingDiagnosticCount => diagnosticCount!
+    context! -> usesMouseEventsRuntime => usesUnsupportedMouseEvents
+    usesUnsupportedMouseEvents -> if { diagnosticCount! + 1 => diagnosticCount! }
+    diagnosticCount! == 0 -> if {
         target.dataLayoutLine -> println
         target.tripleLine -> println
         context! -> emitWasmContext
-    } else { context! -> emitBlockingDiagnostics }
-    diagnosticCount
+    } else {
+        context! -> emitBlockingDiagnostics
+        usesUnsupportedMouseEvents -> if {
+            "; sollang semantic error: mouse event streams are unavailable on wasm32-browser; browser events require host-driven callback lowering" -> println
+        }
+    }
+    diagnosticCount!
 }
 
 public emitFiles paths: [Text; ~] -> Unit uses Console, File {
