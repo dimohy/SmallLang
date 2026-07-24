@@ -62,6 +62,23 @@ try {
     throw new Error(`unfriendly browser diagnostic: ${friendlyDiagnostic}`);
   }
 
+  await page.locator(".monaco-editor .view-lines").click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.keyboard.insertText(
+    'main {\n'
+    + '    "값이 왼쪽에서 오른쪽으로 흐릅니다." -> println2\n'
+    + '}'
+  );
+  await page.getByRole("button", { name: /실행/ }).click();
+  await page.locator(".result-error").waitFor({ timeout: 120_000 });
+  const unresolvedCallDiagnostic = await page.locator(".terminal pre").innerText();
+  if (
+    !unresolvedCallDiagnostic.includes("알 수 없는 함수 호출 'println2'")
+    || unresolvedCallDiagnostic.includes("FS error")
+  ) {
+    throw new Error(`missing unresolved-call browser diagnostic: ${unresolvedCallDiagnostic}`);
+  }
+
   const tokenColors = await page.locator(".view-lines span[class*='mtk']").evaluateAll(
     nodes => new Set(nodes.map(node => getComputedStyle(node).color)).size
   );
