@@ -3112,6 +3112,26 @@ emitCore context: EmitContext -> Unit uses Console {
         }
         width!
     }
+    nodeContainsReadIntAt nodeIndex: Int, depth: Int -> Bool {
+        false => contains!
+        (depth < 32 and nodeIndex >= 0 and nodeIndex < (context.ir -> len)) -> if {
+            context.ir[nodeIndex] => candidate
+            (candidate.kind == 6 and candidate.symbol == -103) -> if {
+                true => contains!
+            } else {
+                candidate.operand0 != nodeIndex -> if {
+                    candidate.operand0 -> nodeContainsReadIntAt(depth + 1) => contains!
+                }
+                (not contains! and candidate.operand1 != nodeIndex) -> if {
+                    candidate.operand1 -> nodeContainsReadIntAt(depth + 1) => contains!
+                }
+            }
+        }
+        contains!
+    }
+    nodeContainsReadInt rootIndex: Int -> Bool {
+        rootIndex -> nodeContainsReadIntAt(0)
+    }
     integerComparisonOperation expression: typedIr.TypedIrNode -> Text {
         context.ir[expression.operand0] => operand
         operand -> integerNodeSigned => signed
@@ -7776,7 +7796,18 @@ emitCore context: EmitContext -> Unit uses Console {
             (regionNode.kind == 6 and regionNode.symbol == -102 and regionNode.operand0 < 0) -> if {
                 "  call void @sollang_runtime_print(ptr @sollang_runtime_newline, i64 1, i1 false)" -> println
             }
-            (regionNode.kind == 6 and regionNode.symbol != -115 and not (regionNode.symbol == -102 and regionNode.operand0 < 0) and regionNode.opcode != -205 and regionNode.opcode != -206 and regionNode.opcode != -207 and regionNode.opcode != -208 and regionNode.opcode != -209 and regionNode.opcode != -210 and regionNode.opcode != -211 and regionNode.opcode != -212 and regionNode.opcode != -214 and regionNode.opcode != -215 and regionNode.opcode != -222 and (regionNode.opcode > -216 or regionNode.opcode < -221) and not (regionNode.parent >= 0 and context.ir[regionNode.parent].kind == 6 and (context.ir[regionNode.parent].opcode == -207 or context.ir[regionNode.parent].opcode == -209) and context.ir[regionNode.parent].operand1 == regionNodeIndex!)) -> if {
+            (regionNode.kind == 6 and regionNode.symbol == -103) -> if {
+                regionNodeIndex! -> callArgumentIndex => regionReadPromptIndex
+                context.ir[regionReadPromptIndex] => regionReadPrompt
+                regionReadPrompt.kind == 2 -> if {
+                    regionReadPrompt -> sourceToken => regionReadPromptToken
+                    Int(TextLiteralRequest { sourceModule: regionReadPrompt.sourceModule, token: regionReadPromptToken } -> textLiteralLength) => regionReadPromptLength
+                    "  %v$(regionNodeIndex!) = call i32 @sollang_runtime_read_int(ptr @sollang_str_$(regionReadPromptIndex), i64 $regionReadPromptLength)" -> println
+                } else {
+                    "  %v$(regionNodeIndex!) = call i32 @sollang_runtime_read_int(ptr null, i64 0)" -> println
+                }
+            }
+            (regionNode.kind == 6 and regionNode.symbol != -103 and regionNode.symbol != -115 and not (regionNode.symbol == -102 and regionNode.operand0 < 0) and regionNode.opcode != -205 and regionNode.opcode != -206 and regionNode.opcode != -207 and regionNode.opcode != -208 and regionNode.opcode != -209 and regionNode.opcode != -210 and regionNode.opcode != -211 and regionNode.opcode != -212 and regionNode.opcode != -214 and regionNode.opcode != -215 and regionNode.opcode != -222 and (regionNode.opcode > -216 or regionNode.opcode < -221) and not (regionNode.parent >= 0 and context.ir[regionNode.parent].kind == 6 and (context.ir[regionNode.parent].opcode == -207 or context.ir[regionNode.parent].opcode == -209) and context.ir[regionNode.parent].operand1 == regionNodeIndex!)) -> if {
                 (regionNode.symbol == -101 or regionNode.symbol == -102) -> if {
                     regionNodeIndex! -> callArgumentIndex => regionArgumentIndex
                     context.ir[regionArgumentIndex] => regionArgument
@@ -7815,7 +7846,12 @@ emitCore context: EmitContext -> Unit uses Console {
                                                 (context.ir[regionExpressionBindingSearch!].kind == 17 and context.ir[regionExpressionBindingSearch!].symbol == regionExpressionRoot.symbol) -> if { regionExpressionBindingSearch! => regionExpressionRootBinding! }
                                                 regionExpressionBindingSearch! + 1 => regionExpressionBindingSearch!
                                             }
-                                            regionExpressionRootBinding! >= 0 -> if { context.ir[regionExpressionRootBinding!].typeSymbol => regionExpressionRootTypeSymbol! }
+                                            regionExpressionRootBinding! >= 0 -> if {
+                                                context.ir[regionExpressionRootBinding!].typeSymbol => regionExpressionRootTypeSymbol!
+                                                context.ir[regionExpressionRootBinding!].operand0 >= 0 -> if {
+                                                    context.ir[context.ir[regionExpressionRootBinding!].operand0].typeSymbol => regionExpressionRootTypeSymbol!
+                                                }
+                                            }
                                         }
                                     }
                                     false => regionExpressionRootMutable!
@@ -7923,7 +7959,11 @@ emitCore context: EmitContext -> Unit uses Console {
                                     (regionExpressionRootTypeSymbol! == 12 or regionExpressionRootTypeSymbol! == 13) -> if { context.pointerBitWidth => regionExpressionRootWidth! }
                                     (regionExpressionRootBinding! >= 0 and not regionExpressionRootMutable! and context.ir[regionExpressionRootBinding!].operand0 >= 0) -> if {
                                         context.ir[context.ir[regionExpressionRootBinding!].operand0] -> integerNodeWidth => regionExpressionBoundWidth
-                                        regionExpressionBoundWidth > 0 -> if { regionExpressionBoundWidth => regionExpressionRootWidth! }
+                                        (regionExpressionBoundWidth > 0 and regionExpressionRootTypeSymbol! != 23) -> if {
+                                            regionExpressionBoundWidth => regionExpressionRootWidth!
+                                            context.ir[regionExpressionRootBinding!].operand0 -> nodeContainsReadInt => regionExpressionContainsReadInt
+                                            (regionExpressionRootTypeSymbol! <= 0 or regionExpressionContainsReadInt) -> if { 2 => regionExpressionRootTypeSymbol! }
+                                        }
                                     }
                                     regionExpressionRootTypeSymbol! == 1 -> if {
                                         "  %v$(regionNodeIndex!)_expression$(regionExpressionRootSearch!)_text_ptr = extractvalue %sollang.text " -> print
@@ -9970,7 +10010,18 @@ emitCore context: EmitContext -> Unit uses Console {
                 (expression.kind == 6 and expression.symbol == -102 and expression.operand0 < 0) -> if {
                     "  call void @sollang_runtime_print(ptr @sollang_runtime_newline, i64 1, i1 false)" -> println
                 }
-                (expression.kind == 6 and expression.symbol != -115 and not (expression.symbol == -102 and expression.operand0 < 0) and expression.opcode != -205 and expression.opcode != -206 and expression.opcode != -207 and expression.opcode != -208 and expression.opcode != -209 and expression.opcode != -210 and expression.opcode != -211 and expression.opcode != -212 and expression.opcode != -214 and expression.opcode != -215 and expression.opcode != -222 and (expression.opcode > -216 or expression.opcode < -221) and not (expression.parent >= 0 and context.ir[expression.parent].kind == 6 and (context.ir[expression.parent].opcode == -207 or context.ir[expression.parent].opcode == -209) and context.ir[expression.parent].operand1 == expressionIndex!)) -> if {
+                (expression.kind == 6 and expression.symbol == -103) -> if {
+                    expressionIndex! -> callArgumentIndex => readPromptIndex
+                    context.ir[readPromptIndex] => readPrompt
+                    readPrompt.kind == 2 -> if {
+                        readPrompt -> sourceToken => readPromptToken
+                        Int(TextLiteralRequest { sourceModule: readPrompt.sourceModule, token: readPromptToken } -> textLiteralLength) => readPromptLength
+                        "  %v$(expressionIndex!) = call i32 @sollang_runtime_read_int(ptr @sollang_str_$(readPromptIndex), i64 $readPromptLength)" -> println
+                    } else {
+                        "  %v$(expressionIndex!) = call i32 @sollang_runtime_read_int(ptr null, i64 0)" -> println
+                    }
+                }
+                (expression.kind == 6 and expression.symbol != -103 and expression.symbol != -115 and not (expression.symbol == -102 and expression.operand0 < 0) and expression.opcode != -205 and expression.opcode != -206 and expression.opcode != -207 and expression.opcode != -208 and expression.opcode != -209 and expression.opcode != -210 and expression.opcode != -211 and expression.opcode != -212 and expression.opcode != -214 and expression.opcode != -215 and expression.opcode != -222 and (expression.opcode > -216 or expression.opcode < -221) and not (expression.parent >= 0 and context.ir[expression.parent].kind == 6 and (context.ir[expression.parent].opcode == -207 or context.ir[expression.parent].opcode == -209) and context.ir[expression.parent].operand1 == expressionIndex!)) -> if {
                     (expression.symbol == -101 or expression.symbol == -102) -> if {
                         expressionIndex! -> callArgumentIndex => runtimeArgumentIndex
                         context.ir[runtimeArgumentIndex] => runtimeArgument
@@ -10131,7 +10182,12 @@ emitCore context: EmitContext -> Unit uses Console {
                                                     (context.ir[functionExpressionRootBindingSearch!].kind == 17 and context.ir[functionExpressionRootBindingSearch!].symbol == functionExpressionRoot.symbol) -> if { functionExpressionRootBindingSearch! => functionExpressionRootBinding! }
                                                     functionExpressionRootBindingSearch! + 1 => functionExpressionRootBindingSearch!
                                                 }
-                                                functionExpressionRootBinding! >= 0 -> if { context.ir[functionExpressionRootBinding!].typeSymbol => functionExpressionRootTypeSymbol! }
+                                                functionExpressionRootBinding! >= 0 -> if {
+                                                    context.ir[functionExpressionRootBinding!].typeSymbol => functionExpressionRootTypeSymbol!
+                                                    context.ir[functionExpressionRootBinding!].operand0 >= 0 -> if {
+                                                        context.ir[context.ir[functionExpressionRootBinding!].operand0].typeSymbol => functionExpressionRootTypeSymbol!
+                                                    }
+                                                }
                                             }
                                         }
                                         false => functionExpressionRootMember!
@@ -10213,7 +10269,11 @@ emitCore context: EmitContext -> Unit uses Console {
                                         (functionExpressionRootTypeSymbol! == 12 or functionExpressionRootTypeSymbol! == 13) -> if { context.pointerBitWidth => functionExpressionRootWidth! }
                                         (functionExpressionRootBinding! >= 0 and context.ir[functionExpressionRootBinding!].operand0 >= 0) -> if {
                                             context.ir[context.ir[functionExpressionRootBinding!].operand0] -> integerNodeWidth => functionExpressionBoundWidth
-                                            functionExpressionBoundWidth > 0 -> if { functionExpressionBoundWidth => functionExpressionRootWidth! }
+                                            (functionExpressionBoundWidth > 0 and functionExpressionRootTypeSymbol! != 23) -> if {
+                                                functionExpressionBoundWidth => functionExpressionRootWidth!
+                                                context.ir[functionExpressionRootBinding!].operand0 -> nodeContainsReadInt => functionExpressionContainsReadInt
+                                                (functionExpressionRootTypeSymbol! <= 0 or functionExpressionContainsReadInt) -> if { 2 => functionExpressionRootTypeSymbol! }
+                                            }
                                         }
                                         functionExpressionRootTypeSymbol! == 1 -> if {
                                             "  %v$(expressionIndex!)_expression$(functionExpressionRootSearch!)_text_ptr = extractvalue %sollang.text " -> print
@@ -13233,7 +13293,18 @@ emitCore context: EmitContext -> Unit uses Console {
                     (entryExpression.kind == 6 and entryExpression.symbol == -102 and entryExpression.operand0 < 0) -> if {
                         "  call void @sollang_runtime_print(ptr @sollang_runtime_newline, i64 1, i1 false)" -> println
                     }
-                    (entryExpression.kind == 6 and (entryExpressionIndex! -> plannedStreamStage) < 0 and entryExpression.symbol != -115 and not (entryExpression.symbol == -102 and entryExpression.operand0 < 0) and entryExpression.opcode != -205 and entryExpression.opcode != -207 and entryExpression.opcode != -208 and entryExpression.opcode != -209 and entryExpression.opcode != -210 and entryExpression.opcode != -211 and entryExpression.opcode != -212 and entryExpression.opcode != -215 and entryExpression.opcode != -222 and (entryExpression.opcode > -216 or entryExpression.opcode < -221) and not (entryExpression.parent >= 0 and context.ir[entryExpression.parent].kind == 6 and (context.ir[entryExpression.parent].opcode == -207 or context.ir[entryExpression.parent].opcode == -209) and context.ir[entryExpression.parent].operand1 == entryExpressionIndex!)) -> if {
+                    (entryExpression.kind == 6 and entryExpression.symbol == -103) -> if {
+                        entryExpressionIndex! -> callArgumentIndex => entryReadPromptIndex
+                        context.ir[entryReadPromptIndex] => entryReadPrompt
+                        entryReadPrompt.kind == 2 -> if {
+                            entryReadPrompt -> sourceToken => entryReadPromptToken
+                            Int(TextLiteralRequest { sourceModule: entryReadPrompt.sourceModule, token: entryReadPromptToken } -> textLiteralLength) => entryReadPromptLength
+                            "  %v$(entryExpressionIndex!) = call i32 @sollang_runtime_read_int(ptr @sollang_str_$(entryReadPromptIndex), i64 $entryReadPromptLength)" -> println
+                        } else {
+                            "  %v$(entryExpressionIndex!) = call i32 @sollang_runtime_read_int(ptr null, i64 0)" -> println
+                        }
+                    }
+                    (entryExpression.kind == 6 and (entryExpressionIndex! -> plannedStreamStage) < 0 and entryExpression.symbol != -103 and entryExpression.symbol != -115 and not (entryExpression.symbol == -102 and entryExpression.operand0 < 0) and entryExpression.opcode != -205 and entryExpression.opcode != -207 and entryExpression.opcode != -208 and entryExpression.opcode != -209 and entryExpression.opcode != -210 and entryExpression.opcode != -211 and entryExpression.opcode != -212 and entryExpression.opcode != -215 and entryExpression.opcode != -222 and (entryExpression.opcode > -216 or entryExpression.opcode < -221) and not (entryExpression.parent >= 0 and context.ir[entryExpression.parent].kind == 6 and (context.ir[entryExpression.parent].opcode == -207 or context.ir[entryExpression.parent].opcode == -209) and context.ir[entryExpression.parent].operand1 == entryExpressionIndex!)) -> if {
                         (entryExpression.symbol == -101 or entryExpression.symbol == -102) -> if {
                             entryExpressionIndex! -> callArgumentIndex => entryRuntimeArgumentIndex!
                             false => entryRuntimeStreamDirect!
@@ -13519,6 +13590,9 @@ emitCore context: EmitContext -> Unit uses Console {
                                                 }
                                                 entryExpressionRootBinding! >= 0 -> if {
                                                     context.ir[entryExpressionRootBinding!].typeSymbol => entryExpressionRootTypeSymbol!
+                                                    context.ir[entryExpressionRootBinding!].operand0 >= 0 -> if {
+                                                        context.ir[context.ir[entryExpressionRootBinding!].operand0].typeSymbol => entryExpressionRootTypeSymbol!
+                                                    }
                                                     context.ir[entryExpressionRootBinding!].flags == 1 -> if {
                                                         true => entryExpressionRootMutable!
                                                         entryExpressionRootBinding! -> mutableBindingRoot => entryExpressionMutableRoot
@@ -13704,7 +13778,11 @@ emitCore context: EmitContext -> Unit uses Console {
                                             (entryExpressionRootTypeSymbol! == 12 or entryExpressionRootTypeSymbol! == 13) -> if { context.pointerBitWidth => entryExpressionRootWidth! }
                                             (entryExpressionRootBinding! >= 0 and context.ir[entryExpressionRootBinding!].operand0 >= 0) -> if {
                                                 context.ir[context.ir[entryExpressionRootBinding!].operand0] -> integerNodeWidth => entryExpressionBoundWidth
-                                                entryExpressionBoundWidth > 0 -> if { entryExpressionBoundWidth => entryExpressionRootWidth! }
+                                                (entryExpressionBoundWidth > 0 and entryExpressionRootTypeSymbol! != 23) -> if {
+                                                    entryExpressionBoundWidth => entryExpressionRootWidth!
+                                                    context.ir[entryExpressionRootBinding!].operand0 -> nodeContainsReadInt => entryExpressionContainsReadInt
+                                                    (entryExpressionRootTypeSymbol! <= 0 or entryExpressionContainsReadInt) -> if { 2 => entryExpressionRootTypeSymbol! }
+                                                }
                                             }
                                             entryExpressionRootTypeSymbol! == 1 -> if {
                                                 "  %v$(entryExpressionIndex!)_expression$(entryExpressionRootSearch!)_text_ptr = extractvalue %sollang.text " -> print
@@ -14278,7 +14356,7 @@ usesTextRuntime context: EmitContext -> Bool {
     false => usesRuntime!
     0 => nodeIndex!
     nodeIndex! < (context.ir -> len) -> while {
-        (context.ir[nodeIndex!].symbol == -101 or context.ir[nodeIndex!].symbol == -102) -> if { true => usesRuntime! }
+        (context.ir[nodeIndex!].symbol == -101 or context.ir[nodeIndex!].symbol == -102 or context.ir[nodeIndex!].symbol == -103) -> if { true => usesRuntime! }
         nodeIndex! + 1 => nodeIndex!
     }
     usesRuntime!
@@ -15701,6 +15779,7 @@ emitWasmTextRuntime: -> Unit uses Console {
     """
     @sollang_runtime_newline = private constant [1 x i8] c"\0A"
     declare i32 @sollang_browser_write(ptr, i32)
+    declare i32 @sollang_browser_read(ptr, i32)
     declare i64 @sollang_browser_now_millis()
     define internal i64 @sollang_now_millis() {
     entry:
@@ -15721,6 +15800,62 @@ emitWasmTextRuntime: -> Unit uses Console {
       br label %done
     done:
       ret void
+    }
+    define internal i32 @sollang_runtime_read_int(ptr %prompt, i64 %prompt_len) {
+    entry:
+      call void @sollang_runtime_print(ptr %prompt, i64 %prompt_len, i1 false)
+      %buf = alloca [64 x i8], align 1
+      %count = call i32 @sollang_browser_read(ptr %buf, i32 64)
+      %has_input = icmp sgt i32 %count, 0
+      br i1 %has_input, label %skip_header, label %empty
+    skip_header:
+      br label %skip
+    skip:
+      %skip_index = phi i32 [ 0, %skip_header ], [ %skip_next, %skip_space ]
+      %skip_in_bounds = icmp slt i32 %skip_index, %count
+      br i1 %skip_in_bounds, label %skip_check, label %empty
+    skip_check:
+      %skip_ptr = getelementptr i8, ptr %buf, i32 %skip_index
+      %skip_byte = load i8, ptr %skip_ptr, align 1
+      %is_space = icmp eq i8 %skip_byte, 32
+      %is_tab = icmp eq i8 %skip_byte, 9
+      %is_newline = icmp eq i8 %skip_byte, 10
+      %space_or_tab = or i1 %is_space, %is_tab
+      %is_whitespace = or i1 %space_or_tab, %is_newline
+      br i1 %is_whitespace, label %skip_space, label %sign
+    skip_space:
+      %skip_next = add i32 %skip_index, 1
+      br label %skip
+    sign:
+      %is_minus = icmp eq i8 %skip_byte, 45
+      %digit_start_delta = zext i1 %is_minus to i32
+      %digit_start = add i32 %skip_index, %digit_start_delta
+      br label %digits
+    digits:
+      %digit_index = phi i32 [ %digit_start, %sign ], [ %digit_next, %accumulate ]
+      %value = phi i32 [ 0, %sign ], [ %next_value, %accumulate ]
+      %digit_in_bounds = icmp slt i32 %digit_index, %count
+      br i1 %digit_in_bounds, label %digit_check, label %finish
+    digit_check:
+      %digit_ptr = getelementptr i8, ptr %buf, i32 %digit_index
+      %digit_byte = load i8, ptr %digit_ptr, align 1
+      %at_least_zero = icmp uge i8 %digit_byte, 48
+      %at_most_nine = icmp ule i8 %digit_byte, 57
+      %is_digit = and i1 %at_least_zero, %at_most_nine
+      br i1 %is_digit, label %accumulate, label %finish
+    accumulate:
+      %digit_i32 = zext i8 %digit_byte to i32
+      %digit = sub i32 %digit_i32, 48
+      %times_ten = mul i32 %value, 10
+      %next_value = add i32 %times_ten, %digit
+      %digit_next = add i32 %digit_index, 1
+      br label %digits
+    finish:
+      %negative_value = sub i32 0, %value
+      %result = select i1 %is_minus, i32 %negative_value, i32 %value
+      ret i32 %result
+    empty:
+      ret i32 0
     }
     """ -> println
 }

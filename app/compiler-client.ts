@@ -1,3 +1,5 @@
+import { copy, type Locale } from "./i18n";
+
 export type CompilerResult = {
   success: boolean;
   output: string;
@@ -33,20 +35,20 @@ type ToolFactory = (options?: Record<string, unknown>) => Promise<ToolModule>;
 const importToolFactory = (url: string) =>
   (new Function("url", "return import(url)") as (value: string) => Promise<{ default: ToolFactory }>)(url);
 
-export function preloadStage2(): Promise<ArrayBuffer> {
+export function preloadStage2(locale: Locale = "en"): Promise<ArrayBuffer> {
   stage2BytesPromise ??= fetch(assetUrl("/sollangc-stage2-0.2.260725.wasm")).then(response => {
     if (!response.ok) {
-      throw new Error(`Stage2 WASM을 불러오지 못했습니다 (${response.status})`);
+      throw new Error(copy[locale].loadStage2Failed(response.status));
     }
     return response.arrayBuffer();
   });
   return stage2BytesPromise;
 }
 
-function loadStandardLibrary(): Promise<StandardLibrarySource[]> {
+function loadStandardLibrary(locale: Locale): Promise<StandardLibrarySource[]> {
   standardLibraryPromise ??= fetch(assetUrl("/stdlib-0.2.260725.json")).then(async response => {
     if (!response.ok) {
-      throw new Error(`표준 라이브러리를 불러오지 못했습니다 (${response.status})`);
+      throw new Error(copy[locale].loadStdlibFailed(response.status));
     }
     return await response.json() as StandardLibrarySource[];
   });
@@ -78,11 +80,11 @@ function selectStandardLibrary(
   return selected;
 }
 
-function loadToolBinary(url: string): Promise<ArrayBuffer> {
+function loadToolBinary(url: string, locale: Locale): Promise<ArrayBuffer> {
   let pending = toolBinaryPromises.get(url);
   if (!pending) {
     pending = fetch(url).then(response => {
-      if (!response.ok) throw new Error(`${url}을 불러오지 못했습니다 (${response.status})`);
+      if (!response.ok) throw new Error(copy[locale].loadAssetFailed(url, response.status));
       return response.arrayBuffer();
     });
     toolBinaryPromises.set(url, pending);
@@ -90,8 +92,8 @@ function loadToolBinary(url: string): Promise<ArrayBuffer> {
   return pending;
 }
 
-async function compileWithStage2(source: string): Promise<string> {
-  const library = selectStandardLibrary(source, await loadStandardLibrary());
+async function compileWithStage2(source: string, locale: Locale): Promise<string> {
+  const library = selectStandardLibrary(source, await loadStandardLibrary(locale));
   const sourceBuffers = [source, ...library.map(entry => entry.source)]
     .map(value => encoder.encode(value));
   const outputChunks: Uint8Array[] = [];
@@ -143,6 +145,7 @@ async function compileWithStage2(source: string): Promise<string> {
       sollang_browser_source_count: () => sourceBuffers.length,
       sollang_browser_source_pointer: (index: number) => sourcePointers[index],
       sollang_browser_source_length: (index: number) => sourceBuffers[index].byteLength,
+      sollang_browser_read: () => 0,
       sollang_browser_write: (pointer: number, length: number) => {
         outputChunks.push(new Uint8Array(memory.buffer.slice(pointer, pointer + length)));
         return 1;
@@ -155,7 +158,7 @@ async function compileWithStage2(source: string): Promise<string> {
     }
   };
 
-  const { instance } = await WebAssembly.instantiate(await preloadStage2(), imports);
+  const { instance } = await WebAssembly.instantiate(await preloadStage2(locale), imports);
   memory = instance.exports.memory as WebAssembly.Memory;
   heapCursor = memory.buffer.byteLength;
   for (const buffer of sourceBuffers) {
@@ -170,19 +173,19 @@ async function compileWithStage2(source: string): Promise<string> {
     + decoder.decode();
 
   if (exitCode !== 0 || !llvm.includes('target triple = "wasm32-unknown-unknown-wasm"')) {
-    throw new Error(formatCompilerDiagnostic(source, llvm.trim() || `Stage2 compiler exited ${exitCode}`));
+    throw new Error(formatCompilerDiagnostic(source, llvm.trim() || `Stage2 compiler exited ${exitCode}`, locale));
   }
   return llvm;
 }
 
-async function lowerLlvmToWasm(llvm: string): Promise<Uint8Array> {
+async function lowerLlvmToWasm(llvm: string, locale: Locale): Promise<Uint8Array> {
   const llcModuleUrl = new URL(assetUrl("/llvm-16/llc.js"), window.location.href).href;
   const lldModuleUrl = new URL(assetUrl("/llvm-16/lld.js"), window.location.href).href;
   const [{ default: createLlc }, { default: createLld }, llcBinary, lldBinary] = await Promise.all([
     importToolFactory(llcModuleUrl),
     importToolFactory(lldModuleUrl),
-    loadToolBinary(`${llvmAssetRoot}/llc.wasm`),
-    loadToolBinary(`${llvmAssetRoot}/lld.wasm`)
+    loadToolBinary(`${llvmAssetRoot}/llc.wasm`, locale),
+    loadToolBinary(`${llvmAssetRoot}/lld.wasm`, locale)
   ]);
 
   const llcDiagnostics: string[] = [];
@@ -203,13 +206,13 @@ async function lowerLlvmToWasm(llvm: string): Promise<Uint8Array> {
       "main.o"
     ]);
   } catch (error) {
-    throwToolError("LLVM 변환", llcDiagnostics, error);
+    throwToolError(copy[locale].llvmStage, llcDiagnostics, error, locale);
   }
   let object: Uint8Array;
   try {
     object = llc.FS.readFile("main.o");
   } catch (error) {
-    throwToolError("LLVM 변환", llcDiagnostics, error);
+    throwToolError(copy[locale].llvmStage, llcDiagnostics, error, locale);
   }
 
   const lldDiagnostics: string[] = [];
@@ -227,6 +230,7 @@ async function lowerLlvmToWasm(llvm: string): Promise<Uint8Array> {
       "wasm",
       "--no-entry",
       "--export=sollang_start",
+      "--export=__heap_base",
       "--export-memory",
       "--allow-undefined",
       "--gc-sections",
@@ -236,20 +240,29 @@ async function lowerLlvmToWasm(llvm: string): Promise<Uint8Array> {
     ]);
     return lld.FS.readFile("main.wasm");
   } catch (error) {
-    throwToolError("WebAssembly 링크", lldDiagnostics, error);
+    throwToolError(copy[locale].linkStage, lldDiagnostics, error, locale);
   }
 }
 
-function throwToolError(stage: string, diagnostics: string[], error: unknown): never {
+function throwToolError(
+  stage: string,
+  diagnostics: string[],
+  error: unknown,
+  locale: Locale
+): never {
   const details = diagnostics.map(line => line.trim()).filter(Boolean).join("\n");
   if (details) {
-    throw new Error(`${stage}에 실패했습니다.\n${details}`);
+    throw new Error(copy[locale].toolFailed(stage, details));
   }
   const message = error instanceof Error ? error.message : String(error);
-  throw new Error(`${stage}에 실패했습니다.${message === "FS error" ? "" : `\n${message}`}`);
+  throw new Error(copy[locale].toolFailed(
+    stage,
+    message === "FS error" ? undefined : message
+  ));
 }
 
-function formatCompilerDiagnostic(source: string, raw: string): string {
+function formatCompilerDiagnostic(source: string, raw: string, locale: Locale): string {
+  const text = copy[locale];
   const lines = raw.split(/\r?\n/)
     .map(line => line.replace(/^;\s?/, "").trim())
     .filter(line => line && !line.startsWith("sollang browser compilation failed"));
@@ -264,13 +277,13 @@ function formatCompilerDiagnostic(source: string, raw: string): string {
       .filter(name => unknownName.startsWith(name) && name.length < unknownName.length)
       .sort((left, right) => right.length - left.length)[0];
     const hint = knownBinding
-      ? `힌트: 변수 이름 뒤에 글자가 이어질 때는 '$(${knownBinding})${unknownName.slice(knownBinding.length)}'처럼 $(...)로 경계를 표시하세요.`
-      : "힌트: 문자열 보간의 변수 이름을 확인하고, 뒤에 글자가 이어지면 $(name) 형태로 경계를 표시하세요.";
-    return `${prefix}알 수 없는 문자열 보간 변수 '${unknownName}'\n${hint}`;
+      ? text.interpolationBoundaryHint(knownBinding, unknownName.slice(knownBinding.length))
+      : text.interpolationHint;
+    return `${prefix}${text.unknownInterpolation(unknownName)}\n${hint}`;
   }
   const unresolvedCall = errorLine.match(/unresolved call target '([^']+)'/);
   if (unresolvedCall) {
-    return `${prefix}알 수 없는 함수 호출 '${unresolvedCall[1]}'\n힌트: 함수 호출은 '-> 함수이름', 값 바인딩은 '=> 이름'을 사용합니다.`;
+    return `${prefix}${text.unknownCall(unresolvedCall[1])}\n${text.callHint}`;
   }
   return lines.join("\n") || raw;
 }
@@ -285,9 +298,40 @@ function sourceLocation(source: string, byteOffset: number): string {
   return `main.slg:${lines.length}:${[...lines.at(-1)!].length + 1}`;
 }
 
-async function executeWasm(wasm: Uint8Array): Promise<string> {
+async function executeWasm(wasm: Uint8Array, input: string): Promise<string> {
   const chunks: Uint8Array[] = [];
+  const inputLines = input.replace(/\r\n?/g, "\n").split("\n");
+  let inputLine = 0;
   let memory: WebAssembly.Memory;
+  let heapCursor = 0;
+  const allocationSizes = new Map<number, number>();
+  const allocationSize = (rawLength: bigint | number) => {
+    const requested = Math.max(Number(rawLength), 1);
+    return Math.ceil(requested / 16) * 16;
+  };
+  const allocate = (rawLength: bigint | number) => {
+    const byteLength = allocationSize(rawLength);
+    const pointer = Math.ceil(heapCursor / 16) * 16;
+    const end = pointer + byteLength;
+    if (end > memory.buffer.byteLength) {
+      memory.grow(Math.ceil((end - memory.buffer.byteLength) / 65536));
+    }
+    heapCursor = end;
+    allocationSizes.set(pointer, byteLength);
+    return pointer;
+  };
+  const reallocate = (oldPointer: number, rawLength: bigint | number) => {
+    const pointer = oldPointer >>> 0;
+    const oldLength = allocationSizes.get(pointer) ?? 0;
+    const newLength = allocationSize(rawLength);
+    if (pointer !== 0 && oldLength >= newLength) return pointer;
+    const replacement = allocate(newLength);
+    if (pointer !== 0 && oldLength > 0) {
+      new Uint8Array(memory.buffer, replacement, Math.min(oldLength, newLength))
+        .set(new Uint8Array(memory.buffer, pointer, Math.min(oldLength, newLength)));
+    }
+    return replacement;
+  };
   const write = (pointer: number, length: number) => {
     chunks.push(new Uint8Array(memory.buffer.slice(pointer, pointer + length)));
   };
@@ -298,12 +342,24 @@ async function executeWasm(wasm: Uint8Array): Promise<string> {
     env: {
       sollang_write: write,
       sollang_browser_write: write,
+      sollang_browser_alloc: allocate,
+      sollang_browser_realloc: reallocate,
+      sollang_browser_free() {},
+      sollang_browser_read(pointer: number, capacity: number) {
+        if (inputLine >= inputLines.length || capacity <= 0) return 0;
+        const line = encoder.encode(`${inputLines[inputLine++]}\n`);
+        const length = Math.min(line.byteLength, capacity);
+        new Uint8Array(memory.buffer, pointer, length).set(line.subarray(0, length));
+        return length;
+      },
       sollang_browser_now_millis() {
         return BigInt(Math.trunc(performance.now()));
       }
     }
   });
   memory = instance.exports.memory as WebAssembly.Memory;
+  const heapBase = instance.exports.__heap_base as WebAssembly.Global | undefined;
+  heapCursor = heapBase ? Number(heapBase.value) : memory.buffer.byteLength;
   const exitCode = (instance.exports.sollang_start as () => number)();
   if (exitCode !== 0) {
     throw new Error(`program exited ${exitCode}`);
@@ -311,14 +367,18 @@ async function executeWasm(wasm: Uint8Array): Promise<string> {
   return chunks.map(chunk => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
 }
 
-export async function compileAndRun(source: string): Promise<CompilerResult> {
+export async function compileAndRun(
+  source: string,
+  locale: Locale = "en",
+  input = ""
+): Promise<CompilerResult> {
   const compileStarted = performance.now();
   try {
-    const llvm = await compileWithStage2(source);
-    const wasm = await lowerLlvmToWasm(llvm);
+    const llvm = await compileWithStage2(source, locale);
+    const wasm = await lowerLlvmToWasm(llvm, locale);
     const compileMilliseconds = performance.now() - compileStarted;
     const executeStarted = performance.now();
-    const output = await executeWasm(wasm);
+    const output = await executeWasm(wasm, input);
     return {
       success: true,
       output,

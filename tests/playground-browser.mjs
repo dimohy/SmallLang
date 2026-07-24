@@ -7,76 +7,138 @@ const browser = await chromium.launch({
   headless: true
 });
 
-try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1080 } });
+async function openLocalizedPage(locale, readyText) {
+  const context = await browser.newContext({
+    locale,
+    viewport: { width: 1440, height: 1080 }
+  });
+  const page = await context.newPage();
   page.on("console", message => console.log(`[browser:${message.type()}] ${message.text()}`));
   page.on("pageerror", error => console.error(`[browser:error] ${error.stack ?? error.message}`));
   page.on("response", response => {
     if (!response.ok()) console.error(`[browser:http] ${response.status()} ${response.url()}`);
   });
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await page.getByText("WASM 준비됨").waitFor({ timeout: 60_000 });
+  await page.getByText(readyText).waitFor({ timeout: 60_000 });
+  return { context, page };
+}
 
-  const sampleOutputs = [
-    ["hello", "Hello from Sollang!"],
-    ["flow", "결과 = 158"],
-    ["struct", "거리의 제곱 = 25"],
-    ["loop", "fib = 13"],
-    ["sensor-stream", "10억 개 중 54개만 검사"],
-    ["nested-stream", "scanned=7"],
-    ["risk-stream", "scanned=9"]
+try {
+  const { context: englishContext, page } = await openLocalizedPage("en-US", "WASM ready");
+  if (await page.locator("html").getAttribute("lang") !== "en") {
+    throw new Error("English browser locale did not set html[lang=en].");
+  }
+
+  const sampleIds = await page.locator("#sample option").evaluateAll(
+    options => options.map(option => option.value)
+  );
+  const expectedSampleIds = [
+    "hello", "main-block", "arithmetic", "input", "flow", "local-functions",
+    "loop", "when", "each-repeat", "custom-block", "fold", "containers",
+    "immutable-containers", "compile-time-collections", "struct",
+    "mutable-method", "enum", "traits-generics", "numeric-widths",
+    "associated-types", "value-generics", "result-propagation", "async-await",
+    "dynamic-trait", "effects", "readonly-references", "ownership",
+    "raw-strings", "sensor-stream", "nested-stream", "risk-stream"
   ];
-  for (const [sample, expected] of sampleOutputs) {
-    await page.locator("#sample").selectOption(sample);
-    await page.getByRole("button", { name: /실행/ }).click();
+  if (JSON.stringify(sampleIds) !== JSON.stringify(expectedSampleIds)) {
+    throw new Error(
+      `syntax catalog mismatch\nexpected ${JSON.stringify(expectedSampleIds)}\nactual   ${JSON.stringify(sampleIds)}`
+    );
+  }
+  const whileTokens = await page.locator(".monaco-editor").evaluate(() =>
+    window.monaco.editor.tokenize("count! < 8 -> while {", "sollang")[0]
+  );
+  if (!whileTokens.some(token => token.offset === 14 && token.type.includes("keyword"))) {
+    throw new Error(`while was not highlighted as a keyword: ${JSON.stringify(whileTokens)}`);
+  }
+  await page.locator("#sample").selectOption("loop");
+  await page.screenshot({
+    path: "artifacts/browser/playground-while-keyword.png",
+    fullPage: true
+  });
+
+  const sampleFailures = [];
+  let previousSource = await page.locator(".monaco-editor").evaluate(() =>
+    window.monaco.editor.getModels()[0]?.getValue() ?? ""
+  );
+  for (const sampleId of sampleIds) {
+    await page.locator("#sample").selectOption(sampleId);
+    await page.waitForFunction(
+      source => window.monaco.editor.getModels()[0]?.getValue() !== source,
+      previousSource
+    );
+    const source = await page.locator(".monaco-editor").evaluate(() => {
+      const monacoApi = window.monaco;
+      return monacoApi?.editor.getModels()[0]?.getValue() ?? "";
+    });
+    previousSource = source;
+    if (!source || /[가-힣]/u.test(source)) {
+      throw new Error(`${sampleId} source is missing or is not English-only.`);
+    }
+
+    await page.getByRole("button", { name: /^Run/ }).click();
     await page.locator(".result-ok, .result-error").waitFor({ timeout: 120_000 });
     if (await page.locator(".result-error").isVisible()) {
-      throw new Error(`${sample} browser compilation failed: ${await page.locator(".terminal").innerText()}`);
+      sampleFailures.push(
+        `${sampleId}: ${(await page.locator(".terminal").innerText()).replace(/\s+/g, " ").trim()}`
+      );
+    } else if (!(await page.locator(".terminal pre").innerText()).trim()) {
+      sampleFailures.push(`${sampleId}: execution succeeded without observable output`);
     }
-    await page.locator(".terminal pre").getByText(expected, { exact: false }).waitFor();
   }
+  if (sampleFailures.length > 0) {
+    throw new Error(`browser sample failures:\n${sampleFailures.join("\n")}`);
+  }
+
+  await page.locator("#sample").selectOption("input");
+  if (await page.locator("#stdin").inputValue() !== "12\n30") {
+    throw new Error("Input sample did not populate stdin.");
+  }
+  await page.getByRole("button", { name: /^Run/ }).click();
+  await page.getByText("Sum = 42", { exact: false }).waitFor({ timeout: 120_000 });
 
   await page.locator("#sample").selectOption("hello");
   await page.locator(".monaco-editor .view-lines").click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-  await page.keyboard.insertText('main {\n    "브라우저 편집 성공" -> println\n}');
-  await page.getByRole("button", { name: /실행/ }).click();
-  await page.getByText("브라우저 편집 성공", { exact: true }).waitFor();
+  await page.keyboard.insertText('main {\n    "Browser edit succeeded." -> println\n}');
+  await page.getByRole("button", { name: /^Run/ }).click();
+  await page.getByText("Browser edit succeeded.", { exact: true }).waitFor();
 
   await page.locator(".monaco-editor .view-lines").click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await page.keyboard.insertText(
     'main {\n'
     + '    "dimohy" => dimohy\n'
-    + '    "$dimohy는 디모이다!" -> println\n'
+    + '    "$dimohySuffix" -> println\n'
     + '}'
   );
-  await page.getByRole("button", { name: /실행/ }).click();
+  await page.getByRole("button", { name: /^Run/ }).click();
   await page.locator(".result-error").waitFor({ timeout: 120_000 });
-  const friendlyDiagnostic = await page.locator(".terminal pre").innerText();
+  const interpolationDiagnostic = await page.locator(".terminal pre").innerText();
   if (
-    !friendlyDiagnostic.includes("알 수 없는 문자열 보간 변수 'dimohy는'")
-    || !friendlyDiagnostic.includes("'$(dimohy)는'")
-    || friendlyDiagnostic.includes("FS error")
+    !interpolationDiagnostic.includes("Unknown interpolation binding 'dimohySuffix'")
+    || !interpolationDiagnostic.includes("'$(dimohy)Suffix'")
+    || interpolationDiagnostic.includes("FS error")
   ) {
-    throw new Error(`unfriendly browser diagnostic: ${friendlyDiagnostic}`);
+    throw new Error(`unfriendly English interpolation diagnostic: ${interpolationDiagnostic}`);
   }
 
   await page.locator(".monaco-editor .view-lines").click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await page.keyboard.insertText(
     'main {\n'
-    + '    "값이 왼쪽에서 오른쪽으로 흐릅니다." -> println2\n'
+    + '    "Values flow from left to right." -> println2\n'
     + '}'
   );
-  await page.getByRole("button", { name: /실행/ }).click();
+  await page.getByRole("button", { name: /^Run/ }).click();
   await page.locator(".result-error").waitFor({ timeout: 120_000 });
   const unresolvedCallDiagnostic = await page.locator(".terminal pre").innerText();
   if (
-    !unresolvedCallDiagnostic.includes("알 수 없는 함수 호출 'println2'")
+    !unresolvedCallDiagnostic.includes("Unknown function call 'println2'")
     || unresolvedCallDiagnostic.includes("FS error")
   ) {
-    throw new Error(`missing unresolved-call browser diagnostic: ${unresolvedCallDiagnostic}`);
+    throw new Error(`missing English unresolved-call diagnostic: ${unresolvedCallDiagnostic}`);
   }
 
   const tokenColors = await page.locator(".view-lines span[class*='mtk']").evaluateAll(
@@ -90,7 +152,25 @@ try {
   await page.screenshot({ path: "artifacts/browser/playground-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "artifacts/browser/playground-mobile.png", fullPage: true });
-  console.log(`PASS browser playground (${tokenColors} syntax colors)`);
+  await englishContext.close();
+
+  for (const [locale, readyText, htmlLang, localizedLabel, localizedSampleTitle] of [
+    ["ko-KR", "WASM 준비됨", "ko", "입력 (stdin)", "인사와 문자열 보간"],
+    ["ja-JP", "WASM 準備完了", "ja", "入力 (stdin)", "挨拶と文字列補間"],
+    ["zh-CN", "WASM 已就绪", "zh", "输入 (stdin)", "问候与字符串插值"]
+  ]) {
+    const { context, page: localizedPage } = await openLocalizedPage(locale, readyText);
+    if (await localizedPage.locator("html").getAttribute("lang") !== htmlLang) {
+      throw new Error(`${locale} did not set html[lang=${htmlLang}].`);
+    }
+    await localizedPage.getByText(localizedLabel, { exact: true }).waitFor();
+    if (await localizedPage.locator("#sample option:checked").innerText() !== localizedSampleTitle) {
+      throw new Error(`${locale} did not localize sample titles.`);
+    }
+    await context.close();
+  }
+
+  console.log(`PASS browser playground (${sampleIds.length} samples, 4 locales, ${tokenColors} syntax colors)`);
 } finally {
   await browser.close();
 }

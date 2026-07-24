@@ -68,11 +68,17 @@ if ($ReuseCompilerArtifact) {
 
 Write-Host "[browser 3/4] Execute browser compiler regressions."
 foreach ($case in @(
-    @("examples\576-linq-multiplication-table.slg", "browser-stage2-table.ll", "576-linq-multiplication-table.stdout.txt"),
-    @("examples\580-deferred-text-evaluation.slg", "browser-stage2-deferred-text.ll", "580-deferred-text-evaluation.stdout.txt"),
-    @("examples\582-billion-sensor-alerts.slg", "browser-stage2-sensor.ll", "582-billion-sensor-alerts.stdout.txt"),
-    @("examples\583-stream-state-take-skip.slg", "browser-stage2-state.ll", "583-stream-state-take-skip.stdout.txt"),
-    @("examples\585-stream-transaction-risk-scan.slg", "browser-stage2-risk.ll", "585-stream-transaction-risk-scan.stdout.txt")
+    @("examples\576-linq-multiplication-table.slg", "browser-stage2-table.ll", "examples\expected\576-linq-multiplication-table.stdout.txt"),
+    @("examples\580-deferred-text-evaluation.slg", "browser-stage2-deferred-text.ll", "examples\expected\580-deferred-text-evaluation.stdout.txt"),
+    @("examples\582-billion-sensor-alerts.slg", "browser-stage2-sensor.ll", "examples\expected\582-billion-sensor-alerts.stdout.txt"),
+    @("examples\583-stream-state-take-skip.slg", "browser-stage2-state.ll", "examples\expected\583-stream-state-take-skip.stdout.txt"),
+    @("examples\585-stream-transaction-risk-scan.slg", "browser-stage2-risk.ll", "examples\expected\585-stream-transaction-risk-scan.stdout.txt"),
+    @(
+        "tests\Sollang.ExampleTests\Fixtures\browser-stage2-read-int.slg",
+        "browser-stage2-read-int.ll",
+        "tests\Sollang.ExampleTests\Fixtures\browser-stage2-read-int.stdout.txt",
+        "tests\Sollang.ExampleTests\Fixtures\browser-stage2-read-int.stdin.txt"
+    )
 )) {
     $programLlvm = Join-Path $repoRoot "artifacts\$($case[1])"
     $programBitcode = [System.IO.Path]::ChangeExtension($programLlvm, ".bc")
@@ -96,9 +102,15 @@ foreach ($case in @(
         $programObject `
         -o $programWasm
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & node (Join-Path $PSScriptRoot "verify-browser-program.mjs") `
-        $programWasm `
-        (Join-Path $repoRoot "examples\expected\$($case[2])")
+    $verifyArguments = @(
+        (Join-Path $PSScriptRoot "verify-browser-program.mjs"),
+        $programWasm,
+        (Join-Path $repoRoot $case[2])
+    )
+    if ($case.Count -gt 3) {
+        $verifyArguments += (Join-Path $repoRoot $case[3])
+    }
+    & node $verifyArguments
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

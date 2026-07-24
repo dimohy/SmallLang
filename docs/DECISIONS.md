@@ -10626,3 +10626,30 @@ x64. Browser Stage2 passes all five Stream programs plus interpolation,
 unresolved-call, and mouse-capability diagnostics. The published compiler Wasm
 has SHA-256
 `5DD63D0857C1556D0CCDDE13A6D94DC52B75F1F048E7EDC5156C91EE979149BE`.
+
+## D276 — The playground localizes its shell and executes real stdin
+
+Status: implemented
+Date: 2026-07-25
+
+The playground chooses Korean, English, Japanese, or Chinese from the browser's
+ordered language preferences and falls back to English. Labels, status,
+timings, compiler diagnostics, hints, and sample descriptions follow that
+locale. Sollang source in the catalog remains English in every locale so a
+sample copied from one browser is identical in another.
+
+The catalog is an explicit 31-entry, browser-executed tour spanning declarations
+and entry blocks, functions and flow, control blocks, containers, nominal and
+advanced types, ownership syntax, structured async, effects, raw strings, and
+deferred Stream pipelines. Browser regression selects and runs every entry,
+requires observable output, rejects missing or reordered entries, and rejects
+non-English source. Where a complete native construct still exceeds the Stage2
+browser lowering surface, the runnable entry shows its exact spelling in an
+English source comment rather than pretending that the browser executed an
+unsupported operation.
+
+`readInt` is not simulated by replacing source or precomputing output. The
+Stage2 browser runtime imports `sollang_browser_read`, requests bytes into
+linear memory, and parses them through the same Sollang runtime path as a
+native program. The host consumes one submitted stdin line per call. An exact
+regression supplies `12` and `30` to two reads and requires `Sum = 42`.

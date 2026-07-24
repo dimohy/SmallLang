@@ -1,0 +1,6 @@
+main {
+    "First number: " -> readInt => left
+    "Second number: " -> readInt => right
+    left + right => total
+    "Sum = $total" -> println
+}

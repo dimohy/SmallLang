@@ -1010,6 +1010,11 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                     knownCallTypeSearch! + 1 => knownCallTypeSearch!
                                 }
                             } else {
+                                knownCall.functionSymbol == -103 -> if {
+                                    1 => expressionTypeOrigin!
+                                    -1 => expressionTypeModule!
+                                    2 => expressionTypeSymbol!
+                                }
                                 knownCall.functionSymbol == -115 -> if {
                                     1 => expressionTypeOrigin!
                                     -1 => expressionTypeModule!
@@ -2023,7 +2028,11 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                 results![canonicalWrapperSearch!] => canonicalWrapperCandidate
                                 (canonicalWrapperCandidate.parent == canonicalBindingValueIndex! and canonicalWrapperCandidate.kind != 17 and not (canonicalWrapperCandidate.typeOrigin == 1 and canonicalWrapperCandidate.typeSymbol == 0)) -> if {
                                     prepared.package.nodes[sourceRange.astStart + canonicalWrapperCandidate.astNode].length => canonicalWrapperCandidateLength
-                                    (canonicalWrapperValue! < 0 or canonicalWrapperCandidateLength > canonicalWrapperLength!) -> if {
+                                    false => canonicalWrapperHasReadInt!
+                                    canonicalWrapperValue! >= 0 -> if {
+                                        (results![canonicalWrapperValue!].kind == 6 and results![canonicalWrapperValue!].symbol == -103) -> if { true => canonicalWrapperHasReadInt! }
+                                    }
+                                    ((canonicalWrapperCandidate.kind == 6 and canonicalWrapperCandidate.symbol == -103) or (not canonicalWrapperHasReadInt! and (canonicalWrapperValue! < 0 or canonicalWrapperCandidateLength > canonicalWrapperLength!))) -> if {
                                         canonicalWrapperSearch! => canonicalWrapperValue!
                                         canonicalWrapperCandidateLength => canonicalWrapperLength!
                                     }
@@ -2554,6 +2563,11 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                                         knownEntryCallTypeSearch! + 1 => knownEntryCallTypeSearch!
                                     }
                                 } else {
+                                    knownEntryCall.functionSymbol == -103 -> if {
+                                        1 => entryExpressionTypeOrigin!
+                                        -1 => entryExpressionTypeModule!
+                                        2 => entryExpressionTypeSymbol!
+                                    }
                                     knownEntryCall.functionSymbol == -115 -> if {
                                         1 => entryExpressionTypeOrigin!
                                         -1 => entryExpressionTypeModule!
@@ -4168,6 +4182,20 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
         }
         intrinsicSourceTextIrIndex! + 1 => intrinsicSourceTextIrIndex!
     }
+    # Runtime readInt has no user declaration to contribute a return type.
+    # Preserve its intrinsic Int result before binding/reference propagation.
+    0 => runtimeReadIntIndex!
+    runtimeReadIntIndex! < (results! -> len) -> while {
+        results![runtimeReadIntIndex!] => runtimeReadInt!
+        (runtimeReadInt!.kind == 6 and runtimeReadInt!.symbol == -103) -> if {
+            1 => runtimeReadInt!.typeOrigin
+            -1 => runtimeReadInt!.typeModule
+            2 => runtimeReadInt!.typeSymbol
+            1 => runtimeReadInt!.typeKind
+            runtimeReadInt! => results![runtimeReadIntIndex!]
+        }
+        runtimeReadIntIndex! + 1 => runtimeReadIntIndex!
+    }
     0 => canonicalBindingIndex!
     canonicalBindingIndex! < (results! -> len) -> while {
         results![canonicalBindingIndex!] => canonicalBinding!
@@ -4182,7 +4210,11 @@ public lowerContext prepared: semanticContext.SemanticSnapshot -> [TypedIrNode; 
                     (canonicalGlobalWrapperCandidate.parent == canonicalGlobalValueIndex! and canonicalGlobalWrapperCandidate.kind != 17 and not (canonicalGlobalWrapperCandidate.typeOrigin == 1 and canonicalGlobalWrapperCandidate.typeSymbol == 0)) -> if {
                         prepared.package.ranges[canonicalGlobalWrapperCandidate.sourceModule] => canonicalGlobalWrapperRange
                         prepared.package.nodes[canonicalGlobalWrapperRange.astStart + canonicalGlobalWrapperCandidate.astNode].length => canonicalGlobalWrapperCandidateLength
-                        (canonicalGlobalWrapperValue! < 0 or canonicalGlobalWrapperCandidateLength > canonicalGlobalWrapperLength!) -> if {
+                        false => canonicalGlobalWrapperHasReadInt!
+                        canonicalGlobalWrapperValue! >= 0 -> if {
+                            (results![canonicalGlobalWrapperValue!].kind == 6 and results![canonicalGlobalWrapperValue!].symbol == -103) -> if { true => canonicalGlobalWrapperHasReadInt! }
+                        }
+                        ((canonicalGlobalWrapperCandidate.kind == 6 and canonicalGlobalWrapperCandidate.symbol == -103) or (not canonicalGlobalWrapperHasReadInt! and (canonicalGlobalWrapperValue! < 0 or canonicalGlobalWrapperCandidateLength > canonicalGlobalWrapperLength!))) -> if {
                             canonicalGlobalWrapperSearch! => canonicalGlobalWrapperValue!
                             canonicalGlobalWrapperCandidateLength => canonicalGlobalWrapperLength!
                         }

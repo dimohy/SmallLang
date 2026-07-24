@@ -109,6 +109,9 @@ const imports = {
     sollang_browser_source_length(index) {
       return sourceBuffers[index].byteLength;
     },
+    sollang_browser_read() {
+      return 0;
+    },
     sollang_browser_write(pointer, length) {
       outputChunks.push(new Uint8Array(memory.buffer.slice(pointer, pointer + length)));
       return 1;

@@ -102,6 +102,7 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
             functions.AppendLine("declare void @exit(i32)");
         }
         functions.AppendLine("declare i32 @sollang_browser_write(ptr, i32)");
+        functions.AppendLine("declare i32 @sollang_browser_read(ptr, i32)");
         functions.AppendLine("declare void @sollang_browser_panic(ptr, i32)");
         functions.AppendLine("declare i64 @sollang_browser_now_millis()");
         functions.AppendLine("declare i32 @sollang_browser_source_count()");
@@ -174,6 +175,20 @@ internal sealed class WasmBrowserLlvmRuntimePlatform : LlvmRuntimePlatform
 
             define internal i32 @sollang_read_stdin(ptr %stdin, ptr %data, i64 %len64, ptr %read) #0 {
             entry:
+              %too_large = icmp ugt i64 %len64, 2147483647
+              br i1 %too_large, label %fail, label %read_input
+
+            read_input:
+              %len = trunc i64 %len64 to i32
+              %count = call i32 @sollang_browser_read(ptr %data, i32 %len)
+              %ok = icmp sgt i32 %count, 0
+              br i1 %ok, label %success, label %fail
+
+            success:
+              store i32 %count, ptr %read, align 4
+              ret i32 1
+
+            fail:
               store i32 0, ptr %read, align 4
               ret i32 0
             }

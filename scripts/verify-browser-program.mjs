@@ -2,12 +2,18 @@ import fs from "node:fs";
 
 const wasmPath = process.argv[2];
 const expectedPath = process.argv[3];
+const inputPath = process.argv[4];
 if (!wasmPath || !expectedPath) {
-  throw new Error("usage: verify-browser-program.mjs <program.wasm> <expected.txt>");
+  throw new Error("usage: verify-browser-program.mjs <program.wasm> <expected.txt> [input.txt]");
 }
 
 const decoder = new TextDecoder();
 const chunks = [];
+const encoder = new TextEncoder();
+const inputLines = inputPath
+  ? fs.readFileSync(inputPath, "utf8").replace(/\r\n?/g, "\n").split("\n")
+  : [];
+let inputLine = 0;
 let memory;
 let heapCursor = 0;
 
@@ -30,6 +36,13 @@ const { instance } = await WebAssembly.instantiate(fs.readFileSync(wasmPath), {
     sollang_browser_source_count: () => 0,
     sollang_browser_source_pointer: () => 0,
     sollang_browser_source_length: () => 0,
+    sollang_browser_read(pointer, capacity) {
+      if (inputLine >= inputLines.length || capacity <= 0) return 0;
+      const line = encoder.encode(`${inputLines[inputLine++]}\n`);
+      const length = Math.min(line.byteLength, capacity);
+      new Uint8Array(memory.buffer, pointer, length).set(line.subarray(0, length));
+      return length;
+    },
     sollang_browser_write(pointer, length) {
       chunks.push(new Uint8Array(memory.buffer.slice(pointer, pointer + length)));
       return 1;

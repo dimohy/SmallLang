@@ -2,6 +2,7 @@ target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-i128:128-n32:64-S128-n
 target triple = "wasm32-unknown-unknown-wasm"
 @sollang_runtime_newline = private constant [1 x i8] c"\0A"
 declare i32 @sollang_browser_write(ptr, i32)
+declare i32 @sollang_browser_read(ptr, i32)
 declare i64 @sollang_browser_now_millis()
 define internal i64 @sollang_now_millis() {
 entry:
@@ -22,6 +23,62 @@ write_newline:
   br label %done
 done:
   ret void
+}
+define internal i32 @sollang_runtime_read_int(ptr %prompt, i64 %prompt_len) {
+entry:
+  call void @sollang_runtime_print(ptr %prompt, i64 %prompt_len, i1 false)
+  %buf = alloca [64 x i8], align 1
+  %count = call i32 @sollang_browser_read(ptr %buf, i32 64)
+  %has_input = icmp sgt i32 %count, 0
+  br i1 %has_input, label %skip_header, label %empty
+skip_header:
+  br label %skip
+skip:
+  %skip_index = phi i32 [ 0, %skip_header ], [ %skip_next, %skip_space ]
+  %skip_in_bounds = icmp slt i32 %skip_index, %count
+  br i1 %skip_in_bounds, label %skip_check, label %empty
+skip_check:
+  %skip_ptr = getelementptr i8, ptr %buf, i32 %skip_index
+  %skip_byte = load i8, ptr %skip_ptr, align 1
+  %is_space = icmp eq i8 %skip_byte, 32
+  %is_tab = icmp eq i8 %skip_byte, 9
+  %is_newline = icmp eq i8 %skip_byte, 10
+  %space_or_tab = or i1 %is_space, %is_tab
+  %is_whitespace = or i1 %space_or_tab, %is_newline
+  br i1 %is_whitespace, label %skip_space, label %sign
+skip_space:
+  %skip_next = add i32 %skip_index, 1
+  br label %skip
+sign:
+  %is_minus = icmp eq i8 %skip_byte, 45
+  %digit_start_delta = zext i1 %is_minus to i32
+  %digit_start = add i32 %skip_index, %digit_start_delta
+  br label %digits
+digits:
+  %digit_index = phi i32 [ %digit_start, %sign ], [ %digit_next, %accumulate ]
+  %value = phi i32 [ 0, %sign ], [ %next_value, %accumulate ]
+  %digit_in_bounds = icmp slt i32 %digit_index, %count
+  br i1 %digit_in_bounds, label %digit_check, label %finish
+digit_check:
+  %digit_ptr = getelementptr i8, ptr %buf, i32 %digit_index
+  %digit_byte = load i8, ptr %digit_ptr, align 1
+  %at_least_zero = icmp uge i8 %digit_byte, 48
+  %at_most_nine = icmp ule i8 %digit_byte, 57
+  %is_digit = and i1 %at_least_zero, %at_most_nine
+  br i1 %is_digit, label %accumulate, label %finish
+accumulate:
+  %digit_i32 = zext i8 %digit_byte to i32
+  %digit = sub i32 %digit_i32, 48
+  %times_ten = mul i32 %value, 10
+  %next_value = add i32 %times_ten, %digit
+  %digit_next = add i32 %digit_index, 1
+  br label %digits
+finish:
+  %negative_value = sub i32 0, %value
+  %result = select i1 %is_minus, i32 %negative_value, i32 %value
+  ret i32 %result
+empty:
+  ret i32 0
 }
 %sollang.text = type { ptr, i64 }
 @sollang_str_2 = private unnamed_addr constant [5 x i8] c"hello"

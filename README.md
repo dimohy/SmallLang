@@ -43,7 +43,11 @@ Open [sollang.slogs.dev](https://sollang.slogs.dev), choose a sample, edit the
 syntax-highlighted source, and press **Run**. The `.slg` self-hosted Stage2
 compiler runs in WebAssembly, emits LLVM for the edited program, and lowers it
 to an executable WebAssembly module entirely inside the browser. The standard
-library and source code never travel to a compilation server.
+library and source code never travel to a compilation server. The interface
+follows the browser language for Korean, English, Japanese, and Chinese while
+the 31-entry browser-runnable sample catalog stays in English so programs are
+portable between visitors. The stdin panel feeds one line to each `readInt`
+call.
 
 ## Quick Look
 

@@ -13,11 +13,22 @@ import {
   Sparkles,
   TerminalSquare
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { compileAndRun, CompilerResult, preloadStage2 } from "./compiler-client";
-import { samples } from "./samples";
+import { copy, detectLocale, Locale } from "./i18n";
+import { getSamples } from "./samples";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const defaultSamples = getSamples("en");
+
+function subscribeToLanguageChange(onChange: () => void) {
+  window.addEventListener("languagechange", onChange);
+  return () => window.removeEventListener("languagechange", onChange);
+}
+
+function browserLocale(): Locale {
+  return detectLocale(navigator.languages);
+}
 
 const keywords = [
   "main", "public", "namespace", "import", "as", "struct", "enum", "trait",
@@ -28,18 +39,46 @@ const keywords = [
 ];
 
 export default function PlaygroundPage() {
-  const [sampleId, setSampleId] = useState(samples[0].id);
+  const locale = useSyncExternalStore<Locale>(
+    subscribeToLanguageChange,
+    browserLocale,
+    () => "en"
+  );
+  const text = copy[locale];
+  const samples = useMemo(() => getSamples(locale), [locale]);
+  const previousLocale = useRef<Locale>("en");
+  const [sampleId, setSampleId] = useState(defaultSamples[0].id);
   const selected = useMemo(
     () => samples.find(sample => sample.id === sampleId) ?? samples[0],
-    [sampleId]
+    [sampleId, samples]
   );
-  const [code, setCode] = useState(selected.code);
+  const sampleGroups = useMemo(() => {
+    const groups = new Map<string, typeof samples>();
+    for (const sample of samples) {
+      const group = groups.get(sample.category) ?? [];
+      group.push(sample);
+      groups.set(sample.category, group);
+    }
+    return [...groups.entries()];
+  }, [samples]);
+  const [code, setCode] = useState(defaultSamples[0].code);
+  const [input, setInput] = useState(defaultSamples[0].input);
   const [compilerState, setCompilerState] = useState<"loading" | "ready" | "failed">("loading");
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<CompilerResult | null>(null);
 
   useEffect(() => {
-    preloadStage2()
+    document.documentElement.lang = locale;
+    const previous = getSamples(previousLocale.current)
+      .find(sample => sample.id === sampleId) ?? getSamples(previousLocale.current)[0];
+    const next = samples.find(sample => sample.id === sampleId) ?? samples[0];
+    setCode(current => current === previous.code ? next.code : current);
+    setInput(current => current === previous.input ? next.input : current);
+    previousLocale.current = locale;
+  }, [locale, sampleId, samples]);
+
+  useEffect(() => {
+    preloadStage2(locale)
       .then(() => setCompilerState("ready"))
       .catch(error => {
         setCompilerState("failed");
@@ -51,16 +90,16 @@ export default function PlaygroundPage() {
           executeMilliseconds: 0
         });
       });
-  }, []);
+  }, [locale]);
 
   const run = useCallback(async () => {
     if (compilerState !== "ready" || isRunning) return;
     setIsRunning(true);
     setResult(null);
-    const compiled = await compileAndRun(code);
+    const compiled = await compileAndRun(code, locale, input);
     setResult(compiled);
     setIsRunning(false);
-  }, [code, compilerState, isRunning]);
+  }, [code, compilerState, input, isRunning, locale]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -77,6 +116,7 @@ export default function PlaygroundPage() {
     const next = samples.find(sample => sample.id === id) ?? samples[0];
     setSampleId(id);
     setCode(next.code);
+    setInput(next.input);
     setResult(null);
   };
 
@@ -94,6 +134,7 @@ export default function PlaygroundPage() {
           [/"""/, { token: "string.quote", next: "@multilineString" }],
           [/"/, { token: "string.quote", next: "@string" }],
           [/[A-Za-z_\u0080-\uFFFF][A-Za-z0-9_!\u0080-\uFFFF]*(?=\s*(?:<[^>\n]+>)?\s*\()/, "function.call"],
+          [/(->)(\s*)(if|else|when|while|each|fold|repeat)\b/, ["operator", "white", "keyword"]],
           [/(->)(\s*)([A-Za-z_\u0080-\uFFFF][A-Za-z0-9_!\u0080-\uFFFF]*)/, ["operator", "white", "function.call"]],
           [/(=>)(\s*)([A-Za-z_\u0080-\uFFFF][A-Za-z0-9_!\u0080-\uFFFF]*)/, ["operator", "white", "variable.binding"]],
           [/^(\s*)([A-Za-z_\u0080-\uFFFF][A-Za-z0-9_!\u0080-\uFFFF]*)(?=\s+(?:[A-Za-z_\u0080-\uFFFF][A-Za-z0-9_!\u0080-\uFFFF]*\s*:|:))/, ["white", "function.declaration"]],
@@ -182,7 +223,7 @@ export default function PlaygroundPage() {
   return (
     <main className="site-shell">
       <header className="site-header">
-        <a className="brand" href={`${basePath}/`} aria-label="Sollang home">
+        <a className="brand" href={`${basePath}/`} aria-label={text.homeLabel}>
           <img src={`${basePath}/sollang-logo.svg`} alt="" width={42} height={42} />
           <span>
             <strong>Sollang</strong>
@@ -194,7 +235,7 @@ export default function PlaygroundPage() {
             {compilerState === "loading" && <LoaderCircle size={14} className="spin" />}
             {compilerState === "ready" && <Check size={14} />}
             {compilerState === "failed" && <CircleAlert size={14} />}
-            {compilerState === "loading" ? "WASM 로딩 중" : compilerState === "ready" ? "WASM 준비됨" : "WASM 오류"}
+            {compilerState === "loading" ? text.wasmLoading : compilerState === "ready" ? text.wasmReady : text.wasmError}
           </span>
           <a className="github-link" href="https://github.com/dimohy/Sollang" target="_blank" rel="noreferrer">
             <Code2 size={17} />
@@ -205,24 +246,28 @@ export default function PlaygroundPage() {
 
       <section className="intro">
         <div>
-          <div className="eyebrow"><Sparkles size={14} /> FLOW-FIRST LANGUAGE</div>
-          <h1>코드가 흐르는 방향으로<br />생각해 보세요.</h1>
+          <div className="eyebrow"><Sparkles size={14} /> {text.eyebrow}</div>
+          <h1>{text.headlineFirst}<br />{text.headlineSecond}</h1>
         </div>
         <p>
-          샘플을 고르고 마음껏 수정하세요. Sollang 컴파일러가
-          <strong> 브라우저 안의 WebAssembly</strong>에서 코드를 검증하고 실행합니다.
-          소스 코드는 서버로 전송되지 않습니다.
+          {text.introBeforeStrong}
+          <strong>{text.introStrong}</strong>
+          {text.introAfterStrong}
         </p>
       </section>
 
       <section className="workbench">
         <div className="workbench-toolbar">
           <div className="sample-picker">
-            <label htmlFor="sample">예제</label>
+            <label htmlFor="sample">{text.sample}</label>
             <div className="select-wrap">
               <select id="sample" value={sampleId} onChange={event => chooseSample(event.target.value)}>
-                {samples.map(sample => (
-                  <option key={sample.id} value={sample.id}>{sample.title}</option>
+                {sampleGroups.map(([category, group]) => (
+                  <optgroup key={category} label={category}>
+                    {group.map(sample => (
+                      <option key={sample.id} value={sample.id}>{sample.title}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <ChevronDown size={16} />
@@ -238,11 +283,12 @@ export default function PlaygroundPage() {
               type="button"
               onClick={() => {
                 setCode(selected.code);
+                setInput(selected.input);
                 setResult(null);
               }}
             >
               <RotateCcw size={15} />
-              초기화
+              {text.reset}
             </button>
             <button
               className="run-button"
@@ -251,10 +297,24 @@ export default function PlaygroundPage() {
               onClick={run}
             >
               {isRunning ? <LoaderCircle size={17} className="spin" /> : <Play size={17} fill="currentColor" />}
-              {isRunning ? "컴파일 중…" : "실행"}
+              {isRunning ? text.compiling : text.run}
               <kbd>Ctrl ↵</kbd>
             </button>
           </div>
+        </div>
+
+        <div className="stdin-panel">
+          <div className="stdin-copy">
+            <label htmlFor="stdin">{text.input}</label>
+            <span>{text.inputHint}</span>
+          </div>
+          <textarea
+            id="stdin"
+            value={input}
+            onChange={event => setInput(event.target.value)}
+            placeholder={text.inputPlaceholder}
+            spellCheck={false}
+          />
         </div>
 
         <div className="panels">
@@ -271,7 +331,7 @@ export default function PlaygroundPage() {
                 value={code}
                 beforeMount={beforeMount}
                 onChange={value => setCode(value ?? "")}
-                loading={<div className="editor-loading"><LoaderCircle className="spin" /> 편집기 로딩 중…</div>}
+                loading={<div className="editor-loading"><LoaderCircle className="spin" /> {text.editorLoading}</div>}
                 options={{
                   minimap: { enabled: false },
                   fontFamily: "'Cascadia Code', 'SFMono-Regular', Consolas, monospace",
@@ -293,7 +353,7 @@ export default function PlaygroundPage() {
 
           <section className="panel output-panel">
             <div className="panel-title">
-              <span><TerminalSquare size={15} /> 출력</span>
+              <span><TerminalSquare size={15} /> {text.output}</span>
               {result && (
                 <span className={result.success ? "result-ok" : "result-error"}>
                   {result.success ? "EXIT 0" : "COMPILE ERROR"}
@@ -304,14 +364,14 @@ export default function PlaygroundPage() {
               {!result && !isRunning && (
                 <div className="terminal-empty">
                   <Play size={23} />
-                  <strong>코드를 실행해 보세요</strong>
-                  <span>결과와 컴파일 진단이 여기에 표시됩니다.</span>
+                  <strong>{text.runPrompt}</strong>
+                  <span>{text.resultPrompt}</span>
                 </div>
               )}
               {isRunning && (
                 <div className="terminal-empty">
                   <LoaderCircle size={23} className="spin" />
-                  <strong>브라우저에서 컴파일 중</strong>
+                  <strong>{text.compilingInBrowser}</strong>
                   <span>SLG Stage2 → LLVM → WebAssembly</span>
                 </div>
               )}
@@ -320,11 +380,11 @@ export default function PlaygroundPage() {
                   <pre>{result.success ? result.output : result.diagnostics}</pre>
                   <div className="timing">
                     <Clock3 size={13} />
-                    컴파일 {result.compileMilliseconds.toFixed(1)}ms
+                    {text.compileTime} {result.compileMilliseconds.toFixed(1)}ms
                     <span>·</span>
-                    실행 {result.executeMilliseconds.toFixed(1)}ms
+                    {text.executeTime} {result.executeMilliseconds.toFixed(1)}ms
                     <span>·</span>
-                    전체 {totalTime.toFixed(1)}ms
+                    {text.totalTime} {totalTime.toFixed(1)}ms
                   </div>
                 </>
               )}
@@ -335,7 +395,7 @@ export default function PlaygroundPage() {
 
       <footer>
         <span>Sollang 0.2.260725 · Apache-2.0</span>
-        <span>Compiler: SLG Stage2 WebAssembly · No server round-trip</span>
+        <span>{text.footer}</span>
       </footer>
     </main>
   );

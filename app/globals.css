@@ -246,8 +246,54 @@ button, a { -webkit-tap-highlight-color: transparent; }
   font-weight: 800;
 }
 
+.stdin-panel {
+  min-height: 74px;
+  padding: 11px 18px;
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  background: #121714;
+}
+.stdin-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stdin-copy label {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.stdin-copy span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.stdin-panel textarea {
+  width: 100%;
+  height: 50px;
+  padding: 8px 11px;
+  resize: vertical;
+  color: #c6e7d2;
+  border: 1px solid #354139;
+  border-radius: 8px;
+  outline: none;
+  background: #0e1210;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.stdin-panel textarea:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(121,220,170,.08);
+}
+.stdin-panel textarea::placeholder { color: #4e5a52; }
+
 .panels {
-  height: min(670px, calc(100vh - 325px));
+  height: min(670px, calc(100vh - 399px));
   min-height: 470px;
   display: grid;
   grid-template-columns: minmax(0, 1.18fr) minmax(350px, .82fr);
@@ -370,6 +416,8 @@ footer {
   .sample-picker { grid-template-columns: 38px minmax(0, 1fr); }
   .run-actions { justify-content: flex-end; }
   .run-button { flex: 1; }
+  .stdin-panel { grid-template-columns: 1fr; gap: 7px; }
+  .stdin-copy span { display: none; }
   .editor-panel { height: 500px; }
   footer { gap: 8px; flex-direction: column; }
 }

@@ -187,10 +187,19 @@ public lowerPrepared request: move PreparedInterpolationRequest -> [Interpolatio
                                             ((candidate.kind == 9 or candidate.kind == 35) and candidate.parent == searchScope!) -> if {
                                                 request.tokens[candidate.nameToken] => candidateName
                                                 candidateName.span.length => candidateNameLength
-                                                fragmentName.span.length => fragmentNameLength
-                                                candidateNameLength == fragmentNameLength => nameEqual!
+                                                fragmentName.span.length => fragmentNameRawLength
+                                                false => nameEqual!
+                                                candidateNameLength == fragmentNameRawLength -> if {
+                                                    true => nameEqual!
+                                                } else {
+                                                    fragmentNameRawLength == candidateNameLength + UIntSize(1) -> if {
+                                                        (fragment -> byte(fragmentName.span.start + fragmentNameRawLength - UIntSize(1))) == UInt8(33) -> if {
+                                                            true => nameEqual!
+                                                        }
+                                                    }
+                                                }
                                                 UIntSize(0) => nameByte!
-                                                (nameEqual! and nameByte! < fragmentNameLength) -> while {
+                                                (nameEqual! and nameByte! < candidateNameLength) -> while {
                                                     (fragment -> byte(fragmentName.span.start + nameByte!)) != (source -> byte(candidateName.span.start + nameByte!)) -> if { false => nameEqual! }
                                                     nameByte! + UIntSize(1) => nameByte!
                                                 }
